@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import SmartAlertToast from './SmartAlertToast';
 
 export type AlertRiskLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';

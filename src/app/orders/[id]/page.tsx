@@ -2,6 +2,8 @@ import { mockOperationService } from '@/application/services/mockOperationServic
 import OrderTimeline from '@/components/orders/OrderTimeline';
 import { notFound } from 'next/navigation';
 
+export const instant = false;
+
 export default async function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const order = mockOperationService.getOrderById(id);
