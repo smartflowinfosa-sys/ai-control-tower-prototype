@@ -2,16 +2,18 @@ import type { Metadata } from "next";
 import { Tajawal } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
+import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
+import { NotificationProvider } from "@/components/common/NotificationContext";
 
 const tajawal = Tajawal({
   variable: "--font-tajawal",
   subsets: ["arabic"],
-  weight: ["200", "300", "400", "500", "700", "800", "900"],
+  weight: ["400", "500", "700", "800"],
 });
 
 export const metadata: Metadata = {
-  title: "AI Operations Control Tower - Zahi & Mawzoon",
-  description: "Proactive AI Control Tower for Zahi and Mawzoon",
+  title: "AI Control Tower",
+  description: "Proactive AI Operations Management",
 };
 
 export default function RootLayout({
@@ -26,10 +28,13 @@ export default function RootLayout({
       className={`${tajawal.variable} antialiased h-full`}
     >
       <body className="min-h-screen flex bg-gray-50 text-gray-900">
-        <Sidebar />
-        <main className="flex-1 flex flex-col p-8 overflow-y-auto">
-          {children}
-        </main>
+        <NotificationProvider>
+          <Sidebar />
+          <main className="flex-1 flex flex-col p-8 overflow-y-auto relative">
+            {children}
+          </main>
+          <AIAssistantWidget />
+        </NotificationProvider>
       </body>
     </html>
   );

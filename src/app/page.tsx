@@ -1,15 +1,20 @@
 import KPIWidget from '@/components/dashboard/KPIWidget';
 import { mockOperationService } from '@/application/services/mockOperationService';
+import DemoAlertTrigger from '@/components/common/DemoAlertTrigger';
+import AIAutonomyControl from '@/components/dashboard/AIAutonomyControl';
 
 export default function DashboardPage() {
   const kpis = mockOperationService.getDashboardKPIs();
 
   return (
     <div className="max-w-6xl w-full mx-auto">
-      <header className="mb-8">
+      <DemoAlertTrigger />
+      <header className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">لوحة القيادة التشغيلية (Control Tower)</h1>
         <p className="text-gray-500 text-sm mt-2">نظرة عامة على أداء زاهي وموزون</p>
       </header>
+
+      <AIAutonomyControl />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPIWidget 

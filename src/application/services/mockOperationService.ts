@@ -10,6 +10,10 @@ class MockOperationService {
     return [...scenarioOrders, ...dummyOrders];
   }
 
+  getOrderById(orderId: string): Order | undefined {
+    return this.getAllOrders().find(order => order.id === orderId);
+  }
+
   getDashboardKPIs(): KPIStats {
     return dashboardKPIs;
   }
@@ -20,6 +24,10 @@ class MockOperationService {
 
   getOrderTimeline(orderId: string): TimelineEvent[] {
     return scenarioTimelines.filter(event => event.orderId === orderId);
+  }
+
+  addTimelineEvent(event: TimelineEvent) {
+    scenarioTimelines.push(event);
   }
 }
 
