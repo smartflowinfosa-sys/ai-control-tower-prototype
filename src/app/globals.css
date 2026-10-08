@@ -8,8 +8,18 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-tajawal);
+  
+  --color-zahi-primary: #10b981;
+  --color-zahi-dark: #065f46;
+  
+  --color-mawzoon-primary: #1e3a8a;
+  --color-mawzoon-secondary: #5b21b6;
+  
+  --color-risk-critical: #DC2626;
+  --color-risk-high: #EA580C;
+  --color-risk-medium: #D97706;
+  --color-risk-low: #16A34A;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +32,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-tajawal), Arial, Helvetica, sans-serif;
 }
