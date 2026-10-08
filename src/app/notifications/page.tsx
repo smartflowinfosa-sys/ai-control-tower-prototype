@@ -3,7 +3,7 @@
 import { useNotification } from '@/components/common/NotificationContext';
 
 export default function NotificationsPage() {
-  const { notifications, resolveNotification, ignoreNotification } = useNotification();
+  const { notifications, resolveNotification, ignoreNotification, undoNotification } = useNotification();
 
   const pendingList = notifications.filter(n => n.status === 'pending');
   const resolvedList = notifications.filter(n => n.status !== 'pending');

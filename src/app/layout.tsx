@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
 import { NotificationProvider } from "@/components/common/NotificationContext";
+import { Suspense } from "react";
 
 const tajawal = Tajawal({
   variable: "--font-tajawal",
@@ -29,7 +30,9 @@ export default function RootLayout({
     >
       <body className="min-h-screen flex bg-gray-50 text-gray-900">
         <NotificationProvider>
-          <Sidebar />
+          <Suspense fallback={<aside className="w-64 bg-gray-900 text-white p-6"></aside>}>
+            <Sidebar />
+          </Suspense>
           <main className="flex-1 flex flex-col p-8 overflow-y-auto relative">
             {children}
           </main>
