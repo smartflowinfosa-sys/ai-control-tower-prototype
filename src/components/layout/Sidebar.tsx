@@ -78,6 +78,26 @@ export default function Sidebar() {
         >
           الإنتاج (Production)
         </Link>
+        <Link 
+          href="/inventory" 
+          className={`block px-4 py-3 rounded-xl transition-all ${
+            pathname === '/inventory' 
+              ? 'bg-white/60 text-sky-600 font-bold shadow-sm border border-white/60' 
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/40 font-medium'
+          }`}
+        >
+          إدارة المخزون (Inventory)
+        </Link>
+        <Link 
+          href="/suppliers" 
+          className={`block px-4 py-3 rounded-xl transition-all ${
+            pathname === '/suppliers' 
+              ? 'bg-white/60 text-sky-600 font-bold shadow-sm border border-white/60' 
+              : 'text-slate-700 hover:text-slate-900 hover:bg-white/40 font-medium'
+          }`}
+        >
+          الموردين (Suppliers)
+        </Link>
       </nav>
       
       <div className="mt-auto pt-6 border-t border-slate-200/60 relative">

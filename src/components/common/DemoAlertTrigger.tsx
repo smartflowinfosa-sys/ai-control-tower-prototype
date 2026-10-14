@@ -22,7 +22,20 @@ export default function DemoAlertTrigger() {
       });
     }, 10000);
 
-    return () => clearTimeout(timer);
+    // Fire smart inventory alert after 15 seconds
+    const inventoryTimer = setTimeout(() => {
+      showAlert({
+        title: '⚠️ تنبيه مخزون',
+        details: 'كمية (أدوات المائدة) وصلت للحد الأدنى. هل تود إرسال أمر شراء سريع لـ 2000 طقم من (مصنع البلاستيك الوطني) لتجنب توقف العمليات؟',
+        riskLevel: 'HIGH',
+        suggestedAction: 'إرسال أمر الشراء',
+      });
+    }, 15000);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(inventoryTimer);
+    };
   }, [showAlert]);
 
   return null;

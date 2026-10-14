@@ -101,7 +101,17 @@ export default function AIAssistantWidget() {
         mockOperationService.resolveException?.(exceptionId);
       }
 
-      setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: data.reply }]);
+      // Capture create_purchase_order Tool
+      const isPOAction = data.type === 'purchase_order' || data.functionCall?.name === 'create_purchase_order' || data.toolName === 'create_purchase_order';
+      let replyText = data.reply;
+      if (isPOAction) {
+        const itemId = data.itemId || data.functionCall?.args?.itemId || 'أدوات المائدة';
+        const supplierName = data.supplierName || data.functionCall?.args?.supplierName || 'مصنع البلاستيك الوطني';
+        const quantity = data.quantity || data.functionCall?.args?.quantity || 2000;
+        replyText = `✅ إجراء آلي: تم إنشاء أمر شراء لعدد ${quantity} من [${itemId}] من المورد [${supplierName}] بانتظار الموافقة النهائية.`;
+      }
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: replyText }]);
     } catch (error) {
       console.error(error);
       setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: '⚠️ حدث خطأ أثناء الاتصال بالخادم.' }]);
