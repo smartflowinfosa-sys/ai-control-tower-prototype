@@ -1,62 +1,77 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, SchemaType, type Tool } from '@google/generative-ai';
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const openai = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
-const resolveExceptionTool: Tool = {
-  functionDeclarations: [
-    {
+const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
       name: "resolve_exception",
       description: "استخدم هذه الدالة فقط عندما يطلب منك المستخدم أو يوافق على حل مشكلة، إغلاق استثناء، أو التدخل في طلب معين.",
       parameters: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
-          exceptionId: { type: SchemaType.STRING, description: "رقم الطلب أو المشكلة المستهدفة، مثلاً ZH-2481" },
-          action: { type: SchemaType.STRING, description: "الإجراء المراد تنفيذه: resolve أو ignore" }
+          exceptionId: {
+            type: "string",
+            description: "رقم الطلب أو المشكلة المستهدفة، مثلاً ZH-2481",
+          },
+          action: {
+            type: "string",
+            description: "الإجراء المراد تنفيذه: resolve أو ignore",
+          },
         },
-        required: ["exceptionId", "action"]
-      }
-    }
-  ]
-};
-
-const createPurchaseOrderTool: Tool = {
-  functionDeclarations: [
-    {
+        required: ["exceptionId", "action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_purchase_order",
       description: "استخدم هذه الدالة لإنشاء أو إرسال أمر شراء (Purchase Order) لمادة من المخزون من مورد محدد.",
       parameters: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
-          itemId: { type: SchemaType.STRING, description: "اسم أو معرف الصنف، مثلاً أدوات المائدة، سليف الوجبة، علب صوص" },
-          supplierName: { type: SchemaType.STRING, description: "اسم المورد، مثلاً مصنع البلاستيك الوطني أو مورد التغليف السريع" },
-          quantity: { type: SchemaType.NUMBER, description: "الكمية المطلوبة، مثلاً 2000" }
+          itemId: {
+            type: "string",
+            description: "اسم أو معرف الصنف، مثلاً أدوات المائدة، سليف الوجبة، علب صوص",
+          },
+          supplierName: {
+            type: "string",
+            description: "اسم المورد، مثلاً مصنع البلاستيك الوطني أو مورد التغليف السريع",
+          },
+          quantity: {
+            type: "number",
+            description: "الكمية المطلوبة، مثلاً 2000",
+          },
         },
-        required: ["itemId", "supplierName", "quantity"]
-      }
-    }
-  ]
-};
+        required: ["itemId", "supplierName", "quantity"],
+      },
+    },
+  },
+];
 
 export async function POST(req: NextRequest) {
-  console.log("Key exists:", !!process.env.GEMINI_API_KEY);
-  
   try {
     const body = await req.json();
     const { prompt, contextData } = body;
 
     if (!prompt) {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY is missing in .env' }, { status: 500 });
+    if (!process.env.OPENROUTER_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENROUTER_API_KEY is missing in .env" },
+        { status: 500 }
+      );
     }
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
-      tools: [resolveExceptionTool, createPurchaseOrderTool],
-      systemInstruction: `أنت AI Operations Agent متطور مسؤول عن مراقبة وتوجيه عمليات مطاعم (زاهي) وإدارة سلسلة الإمداد والمخزون. مدير العمليات يسألك الآن.
+    const systemInstruction = `أنت AI Operations Agent متطور مسؤول عن مراقبة وتوجيه عمليات مطاعم (زاهي) وإدارة سلسلة الإمداد والمخزون. مدير العمليات يسألك الآن.
 استخدم البيانات التشغيلية المرفقة للإجابة بدقة، باختصار، وباحترافية شديدة.
 القواعد:
 1. لا تهلوس ببيانات غير موجودة. اعتمد فقط على الـ contextData المرفق.
@@ -68,50 +83,106 @@ export async function POST(req: NextRequest) {
 
 البيانات التشغيلية الحالية (Context):
 ${JSON.stringify(contextData)}
-`,
-    });
+`;
 
-    const result = await model.generateContent(prompt);
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: "system", content: systemInstruction },
+      { role: "user", content: prompt },
+    ];
 
-    const functionCalls = result.response.functionCalls();
-    if (functionCalls && functionCalls.length > 0) {
-      const call = functionCalls[0];
-      
-      if (call.name === 'create_purchase_order') {
-        const itemId = (call.args as any)?.itemId || 'أدوات المائدة';
-        const supplierName = (call.args as any)?.supplierName || 'مصنع البلاستيك الوطني';
-        const quantity = (call.args as any)?.quantity || 2000;
-        return NextResponse.json({
-          type: 'purchase_order',
-          toolName: 'create_purchase_order',
-          itemId,
-          supplierName,
-          quantity,
-          reply: `✅ إجراء آلي: تم إنشاء أمر شراء لعدد ${quantity} من [${itemId}] من المورد [${supplierName}] بانتظار الموافقة النهائية.`,
-          functionCall: call,
-          functionCalls: functionCalls
+    // Priority model: "google/gemini-1.5-pro:free", then fallback to "google/gemini-1.5-flash:free", then "openrouter/free"
+    const modelCandidates = [
+      process.env.OPENROUTER_MODEL || "google/gemini-1.5-pro:free",
+      "google/gemini-1.5-flash:free",
+      "openrouter/free",
+    ];
+
+    let completion: OpenAI.Chat.Completions.ChatCompletion | null = null;
+    let lastError: any = null;
+
+    for (const model of modelCandidates) {
+      try {
+        completion = await openai.chat.completions.create({
+          model,
+          messages,
+          tools,
         });
+        if (completion) break;
+      } catch (err: any) {
+        lastError = err;
+        if (
+          err?.status === 400 &&
+          (err?.message?.includes("not a valid model ID") || err?.message?.includes("not found"))
+        ) {
+          console.warn(`Model ${model} unavailable on OpenRouter, trying fallback...`);
+          continue;
+        }
+        throw err;
       }
-
-      const exceptionId = (call.args as any)?.exceptionId || '';
-      const action = (call.args as any)?.action || 'resolve';
-      return NextResponse.json({
-        type: 'action',
-        action: action,
-        exceptionId: exceptionId,
-        reply: `تم توجيه أمر لتنفيذ الإجراء \`${call.name}\` للطلب \`${exceptionId}\` (الإجراء: ${action}). ⚡`,
-        functionCall: call,
-        functionCalls: functionCalls
-      });
     }
 
-    const responseText = result.response.text();
+    if (!completion) {
+      throw lastError || new Error("Failed to get completion from OpenRouter");
+    }
 
-    return NextResponse.json({ reply: responseText });
+    const choice = completion.choices[0];
+    const message = choice?.message;
+
+    // Handle tool call (function call)
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      const toolCall = message.tool_calls[0];
+      if (toolCall.type === "function") {
+        const args = JSON.parse(toolCall.function.arguments || "{}");
+        const fnName = toolCall.function.name;
+
+        if (fnName === "create_purchase_order") {
+          const itemId = args.itemId || "أدوات المائدة";
+          const supplierName = args.supplierName || "مصنع البلاستيك الوطني";
+          const quantity = typeof args.quantity === "number" ? args.quantity : 2000;
+          const reply = `✅ إجراء آلي: تم إنشاء أمر شراء لعدد ${quantity} من [${itemId}] من المورد [${supplierName}] بانتظار الموافقة النهائية.`;
+          return NextResponse.json({
+            type: "action",
+            toolName: fnName,
+            itemId,
+            supplierName,
+            quantity,
+            reply,
+            text: reply,
+            functionCall: {
+              name: fnName,
+              args,
+            },
+          });
+        }
+
+        const exceptionId = args.exceptionId || "";
+        const action = args.action || "resolve";
+        const reply = `تم توجيه أمر لتنفيذ الإجراء \`${fnName}\` للطلب \`${exceptionId}\` (الإجراء: ${action}). ⚡`;
+
+        return NextResponse.json({
+          type: "action",
+          action,
+          exceptionId,
+          reply,
+          text: reply,
+          functionCall: {
+            name: fnName,
+            args,
+          },
+        });
+      }
+    }
+
+    const content = message?.content || "";
+    return NextResponse.json({
+      type: "text",
+      text: content,
+      reply: content,
+    });
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
+    console.error("OpenRouter API Error:", error);
     return NextResponse.json(
-      { error: error.message || "حدث خطأ غير معروف في خوادم الذكاء الاصطناعي." },
+      { error: error?.message || "حدث خطأ غير معروف في خوادم OpenRouter." },
       { status: 500 }
     );
   }

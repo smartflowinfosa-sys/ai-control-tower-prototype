@@ -103,7 +103,7 @@ export default function AIAssistantWidget() {
 
       // Capture create_purchase_order Tool
       const isPOAction = data.type === 'purchase_order' || data.functionCall?.name === 'create_purchase_order' || data.toolName === 'create_purchase_order';
-      let replyText = data.reply;
+      let replyText = data.reply || data.text;
       if (isPOAction) {
         const itemId = data.itemId || data.functionCall?.args?.itemId || 'أدوات المائدة';
         const supplierName = data.supplierName || data.functionCall?.args?.supplierName || 'مصنع البلاستيك الوطني';
