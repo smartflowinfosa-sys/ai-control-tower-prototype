@@ -46,7 +46,7 @@ export default async function OrderDetailsPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
-      <div className="mb-12 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+      <div className="mb-12 bg-white/50 backdrop-blur-xl p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
         <h2 className="text-xl font-bold text-gray-800 mb-2 border-b border-white/60 pb-3">
           التسلسل الزمني التشغيلي (Operational Timeline)
         </h2>

@@ -12,11 +12,11 @@
   
   --color-zahi-primary: #0ea5e9;
   --color-zahi-dark: #0369a1;
-  --color-zahi-accent: #f97316;
+  --color-zahi-accent: #0d9488;
   
   --color-risk-critical: #DC2626;
-  --color-risk-high: #EA580C;
-  --color-risk-medium: #D97706;
+  --color-risk-high: #D97706;
+  --color-risk-medium: #CA8A04;
   --color-risk-low: #16A34A;
 }
 

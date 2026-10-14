@@ -20,7 +20,7 @@ export default function ExceptionCard({ exception }: Props) {
   const brandClass = brandColorMap[exception.brand] || brandColorMap.ZAHI;
 
   return (
-    <div className="bg-white/60 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.05)] rounded-2xl overflow-hidden flex flex-col hover:bg-white/80 hover:shadow-xl transition-all duration-300">
+    <div className="bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl overflow-hidden flex flex-col hover:bg-white/70 hover:shadow-xl transition-all duration-300">
       {/* Header */}
       <div className="p-4 border-b border-white/40 flex justify-between items-start">
         <div>
@@ -53,13 +53,13 @@ export default function ExceptionCard({ exception }: Props) {
       </div>
 
       {/* Suggested Action */}
-      <div className="p-4 bg-orange-50/20">
-        <h4 className="text-xs font-bold text-orange-900 mb-1">الإجراء المقترح:</h4>
+      <div className="p-4 bg-teal-50/30">
+        <h4 className="text-xs font-bold text-teal-900 mb-1">الإجراء المقترح:</h4>
         <p className="text-sm text-gray-700 mb-4">{exception.suggestedAction}</p>
         
         {exception.requiresHumanApproval && (
           <div className="flex gap-2">
-            <button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95">
+            <button className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95">
               موافقة وتنفيذ
             </button>
             <button className="bg-white/80 border border-white/80 text-gray-700 hover:bg-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm">

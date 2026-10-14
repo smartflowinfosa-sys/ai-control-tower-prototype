@@ -26,12 +26,12 @@ const statusNameMap: Record<string, string> = {
 };
 
 export default function OrdersPage() {
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [selectedBrand, setSelectedBrand] = useState('zahi');
   
   const allOrders = mockOperationService.getAllOrders();
 
   const filteredOrders = allOrders.filter(order => {
-    return selectedBrand === 'ALL' || order.brand === selectedBrand;
+    return selectedBrand === 'ALL' || order.brand.toLowerCase() === selectedBrand.toLowerCase();
   });
 
   const sortedOrders = [...filteredOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -49,7 +49,7 @@ export default function OrdersPage() {
         showDepartment={false}
       />
 
-      <div className="bg-white/60 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden">
+      <div className="bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl overflow-hidden">
         <table className="w-full text-right text-sm text-gray-600">
           <thead className="bg-white/40 text-gray-700 text-xs uppercase font-bold border-b border-white/60">
             <tr>

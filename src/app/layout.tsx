@@ -28,9 +28,9 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} antialiased h-full`}
     >
-      <body className="min-h-screen flex bg-gradient-to-br from-sky-50 via-slate-50 to-orange-50 bg-fixed text-slate-900 selection:bg-sky-500 selection:text-white relative">
+      <body className="min-h-screen flex bg-gradient-to-br from-[#FCFAF8] via-[#F9F6F0] to-[#F0F5F4] bg-fixed text-slate-800 selection:bg-teal-600 selection:text-white relative">
         <NotificationProvider>
-          <Suspense fallback={<aside className="w-64 bg-gray-900 text-white p-6"></aside>}>
+          <Suspense fallback={<aside className="w-64 bg-white/40 backdrop-blur-2xl border-l border-white/60 p-6"></aside>}>
             <Sidebar />
           </Suspense>
           <main className="flex-1 flex flex-col p-8 overflow-y-auto relative">

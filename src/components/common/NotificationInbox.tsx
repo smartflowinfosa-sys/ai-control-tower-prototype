@@ -17,14 +17,14 @@ export default function NotificationInbox() {
       >
         <span className="text-xl">🔔</span>
         {pendingCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-bounce shadow-sm">
+          <span className="absolute -top-1 -right-1 bg-teal-600 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-bounce shadow-sm">
             {pendingCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 bg-white/60 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.05)] rounded-2xl overflow-hidden flex flex-col max-h-[500px]">
+        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl overflow-hidden flex flex-col max-h-[500px]">
           <div className="bg-white/50 backdrop-blur-sm border-b border-white/60 p-4 flex justify-between items-center">
             <h3 className="font-bold text-gray-800">سجل إشعارات زاهي</h3>
             <span className="text-xs bg-sky-100 text-sky-800 border border-sky-200 px-2 py-1 rounded-lg font-bold">
@@ -32,7 +32,7 @@ export default function NotificationInbox() {
             </span>
           </div>
 
-          <div className="overflow-y-auto flex-1 p-3 bg-sky-50/20">
+          <div className="overflow-y-auto flex-1 p-3 bg-teal-50/20">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-500 text-sm font-medium">
                 <div className="text-3xl mb-2 opacity-50">📭</div>
@@ -43,14 +43,14 @@ export default function NotificationInbox() {
                 {notifications.map((alert: AlertData) => (
                   <li key={alert.id} className={`p-4 rounded-xl border text-sm transition-all ${
                     alert.status === 'pending' ? 'bg-white/80 border-white/80 shadow-sm' : 
-                    alert.status === 'resolved' ? 'bg-sky-50/50 border-sky-100' : 
+                    alert.status === 'resolved' ? 'bg-teal-50/50 border-teal-100' : 
                     'bg-white/40 border-white/50 opacity-70'
                   }`}>
                     <div className="flex justify-between items-start mb-2">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white shadow-sm ${
                         alert.riskLevel === 'CRITICAL' ? 'bg-red-500' : 
-                        alert.riskLevel === 'HIGH' ? 'bg-orange-500' : 
-                        alert.riskLevel === 'MEDIUM' ? 'bg-amber-500' : 'bg-emerald-500'
+                        alert.riskLevel === 'HIGH' ? 'bg-amber-600' : 
+                        alert.riskLevel === 'MEDIUM' ? 'bg-yellow-600' : 'bg-teal-600'
                       }`}>
                         {alert.riskLevel}
                       </span>
@@ -65,7 +65,7 @@ export default function NotificationInbox() {
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => resolveNotification(alert.id)}
-                          className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors shadow-sm"
+                          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors shadow-sm"
                         >
                           تنفيذ: {alert.suggestedAction}
                         </button>

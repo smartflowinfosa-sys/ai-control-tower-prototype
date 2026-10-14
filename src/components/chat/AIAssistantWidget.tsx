@@ -32,7 +32,7 @@ export default function AIAssistantWidget() {
             لدينا <strong className="text-red-600 bg-red-50 px-1 rounded">مشكلة حرجة (High Risk)</strong> في <strong className="text-sky-600">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-sky-600 font-bold hover:underline bg-sky-50 px-1 rounded">ZH-2481</Link> بسبب حذف العميل لـ "الأرز".
           </p>
           <p className="mb-3 leading-relaxed">
-            وقد قمت للتو <strong className="text-orange-600">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨
+            وقد قمت للتو <strong className="text-teal-700 bg-teal-50 px-1 rounded">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨
           </p>
           <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex items-start gap-1">
             <span>⚠️</span>
@@ -122,36 +122,36 @@ export default function AIAssistantWidget() {
       <motion.div 
         drag
         dragMomentum={false}
-        className={`bg-white/70 backdrop-blur-2xl border border-white/50 w-80 md:w-96 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden mb-4 flex-col h-[480px] transition-all cursor-auto ${isOpen ? 'flex' : 'hidden'}`}
+        className={`bg-white/60 backdrop-blur-2xl border border-white/60 shadow-2xl w-80 md:w-96 rounded-3xl overflow-hidden mb-4 flex-col h-[480px] transition-all cursor-auto ${isOpen ? 'flex' : 'hidden'}`}
       >
         {/* Drag Handle Bar & Header */}
-        <div className="bg-slate-900/90 backdrop-blur-md text-white pt-2.5 pb-3 px-4 shadow-md z-10 select-none">
+        <div className="bg-gradient-to-r from-sky-500/80 to-teal-500/80 backdrop-blur-md text-white pt-2.5 pb-3 px-4 shadow-sm z-10 select-none border-b border-white/20">
           {/* Centered Visual Drag Handle */}
           <div className="flex justify-center w-full mb-2">
             <div 
-              className="w-12 h-1.5 bg-white/40 hover:bg-white/70 rounded-full cursor-grab active:cursor-grabbing transition-colors" 
+              className="w-12 h-1.5 bg-white/50 hover:bg-white/80 rounded-full cursor-grab active:cursor-grabbing transition-colors" 
               title="اسحب لتحريك النافذة"
             />
           </div>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="bg-sky-500/25 p-2 rounded-xl backdrop-blur-md border border-sky-400/30">
+              <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md border border-white/30">
                 <span className="text-xl">🤖</span>
               </div>
               <div>
                 <h3 className="font-bold text-sm tracking-wide flex items-center gap-1.5">
                   برج مراقبة زاهي
-                  <span className="text-[10px] bg-sky-500/30 text-sky-200 border border-sky-400/40 px-1.5 py-0.5 rounded-md font-normal">AI</span>
+                  <span className="text-[10px] bg-white/25 text-white border border-white/40 px-1.5 py-0.5 rounded-md font-normal">AI</span>
                 </h3>
-                <p className="text-xs text-sky-200 flex items-center gap-1 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50"></span>
+                <p className="text-xs text-teal-100 flex items-center gap-1 mt-0.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shadow-sm shadow-emerald-300/50"></span>
                   متصل بـ Gemini
                 </p>
               </div>
             </div>
             <button 
               onClick={() => setIsOpen(false)} 
-              className="text-gray-300 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm cursor-pointer"
+              className="text-white/80 hover:text-white transition-colors bg-white/20 hover:bg-white/30 p-1.5 rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm cursor-pointer"
             >
               ✕
             </button>
@@ -159,13 +159,13 @@ export default function AIAssistantWidget() {
         </div>
         
         {/* Message Container */}
-        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-sky-50/20 to-white/40 flex flex-col gap-3.5 backdrop-blur-sm">
+        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-teal-50/20 to-white/40 flex flex-col gap-3.5 backdrop-blur-sm">
           {messages.map((msg) => (
             <div 
               key={msg.id} 
               className={`p-3.5 rounded-2xl max-w-[85%] text-sm relative transition-all break-words ${
                 msg.sender === 'user' 
-                  ? 'self-end bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-md shadow-sky-500/20 rounded-tr-sm' 
+                  ? 'self-end bg-gradient-to-r from-sky-500 to-teal-600 text-white shadow-md shadow-teal-600/20 rounded-tr-sm' 
                   : 'self-start bg-white/80 backdrop-blur-md border border-white/90 text-gray-800 shadow-sm rounded-tl-sm'
               }`}
             >
@@ -179,9 +179,9 @@ export default function AIAssistantWidget() {
           
           {isTyping && (
             <div className="self-start bg-white/80 backdrop-blur-md border border-white/90 p-3.5 rounded-2xl rounded-tl-sm max-w-[85%] shadow-sm flex gap-1 items-center h-12">
-              <div className="w-2 h-2 bg-sky-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
             </div>
           )}
         </div>
@@ -191,7 +191,7 @@ export default function AIAssistantWidget() {
           <input 
             type="text" 
             placeholder="اسأل الذكاء الاصطناعي لزاهي..." 
-            className="flex-1 border border-white/80 bg-white/80 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-sky-500 focus:bg-white transition-all shadow-inner"
+            className="flex-1 border border-white/80 bg-white/80 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500 focus:bg-white transition-all shadow-inner text-slate-800"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -199,7 +199,7 @@ export default function AIAssistantWidget() {
           <button 
             onClick={handleSend}
             disabled={!inputValue.trim() || isTyping}
-            className="bg-orange-500 text-white p-2.5 w-11 h-11 rounded-full hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95 shadow-md shadow-orange-500/30"
+            className="bg-teal-600 text-white p-2.5 w-11 h-11 rounded-full hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95 shadow-md shadow-teal-600/30 cursor-pointer"
           >
             ↑
           </button>
@@ -209,10 +209,10 @@ export default function AIAssistantWidget() {
       {/* Floating Toggle Button */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 ${
+        className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
           isOpen 
-            ? 'bg-slate-900 text-white rotate-90 shadow-slate-900/40' 
-            : 'bg-gradient-to-tr from-sky-500 to-sky-600 text-white shadow-sky-500/40 border border-sky-400/40'
+            ? 'bg-slate-800 text-white rotate-90 shadow-slate-800/40' 
+            : 'bg-gradient-to-tr from-sky-500 to-teal-600 text-white shadow-teal-600/30 border border-teal-400/40'
         }`}
       >
         {isOpen ? '✕' : <span className="text-2xl animate-pulse">✨</span>}

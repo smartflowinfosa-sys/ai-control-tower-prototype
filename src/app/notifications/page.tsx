@@ -31,7 +31,7 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-4">
             {pendingList.map(alert => (
-              <div key={alert.id} className="bg-white/60 backdrop-blur-md p-5 rounded-2xl border-r-4 border-r-red-500 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-white/80 hover:shadow-lg transition-all">
+              <div key={alert.id} className="bg-white/50 backdrop-blur-xl p-5 rounded-2xl border-r-4 border-r-red-500 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-white/70 hover:shadow-lg transition-all">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded font-bold shadow-sm">{alert.riskLevel}</span>
@@ -45,7 +45,7 @@ export default function NotificationsPage() {
                 <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
                   <button 
                     onClick={() => resolveNotification(alert.id)}
-                    className="flex-1 md:flex-none bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all whitespace-nowrap shadow-sm active:scale-95"
+                    className="flex-1 md:flex-none bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all whitespace-nowrap shadow-sm active:scale-95"
                   >
                     تنفيذ الإجراء
                   </button>
@@ -83,7 +83,7 @@ export default function NotificationsPage() {
                       </span>
                     ) : (
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center gap-1">
-                        <span>👤</span> تم الحل بشرياً
+                        <span>👤</span> تم الحل بواسطة الموظف
                       </span>
                     )
                   )}

@@ -29,7 +29,7 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`bg-white/60 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border overflow-hidden flex flex-col relative transition-all hover:bg-white/80 hover:shadow-xl
+              className={`bg-white/50 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border overflow-hidden flex flex-col relative transition-all hover:bg-white/70 hover:shadow-xl
                 ${isDelayed ? 'border-red-400/80 shadow-red-100' : 'border-white/60'}
               `}
             >

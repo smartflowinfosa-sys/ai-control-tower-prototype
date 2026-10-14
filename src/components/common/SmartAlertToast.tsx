@@ -4,17 +4,17 @@ import { useState, useEffect } from 'react';
 import { AlertData } from './NotificationContext';
 
 const riskStyles = {
-  CRITICAL: 'border-red-500 bg-red-50',
-  HIGH: 'border-orange-500 bg-orange-50',
-  MEDIUM: 'border-amber-500 bg-amber-50',
-  LOW: 'border-emerald-500 bg-emerald-50',
+  CRITICAL: 'border-red-500 bg-red-50/90',
+  HIGH: 'border-amber-600 bg-amber-50/90',
+  MEDIUM: 'border-yellow-600 bg-yellow-50/90',
+  LOW: 'border-teal-600 bg-teal-50/90',
 };
 
 const badgeStyles = {
   CRITICAL: 'bg-red-500 text-white',
-  HIGH: 'bg-orange-500 text-white',
-  MEDIUM: 'bg-amber-500 text-white',
-  LOW: 'bg-emerald-500 text-white',
+  HIGH: 'bg-amber-600 text-white',
+  MEDIUM: 'bg-yellow-600 text-white',
+  LOW: 'bg-teal-600 text-white',
 };
 
 export default function SmartAlertToast({ 

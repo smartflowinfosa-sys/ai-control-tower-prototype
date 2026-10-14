@@ -4,7 +4,7 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
   const actorColorMap: Record<string, string> = {
     CUSTOMER: 'bg-blue-100 text-blue-800 border-blue-200',
     SYSTEM: 'bg-gray-100 text-gray-800 border-gray-200',
-    KITCHEN: 'bg-orange-100 text-orange-800 border-orange-200',
+    KITCHEN: 'bg-teal-100 text-teal-800 border-teal-200',
     PACKING: 'bg-purple-100 text-purple-800 border-purple-200',
     DELIVERY: 'bg-emerald-100 text-emerald-800 border-emerald-200',
     AI_AGENT: 'bg-indigo-100 text-indigo-800 border-indigo-200',
@@ -23,8 +23,8 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
               ${isAnomaly ? 'bg-red-500 animate-pulse' : isAi ? 'bg-indigo-500' : 'bg-gray-400'}`} 
             />
             
-            <div className={`bg-white rounded-lg p-5 shadow-sm border transition-shadow hover:shadow-md
-              ${isAnomaly ? 'border-red-200 bg-red-50/30' : isAi ? 'border-indigo-200 bg-indigo-50/30' : 'border-gray-100'}
+            <div className={`bg-white/50 backdrop-blur-xl rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border transition-all hover:bg-white/70 hover:shadow-md
+              ${isAnomaly ? 'border-red-200 bg-red-50/30' : isAi ? 'border-indigo-200 bg-indigo-50/30' : 'border-white/60'}
             `}>
               <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                 <div className="flex items-center gap-2 flex-wrap">

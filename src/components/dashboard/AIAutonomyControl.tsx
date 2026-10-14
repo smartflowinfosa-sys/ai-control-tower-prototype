@@ -16,10 +16,10 @@ const autonomyConfig = {
   SEMI_AUTO: {
     label: 'شبه مستقل (Semi-Auto)',
     desc: 'يحل المشاكل البسيطة تلقائياً ويصعد المعقدة',
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-400/30',
-    activeBtn: 'bg-orange-500 text-white shadow-md shadow-orange-500/30',
-    textColor: 'text-orange-900'
+    bgColor: 'bg-teal-500/10',
+    borderColor: 'border-teal-400/30',
+    activeBtn: 'bg-teal-600 text-white shadow-md shadow-teal-600/30',
+    textColor: 'text-teal-900'
   },
   FULL_AUTO: {
     label: 'مستقل بالكامل (Full-Auto)',
@@ -36,11 +36,11 @@ export default function AIAutonomyControl() {
   const currentConfig = autonomyConfig[level];
 
   return (
-    <div className="bg-white/60 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.05)] rounded-2xl p-4 transition-all duration-300 mb-6">
+    <div className="bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl p-4 transition-all duration-300 mb-6">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span className="text-xl animate-pulse">🧠</span> مستوى استقلالية الذكاء الاصطناعي
+            <span className="text-xl animate-pulse">🧠</span> مستوى تحكم الـ Agent
           </h2>
           <p className={`text-xs mt-0.5 font-medium ${currentConfig.textColor}`}>
             الوضع الحالي: {currentConfig.desc}

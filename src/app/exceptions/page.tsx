@@ -15,7 +15,7 @@ const riskWeight: Record<string, number> = {
 };
 
 export default function ExceptionsPage() {
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [selectedBrand, setSelectedBrand] = useState('zahi');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedRisk, setSelectedRisk] = useState('ALL');
   
@@ -25,7 +25,7 @@ export default function ExceptionsPage() {
   const { showAlert } = useNotification();
 
   const filteredExceptions = exceptions.filter(exc => {
-    const brandMatch = selectedBrand === 'ALL' || exc.brand === selectedBrand;
+    const brandMatch = selectedBrand === 'ALL' || exc.brand.toLowerCase() === selectedBrand.toLowerCase();
     const deptMatch = selectedDept === 'ALL' || exc.department === selectedDept;
     const riskMatch = selectedRisk === 'ALL' || exc.riskLevel === selectedRisk;
     const activeMatch = exc.status !== 'RESOLVED';
@@ -92,19 +92,19 @@ export default function ExceptionsPage() {
       />
 
       {eligibleForBulk.length > 0 && (
-        <div className="bg-sky-500/10 backdrop-blur-md border border-sky-400/30 rounded-2xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] gap-4 transition-all">
+        <div className="bg-white/50 backdrop-blur-xl border border-teal-500/30 rounded-2xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] gap-4 transition-all">
           <div className="flex items-center gap-3">
             <span className="text-3xl">✨</span>
             <div>
-              <h3 className="font-bold text-sky-950 text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
-              <p className="text-sm text-sky-800 mt-1">
+              <h3 className="font-bold text-teal-950 text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
+              <p className="text-sm text-teal-800 mt-1">
                 يوجد <strong>{eligibleForBulk.length}</strong> حالة بسيطة/متوسطة مقترحة للحل التلقائي بواسطة الذكاء الاصطناعي.
               </p>
             </div>
           </div>
           <button 
             onClick={handleBulkResolve}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-5 rounded-xl shadow-md transition-all flex items-center gap-2 whitespace-nowrap active:scale-95"
+            className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-5 rounded-xl shadow-md transition-all flex items-center gap-2 whitespace-nowrap active:scale-95 shadow-teal-600/20"
           >
             تنفيذ الإجراءات المجمعة بنقرة واحدة ⚡
           </button>
