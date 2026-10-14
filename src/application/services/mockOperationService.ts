@@ -29,6 +29,19 @@ class MockOperationService {
   addTimelineEvent(event: TimelineEvent) {
     scenarioTimelines.push(event);
   }
+
+  resolveException(idOrOrderId: string) {
+    const target = idOrOrderId.trim().toLowerCase();
+    const exc = scenarioExceptions.find(e => 
+      e.id.toLowerCase() === target || 
+      e.orderId?.toLowerCase() === target || 
+      (e.orderId && e.orderId.toLowerCase().includes(target)) ||
+      (e.orderId && target.includes(e.orderId.toLowerCase()))
+    );
+    if (exc) {
+      exc.status = 'RESOLVED';
+    }
+  }
 }
 
 export const mockOperationService = new MockOperationService();

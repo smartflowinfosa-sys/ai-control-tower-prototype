@@ -79,8 +79,17 @@ export default function NotificationInbox() {
                     )}
                     
                     {alert.status === 'resolved' && (
-                      <div className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
+                      <div className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1.5 flex-wrap">
                         <span>✅</span> تم اتخاذ الإجراء
+                        {alert.resolvedBy === 'ai' ? (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">
+                            🤖 AI
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-bold border border-gray-200">
+                            👤 بشري
+                          </span>
+                        )}
                       </div>
                     )}
                     

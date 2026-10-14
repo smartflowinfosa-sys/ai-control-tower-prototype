@@ -75,7 +75,18 @@ export default function NotificationsPage() {
                   <h3 className="font-bold text-gray-600 line-through decoration-gray-300">{alert.title}</h3>
                   <p className="text-xs text-gray-500 mt-1">{alert.details}</p>
                 </div>
-                <div className="flex items-center gap-2 mt-2 md:mt-0">
+                <div className="flex items-center gap-2 mt-2 md:mt-0 flex-wrap">
+                  {alert.status === 'resolved' && (
+                    alert.resolvedBy === 'ai' ? (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200 flex items-center gap-1 shadow-sm">
+                        <span>🤖</span> تم الحل بواسطة AI
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 flex items-center gap-1">
+                        <span>👤</span> تم الحل بشرياً
+                      </span>
+                    )
+                  )}
                   <div className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-200 text-gray-600">
                     {alert.status === 'resolved' ? '✅ تم تنفيذ الإجراء' : '👁️ تم التجاهل'}
                   </div>
