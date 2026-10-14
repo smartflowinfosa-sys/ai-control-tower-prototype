@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Eye, Zap, Bot } from 'lucide-react';
 
 type AutonomyLevel = 'COPILOT' | 'SEMI_AUTO' | 'FULL_AUTO';
 
@@ -8,27 +10,21 @@ const autonomyConfig = {
   COPILOT: {
     label: 'مساعد (Copilot)',
     desc: 'يراقب ويقترح الإجراءات للموافقة',
-    bgColor: 'bg-sky-500/10',
-    borderColor: 'border-sky-400/30',
-    activeBtn: 'bg-sky-500 text-white shadow-md shadow-sky-500/30',
-    textColor: 'text-sky-900'
+    icon: Eye,
+    textColor: 'text-sky-900',
   },
   SEMI_AUTO: {
     label: 'شبه مستقل (Semi-Auto)',
     desc: 'يحل المشاكل البسيطة تلقائياً ويصعد المعقدة',
-    bgColor: 'bg-teal-500/10',
-    borderColor: 'border-teal-400/30',
-    activeBtn: 'bg-teal-600 text-white shadow-md shadow-teal-600/30',
-    textColor: 'text-teal-900'
+    icon: Zap,
+    textColor: 'text-teal-900',
   },
   FULL_AUTO: {
     label: 'مستقل بالكامل (Full-Auto)',
     desc: 'أتمتة كاملة للقرارات بدون تدخل بشري',
-    bgColor: 'bg-emerald-500/10',
-    borderColor: 'border-emerald-400/30',
-    activeBtn: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30',
-    textColor: 'text-emerald-900'
-  }
+    icon: Bot,
+    textColor: 'text-emerald-900',
+  },
 };
 
 export default function AIAutonomyControl() {
@@ -46,19 +42,39 @@ export default function AIAutonomyControl() {
             الوضع الحالي: {currentConfig.desc}
           </p>
         </div>
-        
-        <div className="flex bg-white/70 backdrop-blur-sm rounded-xl p-1 shadow-sm border border-white/60 flex-wrap">
-          {(Object.keys(autonomyConfig) as AutonomyLevel[]).map(key => (
-            <button
-              key={key}
-              onClick={() => setLevel(key)}
-              className={`flex-1 min-w-[100px] px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                level === key ? autonomyConfig[key].activeBtn : 'text-gray-600 hover:bg-white/60'
-              }`}
-            >
-              {autonomyConfig[key].label}
-            </button>
-          ))}
+
+        {/* Animated Segmented Control Capsule */}
+        <div className="bg-white/40 backdrop-blur-md border border-white/60 p-1.5 rounded-full flex relative flex-wrap sm:flex-nowrap">
+          {(Object.keys(autonomyConfig) as AutonomyLevel[]).map(key => {
+            const isActive = level === key;
+            const Icon = autonomyConfig[key].icon;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setLevel(key)}
+                className={`relative z-10 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-full transition-colors duration-300 cursor-pointer ${
+                  isActive ? 'text-teal-600 font-semibold' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeAutonomyTab"
+                    className="absolute inset-0 bg-white rounded-full shadow-sm border border-slate-100 -z-10"
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  />
+                )}
+                <div className="relative flex items-center gap-1.5">
+                  <Icon className="w-4 h-4" />
+                  {isActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse shrink-0" />
+                  )}
+                </div>
+                <span>{autonomyConfig[key].label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
