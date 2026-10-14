@@ -28,14 +28,13 @@ export default async function OrderDetailsPage({ params }: { params: Promise<{ i
               </span>
             </h1>
             <div className="flex items-center gap-3">
-              <span className={`text-xs font-bold px-3 py-1.5 rounded border shadow-sm
-                ${order.brand === 'ZAHI' ? 'text-emerald-800 bg-emerald-50 border-emerald-200' : 'text-blue-800 bg-blue-50 border-blue-200'}`}>
-                {order.brand === 'ZAHI' ? 'زاهي' : 'موزون'}
+              <span className="text-xs font-bold px-3 py-1.5 rounded-lg border shadow-sm text-sky-800 bg-sky-50 border-sky-200">
+                زاهي
               </span>
               <span className="text-sm text-gray-600 font-medium">العميل: {order.customer.name} ({order.customer.phone})</span>
             </div>
           </div>
-          <div className="text-right sm:text-left bg-gray-50 p-3 rounded-lg border border-gray-100">
+          <div className="text-right sm:text-left bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-white/60 shadow-sm">
             <div className="text-xs text-gray-500 mb-1">تاريخ الإنشاء</div>
             <div className="font-bold text-gray-700">
               {new Date(order.createdAt).toLocaleString('ar-SA', {
@@ -47,8 +46,8 @@ export default async function OrderDetailsPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
-      <div className="mb-12 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-2 border-b border-gray-100 pb-3">
+      <div className="mb-12 bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+        <h2 className="text-xl font-bold text-gray-800 mb-2 border-b border-white/60 pb-3">
           التسلسل الزمني التشغيلي (Operational Timeline)
         </h2>
         {timelineEvents.length > 0 ? (

@@ -29,8 +29,8 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`bg-white rounded-lg shadow-sm border-2 overflow-hidden flex flex-col relative
-                ${isDelayed ? 'border-red-400 shadow-red-100' : 'border-transparent'}
+              className={`bg-white/60 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border overflow-hidden flex flex-col relative transition-all hover:bg-white/80 hover:shadow-xl
+                ${isDelayed ? 'border-red-400/80 shadow-red-100' : 'border-white/60'}
               `}
             >
               {isDelayed && (
@@ -39,11 +39,11 @@ export default function ProductionPage() {
                 </div>
               )}
               
-              <div className={`p-4 border-b ${isDelayed ? 'mt-6' : ''} ${isZahi ? 'bg-emerald-50' : 'bg-blue-50'} flex justify-between items-center`}>
+              <div className={`p-4 border-b ${isDelayed ? 'mt-6' : ''} bg-sky-50/40 border-sky-100/50 flex justify-between items-center`}>
                 <div>
                   <h3 className="text-xl font-bold text-gray-800">{order.orderNumber}</h3>
-                  <span className={`text-xs font-bold ${isZahi ? 'text-emerald-700' : 'text-blue-700'}`}>
-                    {isZahi ? 'زاهي' : 'موزون'}
+                  <span className="text-xs font-bold text-sky-700 bg-sky-100/60 border border-sky-200 px-2 py-0.5 rounded-md">
+                    زاهي
                   </span>
                 </div>
                 <div className="text-right">

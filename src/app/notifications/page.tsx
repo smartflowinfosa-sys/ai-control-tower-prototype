@@ -31,7 +31,7 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-4">
             {pendingList.map(alert => (
-              <div key={alert.id} className="bg-white p-5 rounded-xl border-r-4 border-r-red-500 border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
+              <div key={alert.id} className="bg-white/60 backdrop-blur-md p-5 rounded-2xl border-r-4 border-r-red-500 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-white/80 hover:shadow-lg transition-all">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded font-bold shadow-sm">{alert.riskLevel}</span>
@@ -45,13 +45,13 @@ export default function NotificationsPage() {
                 <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
                   <button 
                     onClick={() => resolveNotification(alert.id)}
-                    className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition-colors whitespace-nowrap shadow-sm"
+                    className="flex-1 md:flex-none bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all whitespace-nowrap shadow-sm active:scale-95"
                   >
                     تنفيذ الإجراء
                   </button>
                   <button 
                     onClick={() => ignoreNotification(alert.id)}
-                    className="flex-1 md:flex-none bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2.5 px-4 rounded-lg transition-colors border border-gray-200"
+                    className="flex-1 md:flex-none bg-white/80 hover:bg-white text-gray-700 text-xs font-bold py-2.5 px-4 rounded-xl transition-colors border border-white/80 shadow-sm"
                   >
                     تجاهل
                   </button>
@@ -63,14 +63,14 @@ export default function NotificationsPage() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold text-gray-400 mb-4">أرشيف الإجراءات (History)</h2>
+        <h2 className="text-xl font-bold text-gray-500 mb-4">أرشيف الإجراءات (History)</h2>
         
         {resolvedList.length === 0 ? (
           <div className="text-gray-400 text-sm text-center py-6">لا يوجد سجل سابق</div>
         ) : (
-          <div className="space-y-3 opacity-70">
+          <div className="space-y-3 opacity-80">
             {resolvedList.map(alert => (
-              <div key={alert.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-opacity hover:opacity-100">
+              <div key={alert.id} className="bg-white/40 backdrop-blur-sm p-4 rounded-2xl border border-white/50 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all hover:bg-white/60">
                 <div>
                   <h3 className="font-bold text-gray-600 line-through decoration-gray-300">{alert.title}</h3>
                   <p className="text-xs text-gray-500 mt-1">{alert.details}</p>

@@ -78,7 +78,7 @@ export default function ExceptionsPage() {
         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
           <span className="text-red-500 animate-pulse">🔴</span> مركز الاستثناءات (AI Exceptions)
         </h1>
-        <p className="text-gray-500 text-sm mt-2">الحالات التشغيلية التي تتطلب الانتباه والتدخل من فريق المراقبة</p>
+        <p className="text-gray-500 text-sm mt-2">الحالات التشغيلية التي تتطلب الانتباه والتدخل في مطاعم زاهي</p>
       </header>
 
       <SmartFilterBar 
@@ -92,19 +92,19 @@ export default function ExceptionsPage() {
       />
 
       {eligibleForBulk.length > 0 && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-sm gap-4 transition-all hover:shadow-md">
+        <div className="bg-sky-500/10 backdrop-blur-md border border-sky-400/30 rounded-2xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] gap-4 transition-all">
           <div className="flex items-center gap-3">
             <span className="text-3xl">✨</span>
             <div>
-              <h3 className="font-bold text-indigo-900 text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
-              <p className="text-sm text-indigo-700 mt-1">
+              <h3 className="font-bold text-sky-950 text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
+              <p className="text-sm text-sky-800 mt-1">
                 يوجد <strong>{eligibleForBulk.length}</strong> حالة بسيطة/متوسطة مقترحة للحل التلقائي بواسطة الذكاء الاصطناعي.
               </p>
             </div>
           </div>
           <button 
             onClick={handleBulkResolve}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition-colors flex items-center gap-2 whitespace-nowrap active:scale-95"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-5 rounded-xl shadow-md transition-all flex items-center gap-2 whitespace-nowrap active:scale-95"
           >
             تنفيذ الإجراءات المجمعة بنقرة واحدة ⚡
           </button>

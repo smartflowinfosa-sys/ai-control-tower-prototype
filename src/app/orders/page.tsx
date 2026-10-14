@@ -49,9 +49,9 @@ export default function OrdersPage() {
         showDepartment={false}
       />
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white/60 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden">
         <table className="w-full text-right text-sm text-gray-600">
-          <thead className="bg-gray-50 text-gray-700 text-xs uppercase font-medium border-b border-gray-200">
+          <thead className="bg-white/40 text-gray-700 text-xs uppercase font-bold border-b border-white/60">
             <tr>
               <th className="px-6 py-4">رقم الطلب</th>
               <th className="px-6 py-4">العلامة التجارية</th>
@@ -60,21 +60,20 @@ export default function OrdersPage() {
               <th className="px-6 py-4">وقت الإنشاء</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-white/40">
             {sortedOrders.length > 0 ? (
               sortedOrders.map((order) => {
-                const brandColor = order.brand === 'ZAHI' ? 'text-[var(--color-zahi-primary)]' : 'text-[var(--color-mawzoon-primary)]';
                 const status = order.status || 'KITCHEN_PREP';
                 
                 return (
-                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={order.id} className="hover:bg-white/60 transition-colors">
                     <td className="px-6 py-4 font-bold text-gray-800">
-                      <Link href={`/orders/${order.id}`} className="hover:text-indigo-600 hover:underline">
+                      <Link href={`/orders/${order.id}`} className="hover:text-sky-600 hover:underline">
                         {order.orderNumber}
                       </Link>
                     </td>
-                    <td className={`px-6 py-4 font-bold ${brandColor}`}>{order.brand === 'ZAHI' ? 'زاهي' : 'موزون'}</td>
-                    <td className="px-6 py-4">{order.customer.name}</td>
+                    <td className="px-6 py-4 font-bold text-sky-600">زاهي</td>
+                    <td className="px-6 py-4 font-medium text-gray-800">{order.customer.name}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${statusColorMap[status]}`}>
                         {statusNameMap[status] || status}

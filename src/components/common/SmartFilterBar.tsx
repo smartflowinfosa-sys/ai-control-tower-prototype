@@ -22,17 +22,16 @@ export default function SmartFilterBar({
   showRisk = false
 }: SmartFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+    <div className="flex flex-wrap items-center gap-6 bg-white/60 backdrop-blur-md p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 mb-6">
       <div className="flex items-center gap-3">
         <span className="text-sm font-bold text-gray-700">العلامة التجارية:</span>
         <select 
           value={selectedBrand}
           onChange={(e) => onBrandChange(e.target.value)}
-          className="bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 outline-none min-w-[140px] cursor-pointer"
+          className="bg-white/80 border border-white/80 text-sky-800 font-bold text-sm rounded-xl focus:ring-sky-500 focus:border-sky-500 block p-2 outline-none min-w-[140px] cursor-pointer shadow-sm"
         >
-          <option value="ALL">الكل (All)</option>
-          <option value="ZAHI">زاهي (Zahi)</option>
-          <option value="MAWZOON">موزون (Mawzoon)</option>
+          <option value="ALL">زاهي (Zahi) - الكل</option>
+          <option value="ZAHI">زاهي (الفرع الرئيسي)</option>
         </select>
       </div>
 

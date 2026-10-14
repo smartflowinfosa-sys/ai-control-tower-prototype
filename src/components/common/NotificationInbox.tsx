@@ -13,26 +13,26 @@ export default function NotificationInbox() {
     <div className="relative z-[55]">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2.5 text-gray-600 hover:text-gray-900 bg-white rounded-full shadow-sm border border-gray-200 transition-colors hover:shadow-md"
+        className="relative p-2.5 text-gray-700 hover:text-sky-600 bg-white/70 backdrop-blur-md rounded-2xl shadow-sm border border-white/60 transition-all hover:bg-white/90 hover:shadow-md"
       >
         <span className="text-xl">🔔</span>
         {pendingCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-bounce shadow-sm">
+          <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-bounce shadow-sm">
             {pendingCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[500px]">
-          <div className="bg-gray-50 border-b border-gray-200 p-4 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">سجل الإشعارات</h3>
-            <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold">
+        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 bg-white/60 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.05)] rounded-2xl overflow-hidden flex flex-col max-h-[500px]">
+          <div className="bg-white/50 backdrop-blur-sm border-b border-white/60 p-4 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">سجل إشعارات زاهي</h3>
+            <span className="text-xs bg-sky-100 text-sky-800 border border-sky-200 px-2 py-1 rounded-lg font-bold">
               {notifications.length} إشعار
             </span>
           </div>
 
-          <div className="overflow-y-auto flex-1 p-3 bg-gray-50/50">
+          <div className="overflow-y-auto flex-1 p-3 bg-sky-50/20">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-500 text-sm font-medium">
                 <div className="text-3xl mb-2 opacity-50">📭</div>
@@ -42,9 +42,9 @@ export default function NotificationInbox() {
               <ul className="space-y-3">
                 {notifications.map((alert: AlertData) => (
                   <li key={alert.id} className={`p-4 rounded-xl border text-sm transition-all ${
-                    alert.status === 'pending' ? 'bg-white border-gray-200 shadow-sm' : 
-                    alert.status === 'resolved' ? 'bg-emerald-50/50 border-emerald-100' : 
-                    'bg-gray-50 border-gray-100 opacity-70'
+                    alert.status === 'pending' ? 'bg-white/80 border-white/80 shadow-sm' : 
+                    alert.status === 'resolved' ? 'bg-sky-50/50 border-sky-100' : 
+                    'bg-white/40 border-white/50 opacity-70'
                   }`}>
                     <div className="flex justify-between items-start mb-2">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white shadow-sm ${
@@ -65,13 +65,13 @@ export default function NotificationInbox() {
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => resolveNotification(alert.id)}
-                          className="flex-1 bg-gray-900 text-white text-[10px] font-bold py-2 px-2 rounded-lg hover:bg-black transition-colors shadow-sm"
+                          className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors shadow-sm"
                         >
                           تنفيذ: {alert.suggestedAction}
                         </button>
                         <button 
                           onClick={() => ignoreNotification(alert.id)}
-                          className="bg-white border border-gray-200 text-gray-600 text-[10px] font-bold py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="bg-white/80 border border-white/80 text-gray-600 text-[10px] font-bold py-2 px-3 rounded-lg hover:bg-white transition-colors"
                         >
                           تجاهل
                         </button>

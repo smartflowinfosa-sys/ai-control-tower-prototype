@@ -19,8 +19,8 @@ export const dummyOrders: Order[] = Array.from({ length: 15 }).map((_, index) =>
   const statuses: ('PENDING' | 'KITCHEN_PREP' | 'DELIVERED')[] = ['PENDING', 'KITCHEN_PREP', 'DELIVERED'];
   return {
     id: `dummy-o-${index}`,
-    orderNumber: `${isZahi ? 'ZH' : 'MZ'}-10${index + 20}`,
-    brand: isZahi ? 'ZAHI' : 'MAWZOON',
+    orderNumber: `ZH-10${index + 20}`,
+    brand: 'ZAHI',
     status: statuses[index % 3],
     customer: { 
       name: names[index % names.length], 

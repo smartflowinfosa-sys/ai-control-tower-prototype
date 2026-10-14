@@ -13,8 +13,8 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
-  title: "AI Control Tower",
-  description: "Proactive AI Operations Management",
+  title: "برج مراقبة زاهي | Zahi AI Control Tower",
+  description: "برج المراقبة والتحكم بالذكاء الاصطناعي لعمليات مطاعم زاهي",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} antialiased h-full`}
     >
-      <body className="min-h-screen flex bg-gray-50 text-gray-900">
+      <body className="min-h-screen flex bg-gradient-to-br from-sky-50 via-slate-50 to-orange-50 bg-fixed text-slate-900 selection:bg-sky-500 selection:text-white relative">
         <NotificationProvider>
           <Suspense fallback={<aside className="w-64 bg-gray-900 text-white p-6"></aside>}>
             <Sidebar />

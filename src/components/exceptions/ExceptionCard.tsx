@@ -12,27 +12,26 @@ const riskColorMap = {
 };
 
 const brandColorMap = {
-  ZAHI: 'text-[var(--color-zahi-dark)] bg-emerald-50 border-emerald-200',
-  MAWZOON: 'text-[var(--color-mawzoon-primary)] bg-blue-50 border-blue-200',
+  ZAHI: 'text-sky-700 bg-sky-50 border-sky-200',
 };
 
 export default function ExceptionCard({ exception }: Props) {
   const badgeClass = riskColorMap[exception.riskLevel];
-  const brandClass = brandColorMap[exception.brand];
+  const brandClass = brandColorMap[exception.brand] || brandColorMap.ZAHI;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+    <div className="bg-white/60 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.05)] rounded-2xl overflow-hidden flex flex-col hover:bg-white/80 hover:shadow-xl transition-all duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-gray-100 flex justify-between items-start">
+      <div className="p-4 border-b border-white/40 flex justify-between items-start">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className={`text-xs font-bold px-2 py-1 rounded border ${brandClass}`}>
-              {exception.brand} {exception.orderId ? `- ${exception.orderId}` : ''}
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${brandClass}`}>
+              زاهي {exception.orderId ? `- ${exception.orderId}` : ''}
             </span>
             <span className={`text-xs font-bold px-2 py-1 rounded shadow-sm ${badgeClass}`}>
               {exception.riskLevel}
             </span>
-            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+            <span className="text-xs text-gray-500 bg-white/60 border border-white/80 px-2 py-1 rounded">
               {exception.department}
             </span>
           </div>
@@ -44,8 +43,8 @@ export default function ExceptionCard({ exception }: Props) {
       </div>
 
       {/* AI Analysis */}
-      <div className="p-4 bg-indigo-50/50 flex-1 border-b border-indigo-50">
-        <h4 className="text-xs font-bold text-indigo-800 mb-1 flex items-center gap-1">
+      <div className="p-4 bg-sky-50/40 flex-1 border-b border-sky-100/50">
+        <h4 className="text-xs font-bold text-sky-800 mb-1 flex items-center gap-1">
           <span className="text-lg">✨</span> تحليل الذكاء الاصطناعي (السبب الجذري)
         </h4>
         <p className="text-sm text-gray-700 leading-relaxed">
@@ -54,16 +53,16 @@ export default function ExceptionCard({ exception }: Props) {
       </div>
 
       {/* Suggested Action */}
-      <div className="p-4 bg-emerald-50/30">
-        <h4 className="text-xs font-bold text-emerald-800 mb-1">الإجراء المقترح:</h4>
+      <div className="p-4 bg-orange-50/20">
+        <h4 className="text-xs font-bold text-orange-900 mb-1">الإجراء المقترح:</h4>
         <p className="text-sm text-gray-700 mb-4">{exception.suggestedAction}</p>
         
         {exception.requiresHumanApproval && (
           <div className="flex gap-2">
-            <button className="bg-[var(--color-zahi-primary)] hover:bg-[var(--color-zahi-dark)] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+            <button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95">
               موافقة وتنفيذ
             </button>
-            <button className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <button className="bg-white/80 border border-white/80 text-gray-700 hover:bg-white px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm">
               تجاهل
             </button>
           </div>

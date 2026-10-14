@@ -1,4 +1,4 @@
-export type Brand = 'ZAHI' | 'MAWZOON';
+export type Brand = 'ZAHI';
 
 export type OrderStatus = 
   | 'PENDING' 

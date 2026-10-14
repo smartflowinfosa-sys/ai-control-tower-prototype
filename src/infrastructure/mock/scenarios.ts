@@ -39,8 +39,8 @@ export const scenarioOrders: Order[] = [
   // Scenario 2: Delivery Delay
   {
     id: 'o-mz-1092',
-    orderNumber: 'MZ-1092',
-    brand: 'MAWZOON',
+    orderNumber: 'ZH-1092',
+    brand: 'ZAHI',
     customer: { name: 'سارة فهد', phone: '0553334444' },
     items: [
       {
@@ -61,7 +61,7 @@ export const scenarioOrders: Order[] = [
       mismatchDetected: false,
     },
     deliveryStatus: {
-      driverName: 'سائق موزون 1',
+      driverName: 'سائق زاهي 1',
       estimatedDeliveryTime: '2026-10-08T18:15:00Z',
       isDelayed: true,
     },
@@ -136,7 +136,7 @@ export const scenarioExceptions: OperationalException[] = [
   {
     id: 'exc-2',
     orderId: 'o-mz-1092',
-    brand: 'MAWZOON',
+    brand: 'ZAHI',
     title: 'تأخير في التوصيل عن الوقت المتوقع',
     riskLevel: 'MEDIUM',
     department: 'DELIVERY',
@@ -181,7 +181,7 @@ export const scenarioExceptions: OperationalException[] = [
   },
   {
     id: 'exc-4',
-    brand: 'MAWZOON',
+    brand: 'ZAHI',
     title: 'اختناق إنتاجي في المطبخ',
     riskLevel: 'CRITICAL',
     department: 'KITCHEN',

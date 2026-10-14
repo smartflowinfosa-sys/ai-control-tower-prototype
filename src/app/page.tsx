@@ -11,7 +11,7 @@ export default function DashboardPage() {
       <DemoAlertTrigger />
       <header className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">لوحة القيادة التشغيلية (Control Tower)</h1>
-        <p className="text-gray-500 text-sm mt-2">نظرة عامة على أداء زاهي وموزون</p>
+        <p className="text-gray-500 text-sm mt-2">نظرة عامة على أداء سلسلة مطاعم زاهي (Zahi)</p>
       </header>
 
       <AIAutonomyControl />

@@ -13,31 +13,34 @@ export default function Sidebar() {
   const pendingCount = notifications.filter(n => n.status === 'pending').length;
 
   return (
-    <aside className="w-64 bg-gray-900 text-white p-6 flex flex-col relative z-20">
+    <aside className="w-64 bg-slate-900/95 backdrop-blur-xl border-l border-white/10 text-white p-6 flex flex-col relative z-20 shadow-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-emerald-400 to-blue-500">
+        <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-sky-400 to-orange-400">
           AI Control Tower
         </h1>
-        <p className="text-xs text-gray-400 mt-1">زاهي & موزون</p>
+        <p className="text-xs text-sky-400 mt-1.5 font-semibold flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse shadow-sm shadow-sky-400/50"></span>
+          مطاعم زاهي (Zahi)
+        </p>
       </div>
       
       <nav className="flex-1 space-y-2">
-        <Link href="/" className={`block px-4 py-3 rounded-lg transition-colors ${pathname === '/' ? 'bg-gray-800 text-white font-bold' : 'text-gray-300 hover:bg-gray-800'}`}>
+        <Link href="/" className={`block px-4 py-3 rounded-xl transition-all ${pathname === '/' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30 font-bold shadow-sm' : 'text-gray-300 hover:bg-white/10'}`}>
           الرئيسية (Dashboard)
         </Link>
-        <Link href="/exceptions" className={`block px-4 py-3 rounded-lg transition-colors ${pathname === '/exceptions' ? 'bg-gray-800 text-red-400 font-bold' : 'text-red-400/80 hover:text-red-300 hover:bg-gray-800 font-medium'}`}>
+        <Link href="/exceptions" className={`block px-4 py-3 rounded-xl transition-all ${pathname === '/exceptions' ? 'bg-red-500/20 text-red-300 border border-red-500/30 font-bold shadow-sm' : 'text-red-400/80 hover:text-red-300 hover:bg-white/10 font-medium'}`}>
           مركز الاستثناءات (Exceptions)
         </Link>
-        <Link href="/notifications" className={`px-4 py-3 rounded-lg transition-colors flex justify-between items-center ${pathname === '/notifications' ? 'bg-gray-800 text-white font-bold' : 'text-gray-300 hover:bg-gray-800'}`}>
+        <Link href="/notifications" className={`px-4 py-3 rounded-xl transition-all flex justify-between items-center ${pathname === '/notifications' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30 font-bold shadow-sm' : 'text-gray-300 hover:bg-white/10'}`}>
           <span>الإشعارات (Notifications)</span>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pendingCount > 0 ? 'bg-red-500 text-white shadow-sm' : 'bg-gray-700 text-gray-400'}`}>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pendingCount > 0 ? 'bg-orange-500 text-white shadow-sm' : 'bg-gray-800 text-gray-400'}`}>
             {pendingCount}
           </span>
         </Link>
-        <Link href="/orders" className={`block px-4 py-3 rounded-lg transition-colors ${pathname === '/orders' ? 'bg-gray-800 text-white font-bold' : 'text-gray-300 hover:bg-gray-800'}`}>
+        <Link href="/orders" className={`block px-4 py-3 rounded-xl transition-all ${pathname === '/orders' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30 font-bold shadow-sm' : 'text-gray-300 hover:bg-white/10'}`}>
           الطلبات (Orders)
         </Link>
-        <Link href="/production" className={`block px-4 py-3 rounded-lg transition-colors ${pathname === '/production' ? 'bg-gray-800 text-white font-bold' : 'text-gray-300 hover:bg-gray-800'}`}>
+        <Link href="/production" className={`block px-4 py-3 rounded-xl transition-all ${pathname === '/production' ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30 font-bold shadow-sm' : 'text-gray-300 hover:bg-white/10'}`}>
           الإنتاج (Production)
         </Link>
       </nav>

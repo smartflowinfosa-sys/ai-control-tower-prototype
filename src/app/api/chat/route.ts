@@ -35,10 +35,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY is missing in .env' }, { status: 500 });
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.8-flash',
+    const modelConfig = {
       tools: [resolveExceptionTool],
-      systemInstruction: `أنت AI Operations Agent متطور مسؤول عن مراقبة عمليات مطاعم (زاهي) و(موزون). مدير العمليات يسألك الآن.
+      systemInstruction: `أنت AI Operations Agent متطور مسؤول عن مراقبة عمليات مطاعم (زاهي). مدير العمليات يسألك الآن.
 استخدم البيانات التشغيلية المرفقة للإجابة بدقة، باختصار، وباحترافية شديدة.
 القواعد:
 1. لا تهلوس ببيانات غير موجودة. اعتمد فقط على الـ contextData المرفق.
@@ -50,9 +49,27 @@ export async function POST(req: NextRequest) {
 البيانات التشغيلية الحالية (Context):
 ${JSON.stringify(contextData)}
 `,
+    };
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      ...modelConfig,
     });
 
-    const result = await model.generateContent(prompt);
+    let result;
+    try {
+      result = await model.generateContent(prompt);
+    } catch (err: any) {
+      if (err?.message?.includes('404') || err?.message?.includes('not found') || err?.message?.includes('supported')) {
+        const fallbackModel = genAI.getGenerativeModel({
+          model: 'gemini-flash-latest',
+          ...modelConfig,
+        });
+        result = await fallbackModel.generateContent(prompt);
+      } else {
+        throw err;
+      }
+    }
 
     const functionCalls = result.response.functionCalls();
     if (functionCalls && functionCalls.length > 0) {

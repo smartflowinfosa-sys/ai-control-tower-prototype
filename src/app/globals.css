@@ -10,11 +10,9 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-tajawal);
   
-  --color-zahi-primary: #10b981;
-  --color-zahi-dark: #065f46;
-  
-  --color-mawzoon-primary: #1e3a8a;
-  --color-mawzoon-secondary: #5b21b6;
+  --color-zahi-primary: #0ea5e9;
+  --color-zahi-dark: #0369a1;
+  --color-zahi-accent: #f97316;
   
   --color-risk-critical: #DC2626;
   --color-risk-high: #EA580C;
@@ -30,7 +28,6 @@
 }
 
 body {
-  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-tajawal), Arial, Helvetica, sans-serif;
 }
