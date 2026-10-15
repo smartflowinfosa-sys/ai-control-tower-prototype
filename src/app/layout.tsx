@@ -30,10 +30,10 @@ export default function RootLayout({
     >
       <body className="min-h-screen flex bg-gradient-to-br from-[#FCFAF8] via-[#F9F6F0] to-[#F0F5F4] bg-fixed text-slate-800 font-sans selection:bg-teal-600 selection:text-white relative">
         <NotificationProvider>
-          <Suspense fallback={<aside className="w-64 bg-white/40 backdrop-blur-2xl border-l border-white/60 p-6"></aside>}>
+          <Suspense fallback={<aside className="w-64 bg-white/40 backdrop-blur-2xl border-l border-white/60 p-6 hidden md:flex"></aside>}>
             <Sidebar />
           </Suspense>
-          <main className="flex-1 flex flex-col p-8 overflow-y-auto relative">
+          <main className="flex-1 flex flex-col p-4 pt-16 md:p-8 overflow-y-auto relative">
             {children}
           </main>
           <AIAssistantWidget />
