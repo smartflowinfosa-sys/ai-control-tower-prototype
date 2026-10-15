@@ -49,6 +49,33 @@ export interface PurchaseOrder {
   createdBy: 'AI_AGENT' | 'HUMAN';
 }
 
+export const initialPurchaseOrders: PurchaseOrder[] = [
+  {
+    id: 'PO-9041',
+    itemId: 'inv-5',
+    itemName: 'أدوات المائدة',
+    supplierName: 'مصنع البلاستيك الوطني',
+    quantity: 2000,
+    totalCost: 960,
+    status: 'PENDING_APPROVAL',
+    createdAt: '2026-10-14 09:15',
+    createdBy: 'AI_AGENT',
+  }
+];
+
+let sessionPurchaseOrders: PurchaseOrder[] = [...initialPurchaseOrders];
+
+export function getSessionPurchaseOrders(): PurchaseOrder[] {
+  return sessionPurchaseOrders;
+}
+
+export function addPurchaseOrderToSession(po: PurchaseOrder): void {
+  sessionPurchaseOrders = [po, ...sessionPurchaseOrders.filter(p => p.id !== po.id)];
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ai_purchase_order_created', { detail: po }));
+  }
+}
+
 export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-1',

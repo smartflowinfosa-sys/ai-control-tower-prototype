@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { initialSuppliers, initialInventoryItems, supplierQuotesMatrix, Supplier, InventoryItem } from '@/lib/mockInventoryData';
+import { initialSuppliers, initialInventoryItems, supplierQuotesMatrix, Supplier, InventoryItem, PurchaseOrder, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import Link from 'next/link';
 
 export default function SuppliersPage() {
@@ -21,7 +21,23 @@ export default function SuppliersPage() {
   };
 
   const handleQuickOrder = (supplierName: string, itemName: string) => {
-    setOrderedItemSuccess(`تم إصدار مسودة أمر شراء فوري لـ (${itemName}) من (${supplierName}) بنجاح!`);
+    const item = initialInventoryItems.find(i => i.name === itemName);
+    const quantity = item ? item.minThreshold * 2 : 1000;
+    const unitCost = item ? item.unitCost : 0.48;
+    const newPO: PurchaseOrder = {
+      id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
+      itemId: item ? item.id : 'inv-5',
+      itemName: itemName,
+      supplierName: supplierName,
+      quantity: quantity,
+      totalCost: Number((quantity * unitCost).toFixed(2)),
+      status: 'PENDING_APPROVAL',
+      createdAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+      createdBy: 'AI_AGENT',
+    };
+
+    addPurchaseOrderToSession(newPO);
+    setOrderedItemSuccess(`تم إصدار أمر الشراء ${newPO.id} لـ (${itemName}) من (${supplierName}) بنجاح!`);
     setTimeout(() => {
       setOrderedItemSuccess(null);
     }, 4500);

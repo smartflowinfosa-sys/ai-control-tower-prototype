@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from 'react';
-import { initialInventoryItems, InventoryItem, initialSuppliers, PurchaseOrder } from '@/lib/mockInventoryData';
+import { useState, useEffect } from 'react';
+import { initialInventoryItems, InventoryItem, initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import Link from 'next/link';
 
 export default function InventoryPage() {
@@ -12,20 +12,24 @@ export default function InventoryPage() {
   const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
   const [poQuantity, setPoQuantity] = useState<number>(1000);
   const [selectedSupplier, setSelectedSupplier] = useState<string>(initialSuppliers[0].name);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([
-    {
-      id: 'PO-9041',
-      itemId: 'inv-5',
-      itemName: 'أدوات المائدة',
-      supplierName: 'مصنع البلاستيك الوطني',
-      quantity: 2000,
-      totalCost: 960,
-      status: 'PENDING_APPROVAL',
-      createdAt: '2026-10-14 09:15',
-      createdBy: 'AI_AGENT',
-    }
-  ]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleNewAiPO = (event: CustomEvent<PurchaseOrder>) => {
+      if (event.detail) {
+        setPurchaseOrders(prev => {
+          if (prev.some(p => p.id === event.detail.id)) return prev;
+          return [event.detail, ...prev];
+        });
+      }
+    };
+
+    window.addEventListener('ai_purchase_order_created' as any, handleNewAiPO);
+    return () => {
+      window.removeEventListener('ai_purchase_order_created' as any, handleNewAiPO);
+    };
+  }, []);
 
   const categories = ['ALL', 'تغليف وعلب', 'أكياس Holder', 'علب وبلاستيك', 'صحون وأطباق', 'مستلزمات تقديم'];
 
@@ -65,6 +69,7 @@ export default function InventoryPage() {
       createdBy: 'HUMAN',
     };
 
+    addPurchaseOrderToSession(newPO);
     setPurchaseOrders(prev => [newPO, ...prev]);
     setSuccessToast(`تم إنشاء أمر الشراء ${newPO.id} لعدد ${poQuantity} ${selectedItemForPO.unit} من (${selectedSupplier}) بنجاح!`);
     setSelectedItemForPO(null);
@@ -78,6 +83,10 @@ export default function InventoryPage() {
     setPurchaseOrders(prev =>
       prev.map(p => (p.id === poId ? { ...p, status: 'SENT' } : p))
     );
+    const existing = getSessionPurchaseOrders().find(p => p.id === poId);
+    if (existing) {
+      existing.status = 'SENT';
+    }
     setViewingPO(null);
     setSuccessToast("تم تأكيد الطلب وإرسال الإيميل للمورد بنجاح");
     setTimeout(() => {
