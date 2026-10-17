@@ -30,7 +30,7 @@ export default function SmartFilterBar({
           onChange={(e) => onBrandChange(e.target.value)}
           className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
         >
-          <option value="zahi" className="text-white">زاهي (Zahi)</option>
+          <option value="zahi">زاهي (Zahi)</option>
         </select>
       </div>
 
@@ -42,11 +42,11 @@ export default function SmartFilterBar({
             onChange={(e) => onDepartmentChange(e.target.value)}
             className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
-            <option value="ALL" className="text-white">الكل (All)</option>
-            <option value="KITCHEN" className="text-white">المطبخ (Kitchen)</option>
-            <option value="PACKING" className="text-white">التغليف (Packing)</option>
-            <option value="DELIVERY" className="text-white">التوصيل (Delivery)</option>
-            <option value="CUSTOMER_SERVICE" className="text-white">خدمة العملاء</option>
+            <option value="ALL">الكل (All)</option>
+            <option value="KITCHEN">المطبخ (Kitchen)</option>
+            <option value="PACKING">التغليف (Packing)</option>
+            <option value="DELIVERY">التوصيل (Delivery)</option>
+            <option value="CUSTOMER_SERVICE">خدمة العملاء</option>
           </select>
         </div>
       )}
@@ -59,11 +59,11 @@ export default function SmartFilterBar({
             onChange={(e) => onRiskChange(e.target.value)}
             className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
-            <option value="ALL" className="text-white">الكل (All Risks)</option>
-            <option value="CRITICAL" className="text-white">حرج (Critical)</option>
-            <option value="HIGH" className="text-white">مرتفع (High)</option>
-            <option value="MEDIUM" className="text-white">متوسط (Medium)</option>
-            <option value="LOW" className="text-white">منخفض (Low)</option>
+            <option value="ALL">الكل (All Risks)</option>
+            <option value="CRITICAL">حرج (Critical)</option>
+            <option value="HIGH">مرتفع (High)</option>
+            <option value="MEDIUM">متوسط (Medium)</option>
+            <option value="LOW">منخفض (Low)</option>
           </select>
         </div>
       )}

@@ -405,11 +405,11 @@ export default function SupplierDiscoveryPage() {
                     onChange={(e) => setSelectedCity(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-3 text-sm text-white font-bold focus:outline-none focus:appearance-none cursor-pointer pr-10"
                   >
-                    <option value="ALL" className="text-white">جميع مناطق المملكة (تغطية شاملة)</option>
-                    <option value="جدة" className="text-white">جدة (المنطقة الغربية - توريد فوري)</option>
-                    <option value="الرياض" className="text-white">الرياض (المنطقة الوسطى - مصانع رئيسية)</option>
-                    <option value="مكة" className="text-white">مكة المكرمة وضواحيها</option>
-                    <option value="الدمام" className="text-white">الدمام والمنطقة الشرقية (مستودعات مركزية)</option>
+                    <option value="ALL">جميع مناطق المملكة (تغطية شاملة)</option>
+                    <option value="جدة">جدة (المنطقة الغربية - توريد فوري)</option>
+                    <option value="الرياض">الرياض (المنطقة الوسطى - مصانع رئيسية)</option>
+                    <option value="مكة">مكة المكرمة وضواحيها</option>
+                    <option value="الدمام">الدمام والمنطقة الشرقية (مستودعات مركزية)</option>
                   </select>
                   <MapPin className="w-4 h-4 text-white/65 absolute top-3.5 right-3 pointer-events-none" />
                 </div>
@@ -427,10 +427,10 @@ export default function SupplierDiscoveryPage() {
                     onChange={(e) => setSelectedCategory(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-3 text-sm text-white font-bold focus:outline-none focus:appearance-none cursor-pointer pr-10"
                   >
-                    <option value="ALL" className="text-white">التعرف التلقائي بالذكاء الاصطناعي (Auto Detect)</option>
-                    <option value="كرتون وورقيات" className="text-white">كرتون مموج وورقيات معتمدة للمطاعم</option>
-                    <option value="بلاستيك" className="text-white">بلاستيك حراري ومستلزمات صوص (PP-5)</option>
-                    <option value="مستلزمات تقديم" className="text-white">أدوات مائدة صديقة للبيئة ومستهلكات</option>
+                    <option value="ALL">التعرف التلقائي بالذكاء الاصطناعي (Auto Detect)</option>
+                    <option value="كرتون وورقيات">كرتون مموج وورقيات معتمدة للمطاعم</option>
+                    <option value="بلاستيك">بلاستيك حراري ومستلزمات صوص (PP-5)</option>
+                    <option value="مستلزمات تقديم">أدوات مائدة صديقة للبيئة ومستهلكات</option>
                   </select>
                   <Filter className="w-4 h-4 text-white/65 absolute top-3.5 right-3 pointer-events-none" />
                 </div>

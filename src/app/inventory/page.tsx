@@ -420,7 +420,7 @@ export default function InventoryPage() {
                   className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:"
                 >
                   {initialSuppliers.map(sup => (
-                    <option key={sup.id} value={sup.name} className="text-white">
+                    <option key={sup.id} value={sup.name}>
                       {sup.name} - (توصيل: {sup.leadTime})
                     </option>
                   ))}
@@ -525,7 +525,7 @@ export default function InventoryPage() {
                     className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:text-center"
                   >
                     {initialSuppliers.map(s => (
-                      <option key={s.id} value={s.name} className="text-white">{s.name} ({s.city})</option>
+                      <option key={s.id} value={s.name}>{s.name} ({s.city})</option>
                     ))}
                   </select>
                 </div>
