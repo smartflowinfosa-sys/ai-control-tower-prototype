@@ -5,13 +5,28 @@ export interface KPIWidgetProps {
   subtitle?: string;
 }
 
-export default function KPIWidget({ title, value, colorClass = "text-[#0ABAB5]", subtitle }: KPIWidgetProps) {
+// Ensure numbers are displayed with English digits (0-9)
+const toEnglishDigits = (str: string | number): string => {
+  if (str === null || str === undefined) return '';
+  if (typeof str === 'number') {
+    return str.toLocaleString('en-US');
+  }
+  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+};
+
+export default function KPIWidget({ title, value, subtitle }: KPIWidgetProps) {
   return (
-    <div className="bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl p-6 flex flex-col justify-between hover:bg-white/70 hover:shadow-lg transition-all duration-300">
-      <h3 className="text-gray-500 text-sm font-medium">{title}</h3>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className={`text-3xl font-bold ${colorClass}`}>{value}</span>
-        {subtitle && <span className="text-xs text-gray-400">{subtitle}</span>}
+    <div className="glass glass-card glass-hover rounded-[18px] p-6 flex flex-col justify-between transition-all duration-300 group cursor-default">
+      <h3 className="text-white/65 text-sm font-bold">{title}</h3>
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="text-white font-extrabold text-4xl tracking-wide font-mono">
+          {toEnglishDigits(value)}
+        </span>
+        {subtitle && (
+          <span className="text-xs text-white/65 font-semibold">
+            {subtitle}
+          </span>
+        )}
       </div>
     </div>
   );

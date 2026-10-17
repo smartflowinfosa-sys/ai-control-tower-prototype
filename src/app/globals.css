@@ -1,33 +1,103 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: rgba(255, 255, 255, 0);
+  --foreground: #ffffff;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-tajawal);
-  
-  --color-zahi-primary: #0ea5e9;
-  --color-zahi-dark: #0369a1;
-  --color-zahi-accent: #0d9488;
-  
   --color-risk-critical: #DC2626;
   --color-risk-high: #D97706;
   --color-risk-medium: #CA8A04;
   --color-risk-low: #16A34A;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   color: var(--foreground);
   font-family: var(--font-tajawal), Arial, Helvetica, sans-serif;
+  background-color: var(--background);
+  isolation: isolate;
 }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("/bg_plants.jpg");
+  background-size: cover;
+  background-position: center 75%;
+  filter: blur(10px);
+  transform: scale(1.06);
+}
+
+/* Keep existing decorative nodes inert; content paints above the body background. */
+.bg-blob {
+  display: none;
+}
+
+@layer components {
+  /* One shared surface; utilities retain functional risk borders and control shapes. */
+  .glass {
+    background: rgba(255, 255, 255, 0.08);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    backdrop-filter: blur(14px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    border-radius: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .glass-card {
+    border-radius: 18px;
+  }
+
+  /* Inner surfaces share the outer pane's blur instead of blurring it again. */
+  .glass :where(.glass, nav a, .autonomy-option:not(:has(> .glass-active))) {
+    background: rgba(255, 255, 255, 0.06);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 18px;
+  }
+
+  .glass-active {
+    background: rgba(255, 255, 255, 0.20);
+    border-color: rgba(255, 255, 255, 0.40);
+  }
+
+  .glass-hover:hover,
+  .glass-active:hover,
+  .autonomy-option:hover > .glass-active {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Native option menus cannot render backdrop blur. */
+  option {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+  }
+}
+
+.text-white,
+.text-white\/65,
+h1, h2, h3, h4, h5, h6 {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Keep the visible chat's nested surfaces out of an animated opacity/transform group. */
+.chat-glass:not(.hidden) {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* Color icons without applying opacity to a parent glass surface. */
+.lucide:not([class*="text-rose-"]):not([class*="text-amber-"]):not([class*="text-red-"]):not([class*="text-yellow-"]) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* The rgba surfaces above remain transparent when backdrop-filter is unsupported. */

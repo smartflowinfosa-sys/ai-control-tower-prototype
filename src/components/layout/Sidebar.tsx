@@ -7,13 +7,15 @@ import { useNotification } from '@/components/common/NotificationContext';
 import { 
   Menu, 
   X, 
+  PanelLeft,
   LayoutDashboard, 
   AlertTriangle, 
   Bell, 
   ShoppingBag, 
   ChefHat, 
   Package, 
-  Truck 
+  Truck,
+  PackageSearch
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -33,162 +35,211 @@ export default function Sidebar() {
     { href: '/production', label: 'الإنتاج (Production)', icon: ChefHat },
     { href: '/inventory', label: 'إدارة المخزون (Inventory)', icon: Package },
     { href: '/suppliers', label: 'الموردين (Suppliers)', icon: Truck },
+    { href: '/supplier-discovery', label: 'اكتشاف الموردين (Discovery)', icon: PackageSearch },
   ];
 
   return (
     <>
-      {/* Mobile Hamburger Menu Button */}
+      {/* Mobile Floating Menu Button */}
       <button 
         onClick={() => setIsOpen(true)}
-        className="md:hidden fixed top-4 right-4 z-50 p-2 bg-white/70 backdrop-blur-md border border-white/60 rounded-xl shadow-sm text-teal-600"
+        className="md:hidden fixed top-4 right-4 z-50 p-2.5 glass rounded-[18px] text-white cursor-pointer"
         aria-label="فتح القائمة الجانبية"
       >
-        <Menu size={24}/>
+        <Menu size={22} className="text-white" />
       </button>
 
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="md:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
+          className="md:hidden fixed inset-0 bg-white/[0.06] z-40"
           onClick={() => setIsOpen(false)}
         />
       )}
 
-      {/* The Aside Container (Collapsible on Desktop, Off-canvas on Mobile) */}
-      <aside 
-        className={`fixed inset-y-0 right-0 z-50 ${
-          isCollapsed ? 'md:w-20 md:p-3' : 'md:w-64 md:p-6'
-        } w-64 p-6 bg-white/60 backdrop-blur-2xl border-l border-white/60 shadow-[4px_0_24px_rgb(0,0,0,0.05)] flex flex-col overflow-y-auto transform transition-all duration-300 ease-in-out md:relative md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
+      {/* Mobile Floating Drawer */}
+      <div 
+        className={`md:hidden fixed inset-y-0 z-50 w-72 p-6 glass flex flex-col justify-between transition-[right] duration-300 ease-in-out ${
+          isOpen ? "right-0" : "-right-72"
         }`}
       >
-        {/* Header: Logo & Collapse Buttons */}
-        <div className={`flex items-center ${isCollapsed ? 'md:flex-col md:gap-3 md:justify-center' : 'justify-between'} mb-8`}>
-          <div className={isCollapsed ? 'md:hidden' : 'block'}>
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-sky-600 to-teal-600 truncate">
-              AI Control Tower
-            </h1>
-            <p className="text-xs text-teal-700 mt-1.5 font-semibold flex items-center gap-1.5 truncate">
-              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse shadow-sm shadow-teal-500/50 shrink-0"></span>
-              برج مراقبة زاهي (Zahi)
-            </p>
+        <div>
+          <div className="flex justify-between items-center mb-8 pb-4 border-b border-white/14">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[18px] glass glass-card p-0.5 flex items-center justify-center">
+                <div className="w-full h-full rounded-[18px] glass glass-card flex items-center justify-center text-white font-extrabold text-sm">
+                  Z
+                </div>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-white">برج مراقبة زاهي</h3>
+                <p className="text-[10px] text-white/65 font-semibold">Zahi Control Tower</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-white/65 hover:text-white p-1"
+            >
+              <X size={20} />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Desktop Hamburger Collapse Toggle */}
+          <nav className="space-y-1.5">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-[18px] transition-all text-sm ${
+                    isActive
+                      ? 'glass glass-active text-white font-extrabold'
+                      : 'text-white/65 hover:text-white hover:bg-white/10 font-bold'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-white/65'}`} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="pt-4 border-t border-white/14 text-xs text-white/65 flex items-center justify-between">
+          <span className="font-bold">مدير العمليات</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-teal-700" />
+        </div>
+      </div>
+
+      {/* Desktop Glass Sidebar (Collapsible) */}
+      <aside 
+        className={`hidden md:flex m-4 my-6 rounded-[24px] glass flex-col justify-between shrink-0 relative z-30 transition-all duration-300 select-none ${
+          isCollapsed ? 'w-20 items-center py-6' : 'w-64 px-4 py-6'
+        }`}
+      >
+        {/* Top Header: Brand + Collapse Toggle Button */}
+        <div className="w-full flex flex-col items-center">
+          <div className={`w-full flex items-center ${isCollapsed ? 'justify-center flex-col gap-3' : 'justify-between px-2 pb-5 border-b border-white/14'}`}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[18px] glass glass-card p-0.5 flex items-center justify-center shrink-0">
+                <div className="w-full h-full rounded-[18px] glass glass-card flex items-center justify-center text-white font-extrabold text-sm tracking-wider">
+                  Z
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div className="overflow-hidden">
+                  <h3 className="font-extrabold text-sm text-white leading-tight">برج مراقبة زاهي</h3>
+                  <p className="text-[10px] text-white/65 font-mono font-semibold">Control Tower</p>
+                </div>
+              )}
+            </div>
+
+            {/* Toggle Button */}
             <button
               type="button"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="hidden md:flex p-2 text-teal-600 bg-white/40 backdrop-blur-md border border-white/60 rounded-xl shadow-sm hover:bg-teal-50 transition-colors cursor-pointer items-center justify-center"
-              title={isCollapsed ? "توسيع القائمة الجانبية" : "طي القائمة الجانبية"}
-              aria-label={isCollapsed ? "توسيع القائمة" : "طي القائمة"}
+              className="p-2 rounded-xl text-white/65 hover:text-white hover:bg-white/10 border border-transparent transition-all cursor-pointer"
+              title={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
             >
-              <Menu size={20}/>
-            </button>
-
-            {/* Mobile Close Button */}
-            <button 
-              onClick={() => setIsOpen(false)} 
-              className="md:hidden text-slate-500 hover:text-rose-500 transition-colors p-1"
-              aria-label="إغلاق القائمة الجانبية"
-            >
-              <X size={24}/>
+              {isCollapsed ? <Menu size={20} className="text-white/65" /> : <PanelLeft size={20} className="text-white/65" />}
             </button>
           </div>
         </div>
-        
+
         {/* Navigation Items */}
-        <nav className="flex-1 space-y-2">
+        <nav className={`w-full flex flex-col gap-1.5 my-auto ${isCollapsed ? 'items-center py-4' : 'py-3'}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
-            const isExceptions = item.href === '/exceptions';
-
-            let activeClass = '';
-            if (isActive) {
-              activeClass = isExceptions
-                ? 'bg-rose-500/10 text-rose-600 border border-rose-300/40 font-bold shadow-sm'
-                : 'bg-white/60 text-sky-600 font-bold shadow-sm border border-white/60';
-            } else {
-              activeClass = isExceptions
-                ? 'text-rose-600/80 hover:text-rose-700 hover:bg-white/40 font-medium'
-                : 'text-slate-700 hover:text-slate-900 hover:bg-white/40 font-medium';
-            }
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setIsOpen(false)}
-                title={item.label}
-                className={`flex items-center ${
-                  isCollapsed ? 'md:justify-center md:px-2 md:py-3 px-4 py-3' : 'justify-between px-4 py-3'
-                } rounded-xl transition-all duration-200 group relative ${activeClass}`}
+                className={`relative group flex items-center transition-all duration-200 cursor-pointer ${
+                  isCollapsed
+                    ? `justify-center p-3 rounded-[18px] ${
+                        isActive
+                          ? 'glass glass-active text-white'
+                          : 'text-white/65 hover:text-white hover:bg-white/10'
+                      }`
+                    : `gap-3 px-3.5 py-2.5 rounded-[18px] text-sm ${
+                        isActive
+                          ? 'glass glass-active text-white font-extrabold'
+                          : 'text-white/65 hover:text-white hover:bg-white/10 font-bold'
+                      }`
+                }`}
               >
-                <div className={`flex items-center ${isCollapsed ? 'md:gap-0 gap-3' : 'gap-3'} min-w-0`}>
-                  <Icon className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-                  <span className={`${isCollapsed ? 'md:hidden' : 'block'} text-sm truncate`}>
-                    {item.label}
-                  </span>
+                <div className="relative shrink-0 flex items-center justify-center">
+                  <Icon className={`w-5 h-5 transition-transform group-hover:scale-110 ${isActive ? 'text-white' : 'text-white/65'}`} />
+                  {/* Notification Badge Dot */}
+                  {item.href === '/notifications' && pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-teal-700 ring-2 ring-white animate-pulse" />
+                  )}
                 </div>
 
-                {item.href === '/notifications' && (
-                  <span 
-                    className={`${isCollapsed ? 'md:hidden' : 'inline-flex'} text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                      pendingCount > 0 ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-200/80 text-slate-600'
-                    }`}
-                  >
-                    {pendingCount}
-                  </span>
+                {!isCollapsed && (
+                  <span className="truncate">{item.label}</span>
                 )}
 
-                {/* Collapsed notification indicator dot on desktop */}
-                {isCollapsed && item.href === '/notifications' && pendingCount > 0 && (
-                  <span className="hidden md:block absolute top-2 left-2 w-2 h-2 rounded-full bg-teal-500 ring-2 ring-white animate-pulse" />
+                {/* Floating Tooltip (When Collapsed) */}
+                {isCollapsed && (
+                  <span className="absolute right-full mr-3 px-3 py-1.5 rounded-[18px] glass glass-active text-white text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border z-50">
+                    {item.label}
+                  </span>
                 )}
               </Link>
             );
           })}
         </nav>
-        
-        {/* Profile Footer */}
-        <div className="mt-auto pt-6 border-t border-slate-200/60 relative">
-          {/* Drop-up Menu */}
+
+        {/* Profile Avatar / User Info Card (Bottom) */}
+        <div className={`relative w-full ${isCollapsed ? 'flex justify-center' : 'pt-3 border-t border-white/14'}`}>
           {profileOpen && (
-            <div className={`absolute bottom-full mb-3 right-0 ${isCollapsed ? 'md:w-48 md:-right-2' : 'w-full'} bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl border border-white/80 overflow-hidden transform transition-all z-30`}>
-              <button className="w-full text-right px-4 py-3 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors flex items-center gap-2 font-medium">
-                <span>⚙️</span> <span className="truncate">إعدادات الوكيل الذكي</span>
+            <div className="absolute bottom-full mb-3 right-0 w-48 glass rounded-[18px] p-1.5 text-white z-50 animate-in fade-in slide-in-from-bottom-2 border">
+              <button className="w-full text-right px-3 py-2 text-xs text-white font-bold hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2">
+                <span>⚙️</span> <span>إعدادات الوكيل الذكي</span>
               </button>
-              <button className="w-full text-right px-4 py-3 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors flex items-center gap-2 font-medium">
-                <span>👤</span> <span className="truncate">الملف الشخصي</span>
+              <button className="w-full text-right px-3 py-2 text-xs text-white font-bold hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2">
+                <span>👤</span> <span>الملف الشخصي</span>
               </button>
-              <div className="border-t border-slate-100"></div>
-              <button className="w-full text-right px-4 py-3 text-sm text-rose-600 hover:bg-rose-50 transition-colors flex items-center gap-2 font-medium">
-                <span>🚪</span> <span className="truncate">تسجيل الخروج</span>
+              <div className="border-t border-white/14 my-1"></div>
+              <button className="w-full text-right px-3 py-2 text-xs text-rose-700 font-bold hover:bg-rose-500/15 rounded-xl transition-colors flex items-center gap-2">
+                <span>🚪</span> <span>تسجيل الخروج</span>
               </button>
             </div>
           )}
 
-          <button 
-            onClick={() => setProfileOpen(!profileOpen)}
-            className={`w-full flex items-center ${isCollapsed ? 'md:justify-center md:p-2' : 'justify-between p-2.5'} rounded-xl transition-all text-right border ${profileOpen ? 'bg-white/70 border-white/80 shadow-sm' : 'bg-white/30 hover:bg-white/60 border-white/50'}`}
-            title="مدير العمليات"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-500 to-teal-500 text-white flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
-                OP
-              </div>
-              <div className={isCollapsed ? 'md:hidden' : 'block'}>
-                <div className="text-sm font-bold text-slate-800 truncate">مدير العمليات</div>
-                <div className="text-[10px] text-teal-600 font-semibold flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse shadow-sm shadow-teal-500/50"></span> متصل (Online)
+          {isCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="w-10 h-10 rounded-full glass glass-card text-white flex items-center justify-center font-bold text-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
+              title="مدير العمليات"
+            >
+              OP
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="w-full flex items-center justify-between p-2 rounded-[18px] glass glass-card glass-hover transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full glass glass-card text-white flex items-center justify-center font-bold text-xs">
+                  OP
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-extrabold text-white">مدير العمليات</div>
+                  <div className="text-[10px] font-semibold text-white/65">متصل (Online)</div>
                 </div>
               </div>
-            </div>
-            <span className={`${isCollapsed ? 'md:hidden' : 'block'} text-slate-400 text-xs transition-transform`}>
-              {profileOpen ? '▼' : '▲'}
-            </span>
-          </button>
+              <span className="w-2 h-2 rounded-full bg-teal-700 animate-pulse" />
+            </button>
+          )}
         </div>
       </aside>
     </>

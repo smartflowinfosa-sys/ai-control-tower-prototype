@@ -2,16 +2,16 @@ import { TimelineEvent } from '@/domain/types/timeline';
 
 export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
   const actorColorMap: Record<string, string> = {
-    CUSTOMER: 'bg-blue-100 text-blue-800 border-blue-200',
-    SYSTEM: 'bg-gray-100 text-gray-800 border-gray-200',
-    KITCHEN: 'bg-teal-100 text-teal-800 border-teal-200',
-    PACKING: 'bg-purple-100 text-purple-800 border-purple-200',
-    DELIVERY: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    AI_AGENT: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    CUSTOMER: 'glass glass-card text-white ',
+    SYSTEM: 'glass glass-card text-white/65 ',
+    KITCHEN: 'glass glass-card text-white ',
+    PACKING: 'glass glass-card text-white ',
+    DELIVERY: 'glass glass-card text-white ',
+    AI_AGENT: 'glass glass-card text-white font-extrabold',
   };
 
   return (
-    <div className="relative border-r-2 border-gray-200 pr-6 ml-4 my-8">
+    <div className="relative border-r-2 border-white/14 pr-6 ml-4 my-8">
       {events.map((event) => {
         const isAnomaly = event.isAnomaly;
         const isAi = event.actor === 'AI_AGENT';
@@ -19,16 +19,16 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
         return (
           <div key={event.id} className="mb-8 relative">
             {/* Timeline Dot */}
-            <div className={`absolute -right-[31px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-sm z-10
-              ${isAnomaly ? 'bg-red-500 animate-pulse' : isAi ? 'bg-indigo-500' : 'bg-gray-400'}`} 
+            <div className={`absolute -right-[31px] top-1 w-4 h-4 rounded-full border-4 border-white  z-10
+              ${isAnomaly ? 'bg-rose-500 animate-pulse' : isAi ? 'bg-white/85' : 'bg-white/65'}`} 
             />
             
-            <div className={`bg-white/50 backdrop-blur-xl rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border transition-all hover:bg-white/70 hover:shadow-md
-              ${isAnomaly ? 'border-red-200 bg-red-50/30' : isAi ? 'border-indigo-200 bg-indigo-50/30' : 'border-white/60'}
+            <div className={`glass rounded-[18px] p-5 border transition-all 
+              ${isAnomaly ? 'border-rose-400' : isAi ? '' : ''}
             `}>
               <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className={`text-lg font-bold ${isAnomaly ? 'text-red-700' : isAi ? 'text-indigo-800' : 'text-gray-800'}`}>
+                  <h4 className={`text-lg font-extrabold ${isAnomaly ? 'text-rose-700' : 'text-white'}`}>
                     {isAi && <span className="ml-1 inline-block animate-pulse">✨</span>}
                     {event.title}
                   </h4>
@@ -36,12 +36,12 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
                     {event.actor}
                   </span>
                 </div>
-                <span className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100 shadow-sm whitespace-nowrap">
-                  {new Date(event.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                <span className="text-xs text-white/65 font-bold glass glass-card px-2.5 py-1 rounded-lg border whitespace-nowrap font-mono">
+                  {new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               
-              <p className="text-sm text-gray-700 leading-relaxed bg-white/50 rounded">
+              <p className="text-sm text-white font-semibold leading-relaxed glass glass-card p-3 rounded-[18px] border">
                 {event.description}
               </p>
             </div>

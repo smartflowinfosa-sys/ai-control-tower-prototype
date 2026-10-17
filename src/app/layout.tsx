@@ -28,12 +28,17 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} antialiased h-full`}
     >
-      <body className="min-h-screen flex bg-gradient-to-br from-[#FCFAF8] via-[#F9F6F0] to-[#F0F5F4] bg-fixed text-slate-800 font-sans selection:bg-teal-600 selection:text-white relative">
+      <body className="h-screen min-h-screen flex font-sans selection:bg-white/20 selection:text-white relative">
+        {/* 3 Animated teal blobs using extracted green shades behind content */}
+        <div className="bg-blob bg-blob-1" aria-hidden="true" />
+        <div className="bg-blob bg-blob-2" aria-hidden="true" />
+        <div className="bg-blob bg-blob-3" aria-hidden="true" />
+
         <NotificationProvider>
-          <Suspense fallback={<aside className="w-64 bg-white/40 backdrop-blur-2xl border-l border-white/60 p-6 hidden md:flex"></aside>}>
+          <Suspense fallback={<aside className="w-20 m-4 my-6 rounded-[24px] glass hidden md:flex shrink-0"></aside>}>
             <Sidebar />
           </Suspense>
-          <main className="flex-1 flex flex-col p-4 pt-16 md:p-8 overflow-y-auto relative">
+          <main className="flex-1 min-w-0 m-4 my-6 mr-6 overflow-y-auto relative z-10">
             {children}
           </main>
           <AIAssistantWidget />

@@ -15,30 +15,36 @@ export default async function OrderDetailsPage({ params }: { params: Promise<{ i
   const timelineEvents = mockOperationService.getOrderTimeline(id);
 
   return (
-    <div className="max-w-4xl w-full mx-auto">
-      <header className="mb-8 pb-6 border-b border-gray-200">
+    <div className="max-w-4xl w-full mx-auto space-y-6">
+      {/* Title Container with 28px radius */}
+      <header className="glass rounded-[24px] p-6 mb-6">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-              تفاصيل الطلب: {order.orderNumber}
-              <span className={`text-sm px-3 py-1 rounded-full ${
-                order.status === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+            <h1 className="text-3xl font-extrabold text-white mb-3 flex items-center gap-3">
+              <span>تفاصيل الطلب:</span>
+              <span className="font-mono text-white">{order.orderNumber}</span>
+              <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+                order.status === 'CANCELLED' 
+                  ? 'bg-rose-500/20 text-rose-800 border-rose-400/40' 
+                  : 'bg-teal-700/20 text-white border-white/14'
               }`}>
                 {order.status || 'KITCHEN_PREP'}
               </span>
             </h1>
             <div className="flex items-center gap-3">
-              <span className="text-xs font-bold px-3 py-1.5 rounded-lg border shadow-sm text-sky-800 bg-sky-50 border-sky-200">
+              <span className="text-xs font-bold px-3 py-1.5 rounded-lg border text-white glass glass-card">
                 زاهي
               </span>
-              <span className="text-sm text-gray-600 font-medium">العميل: {order.customer.name} ({order.customer.phone})</span>
+              <span className="text-sm text-white/65 font-bold">
+                العميل: <strong className="text-white font-extrabold">{order.customer.name}</strong> ({order.customer.phone})
+              </span>
             </div>
           </div>
-          <div className="text-right sm:text-left bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-white/60 shadow-sm">
-            <div className="text-xs text-gray-500 mb-1">تاريخ الإنشاء</div>
-            <div className="font-bold text-gray-700">
-              {new Date(order.createdAt).toLocaleString('ar-SA', {
-                year: 'numeric', month: 'long', day: 'numeric',
+          <div className="text-right sm:text-left glass p-3.5 rounded-[18px] border">
+            <div className="text-xs text-white/65 font-bold mb-1">تاريخ الإنشاء</div>
+            <div className="font-extrabold text-white font-mono text-sm">
+              {new Date(order.createdAt).toLocaleString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric',
                 hour: '2-digit', minute: '2-digit'
               })}
             </div>
@@ -46,14 +52,14 @@ export default async function OrderDetailsPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
-      <div className="mb-12 bg-white/50 backdrop-blur-xl p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
-        <h2 className="text-xl font-bold text-gray-800 mb-2 border-b border-white/60 pb-3">
+      <div className="mb-12 glass p-6 rounded-[24px] border">
+        <h2 className="text-xl font-extrabold text-white mb-4 border-b border-white/14 pb-3">
           التسلسل الزمني التشغيلي (Operational Timeline)
         </h2>
         {timelineEvents.length > 0 ? (
           <OrderTimeline events={timelineEvents} />
         ) : (
-          <div className="bg-gray-50 text-gray-500 p-8 rounded-lg text-center mt-6 border border-gray-100">
+          <div className="glass glass-card text-white/65 font-bold p-8 rounded-[18px] text-center mt-6 border">
             لا توجد أحداث مسجلة لهذا الطلب
           </div>
         )}

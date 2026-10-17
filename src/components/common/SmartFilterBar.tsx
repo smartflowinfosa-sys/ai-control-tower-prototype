@@ -22,48 +22,48 @@ export default function SmartFilterBar({
   showRisk = false
 }: SmartFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-6 bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl p-4 mb-6">
+    <div className="flex flex-wrap items-center gap-6 glass rounded-[24px] p-5 mb-6">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-bold text-gray-700">العلامة التجارية:</span>
+        <span className="text-sm font-bold text-white">العلامة التجارية:</span>
         <select 
           value={selectedBrand}
           onChange={(e) => onBrandChange(e.target.value)}
-          className="bg-white/80 border border-white/80 text-teal-800 font-bold text-sm rounded-xl focus:ring-teal-500 focus:border-teal-500 block p-2 outline-none min-w-[140px] cursor-pointer shadow-sm"
+          className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
         >
-          <option value="zahi">زاهي</option>
+          <option value="zahi" className="text-white">زاهي (Zahi)</option>
         </select>
       </div>
 
       {showDepartment && onDepartmentChange && (
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-gray-700">القسم التشغيلي:</span>
+          <span className="text-sm font-bold text-white">القسم التشغيلي:</span>
           <select 
             value={selectedDepartment}
             onChange={(e) => onDepartmentChange(e.target.value)}
-            className="bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 outline-none min-w-[140px] cursor-pointer"
+            className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
-            <option value="ALL">الكل (All)</option>
-            <option value="KITCHEN">المطبخ (Kitchen)</option>
-            <option value="PACKING">التغليف (Packing)</option>
-            <option value="DELIVERY">التوصيل (Delivery)</option>
-            <option value="CUSTOMER_SERVICE">خدمة العملاء</option>
+            <option value="ALL" className="text-white">الكل (All)</option>
+            <option value="KITCHEN" className="text-white">المطبخ (Kitchen)</option>
+            <option value="PACKING" className="text-white">التغليف (Packing)</option>
+            <option value="DELIVERY" className="text-white">التوصيل (Delivery)</option>
+            <option value="CUSTOMER_SERVICE" className="text-white">خدمة العملاء</option>
           </select>
         </div>
       )}
 
       {showRisk && onRiskChange && (
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-gray-700">مستوى الخطورة:</span>
+          <span className="text-sm font-bold text-white">مستوى الخطورة:</span>
           <select 
             value={selectedRisk}
             onChange={(e) => onRiskChange(e.target.value)}
-            className="bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 outline-none min-w-[140px] cursor-pointer"
+            className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
-            <option value="ALL">الكل (All)</option>
-            <option value="CRITICAL">حرجة (Critical)</option>
-            <option value="HIGH">عالية (High)</option>
-            <option value="MEDIUM">متوسطة (Medium)</option>
-            <option value="LOW">بسيطة (Low)</option>
+            <option value="ALL" className="text-white">الكل (All Risks)</option>
+            <option value="CRITICAL" className="text-white">حرج (Critical)</option>
+            <option value="HIGH" className="text-white">مرتفع (High)</option>
+            <option value="MEDIUM" className="text-white">متوسط (Medium)</option>
+            <option value="LOW" className="text-white">منخفض (Low)</option>
           </select>
         </div>
       )}

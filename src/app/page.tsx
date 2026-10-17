@@ -7,11 +7,17 @@ export default function DashboardPage() {
   const kpis = mockOperationService.getDashboardKPIs();
 
   return (
-    <div className="max-w-6xl w-full mx-auto">
+    <div className="max-w-6xl w-full mx-auto space-y-6">
       <DemoAlertTrigger />
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">لوحة القيادة التشغيلية (Control Tower)</h1>
-        <p className="text-gray-500 text-sm mt-2">نظرة عامة على أداء زاهي (Zahi)</p>
+      
+      {/* Title Container with 28px radius */}
+      <header className="glass rounded-[24px] p-6 mb-6">
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">
+          لوحة القيادة التشغيلية (Control Tower)
+        </h1>
+        <p className="text-white/65 font-semibold text-sm mt-1.5">
+          مراقبة الأداء اللحظي وسلاسل الإمداد لعمليات مطاعم زاهي (Zahi)
+        </p>
       </header>
 
       <AIAutonomyControl />
@@ -20,39 +26,32 @@ export default function DashboardPage() {
         <KPIWidget 
           title="إجمالي الطلبات" 
           value={kpis.totalOrders} 
-          colorClass="text-[#0ABAB5]" 
         />
         <KPIWidget 
           title="الطلبات النشطة" 
           value={kpis.activeOrders} 
-          colorClass="text-[#0ABAB5]" 
         />
         <KPIWidget 
           title="استثناءات مفتوحة" 
           value={kpis.openExceptions} 
-          colorClass="text-[#0ABAB5]"
           subtitle="تتطلب التدخل" 
         />
         <KPIWidget 
           title="حالات حرجة" 
           value={kpis.criticalCount} 
-          colorClass="text-rose-500" 
         />
         
         <KPIWidget 
           title="طلبات متأخرة" 
           value={kpis.delayedOrders} 
-          colorClass="text-rose-500" 
         />
         <KPIWidget 
           title="نسبة الحل التلقائي (AI)" 
           value={`${kpis.autoResolvedPercentage}%`} 
-          colorClass="text-[#0ABAB5]" 
         />
         <KPIWidget 
           title="التدخل البشري" 
           value={`${kpis.humanInterventionPercentage}%`} 
-          colorClass="text-[#0ABAB5]" 
         />
       </div>
     </div>

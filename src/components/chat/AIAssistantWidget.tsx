@@ -33,12 +33,12 @@ export default function AIAssistantWidget() {
       text: (
         <>
           <p className="mb-3 leading-relaxed">
-            لدينا <strong className="text-red-600 bg-red-50 px-1 rounded">مشكلة حرجة (High Risk)</strong> في <strong className="text-sky-600">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-sky-600 font-bold hover:underline bg-sky-50 px-1 rounded">ZH-2481</Link> بسبب حذف العميل لـ "الأرز".
+            لدينا <strong className="text-amber-800 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ "الأرز".
           </p>
           <p className="mb-3 leading-relaxed">
-            وقد قمت للتو <strong className="text-teal-700 bg-teal-50 px-1 rounded">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨
+            وقد قمت للتو <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨
           </p>
-          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex items-start gap-1">
+          <div className="mt-3 pt-3 border-t border-white/14 text-xs text-white/65 font-bold flex items-start gap-1">
             <span>⚠️</span>
             <span>وهناك أيضاً تأخير محتمل في طلب زاهي (ZH-1092) بسبب الازدحام.</span>
           </div>
@@ -99,13 +99,11 @@ export default function AIAssistantWidget() {
         for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
-        if (transcript) {
-          setInputValue(initialText ? `${initialText} ${transcript.trim()}` : transcript.trim());
-        }
+        setInputValue(initialText ? `${initialText} ${transcript}` : transcript);
       };
 
       recognition.onerror = (event: any) => {
-        console.warn('Speech recognition error:', event.error);
+        console.error("Speech Recognition Error:", event.error);
         setIsListening(false);
       };
 
@@ -116,7 +114,7 @@ export default function AIAssistantWidget() {
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err) {
-      console.error('Failed to start speech recognition:', err);
+      console.error(err);
       setIsListening(false);
     }
   };
@@ -124,29 +122,37 @@ export default function AIAssistantWidget() {
   const handleSend = async () => {
     if (!inputValue.trim()) return;
 
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-
-    const userMessage = inputValue.trim();
+    const userMessage = inputValue;
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text: userMessage }]);
     setInputValue('');
     setIsTyping(true);
 
     try {
-      const kpis = mockOperationService.getDashboardKPIs();
-      const activeExceptions = mockOperationService.getActiveExceptions();
-      
+      const activeExceptions = mockOperationService.getActiveExceptions().map(e => ({
+        id: e.id,
+        category: e.category,
+        title: e.title,
+        riskLevel: e.riskLevel,
+        suggestedAction: e.suggestedAction
+      }));
+
+      const activeOrders = mockOperationService.getAllOrders().map(o => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        status: o.status,
+        brand: o.brand,
+        isDelayed: o.deliveryStatus?.isDelayed
+      }));
+
       const contextData = {
-        kpis,
-        exceptions: activeExceptions.map(exc => ({
-          orderId: exc.orderId,
-          brand: exc.brand,
-          title: exc.title,
-          department: exc.department,
-          riskLevel: exc.riskLevel,
-          status: exc.status
+        activeExceptions,
+        activeOrders,
+        inventoryStatus: initialInventoryItems.map(i => ({
+          name: i.name,
+          currentStock: i.currentStock,
+          minThreshold: i.minThreshold,
+          unit: i.unit,
+          category: i.category
         }))
       };
 
@@ -230,41 +236,37 @@ export default function AIAssistantWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 left-6 z-50">
-      {/* Draggable Glassmorphic Chat Window - Kept permanently in DOM to preserve chat memory */}
+    <div className="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-4">
+      {/* Floating Chat Modal */}
       <motion.div 
-        drag
-        dragMomentum={false}
-        className={`bg-white/70 backdrop-blur-2xl border border-white/70 shadow-2xl w-80 md:w-96 rounded-3xl overflow-hidden mb-4 flex-col h-[480px] transition-all cursor-auto ${isOpen ? 'flex' : 'hidden'}`}
+        initial={{ opacity: 0, scale: 0.85, y: 30 }}
+        animate={isOpen ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.85, y: 30, pointerEvents: 'none' }}
+        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        className={`chat-glass w-96 h-[530px] rounded-[24px] glass  flex flex-col text-white ${
+          !isOpen && 'hidden'
+        }`}
       >
-        {/* Drag Handle Bar & Header */}
-        <div className="bg-gradient-to-r from-sky-500/85 to-teal-600/85 backdrop-blur-md text-white pt-2.5 pb-3 px-4 shadow-sm z-10 select-none border-b border-white/20">
-          {/* Centered Visual Drag Handle */}
-          <div className="flex justify-center w-full mb-2">
-            <div 
-              className="w-12 h-1.5 bg-white/50 hover:bg-white/80 rounded-full cursor-grab active:cursor-grabbing transition-colors" 
-              title="اسحب لتحريك نافذة المحادثة"
-            />
-          </div>
-          <div className="flex justify-between items-center">
+        {/* Header */}
+        <div className="p-4 border-b border-white/14 flex items-center justify-between">
+          <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md border border-white/30">
+              <div className="glass glass-card p-2 rounded-[18px] text-white">
                 <Bot className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-sm tracking-wide flex items-center gap-1.5">
+                <h3 className="font-extrabold text-sm tracking-wide flex items-center gap-1.5 text-white">
                   برج مراقبة زاهي
-                  <span className="text-[10px] bg-white/25 text-white border border-white/40 px-1.5 py-0.5 rounded-md font-normal">AI</span>
+                  <span className="text-[10px] glass glass-card text-white border px-1.5 py-0.5 rounded-md font-bold">AI</span>
                 </h3>
-                <p className="text-xs text-teal-100 flex items-center gap-1 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shadow-sm shadow-emerald-300/50"></span>
+                <p className="text-xs text-white/65 flex items-center gap-1 mt-0.5 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-teal-700 animate-pulse"></span>
                   وكيل العمليات الذكي متصل
                 </p>
               </div>
             </div>
             <button 
               onClick={() => setIsOpen(false)} 
-              className="text-white/80 hover:text-white transition-colors bg-white/20 hover:bg-white/30 p-1.5 rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm cursor-pointer"
+              className="text-white/65 hover:text-white transition-colors glass glass-card hover:bg-white/10 p-1.5 rounded-full w-8 h-8 flex items-center justify-center border cursor-pointer"
               title="إغلاق النافذة"
             >
               <X className="w-4 h-4" />
@@ -273,14 +275,14 @@ export default function AIAssistantWidget() {
         </div>
         
         {/* Message Container */}
-        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-teal-50/20 to-white/40 flex flex-col gap-3.5 backdrop-blur-sm">
+        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3.5">
           {messages.map((msg) => (
             <div 
               key={msg.id} 
               className={`p-3.5 rounded-2xl max-w-[85%] text-sm relative transition-all break-words ${
                 msg.sender === 'user' 
-                  ? 'self-end bg-gradient-to-r from-sky-500 to-teal-600 text-white shadow-md shadow-teal-600/20 rounded-tr-sm' 
-                  : 'self-start bg-white/85 backdrop-blur-md border border-white/90 text-gray-800 shadow-sm rounded-tl-sm'
+                  ? 'self-end glass glass-card text-white rounded-tr-xs font-semibold' 
+                  : 'self-start glass glass-card border text-white rounded-tl-xs font-semibold'
               }`}
             >
               {msg.sender === 'ai' && (
@@ -291,22 +293,20 @@ export default function AIAssistantWidget() {
           ))}
           
           {isTyping && (
-            <div className="self-start bg-white/85 backdrop-blur-md border border-white/90 p-3.5 rounded-2xl rounded-tl-sm max-w-[85%] shadow-sm flex gap-1 items-center h-12">
-              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="self-start glass glass-card border p-3.5 rounded-[18px] rounded-tl-xs max-w-[85%] flex gap-1.5 items-center h-12">
+              <div className="w-2 h-2 bg-white/85 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-white/85 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-2 h-2 bg-white/85 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
             </div>
           )}
         </div>
         
         {/* Chat Input Bar with Speech-to-Text */}
-        <div className="p-3 bg-white/70 backdrop-blur-md border-t border-white/60 flex items-center gap-2">
+        <div className="p-3 border-t border-white/14 flex items-center gap-2">
           <input 
             type="text" 
             placeholder={isListening ? "🎙️ جاري الاستماع لصوتك..." : "اسأل الذكاء الاصطناعي لزاهي..."} 
-            className={`flex-1 border bg-white/90 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500 focus:bg-white transition-all shadow-inner text-slate-800 ${
-              isListening ? 'border-rose-400 ring-2 ring-rose-300/50 bg-rose-50/50 placeholder:text-rose-600' : 'border-white/80'
-            }`}
+            className="flex-1 border glass glass-card rounded-full px-4 py-2.5 text-sm focus:outline-none focus:focus:bg-white/10 transition-all text-white placeholder:text-white/65 font-semibold"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -317,10 +317,10 @@ export default function AIAssistantWidget() {
             type="button"
             onClick={toggleListening}
             title={isListening ? "إيقاف التسجيل الصوتي" : "تحدث بصوتك (Speech-to-Text)"}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm shrink-0 ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer  shrink-0 ${
               isListening
-                ? 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-500/40 ring-2 ring-rose-300'
-                : 'bg-white hover:bg-slate-50 text-slate-600 hover:text-teal-600 border border-slate-200/80 active:scale-95'
+                ? 'glass glass-card text-white animate-pulse'
+                : 'glass glass-card hover:bg-white/10 text-white border active:scale-95'
             }`}
           >
             {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -331,7 +331,7 @@ export default function AIAssistantWidget() {
             type="button"
             onClick={handleSend}
             disabled={!inputValue.trim() || isTyping}
-            className="bg-teal-600 text-white p-2.5 w-10 h-10 rounded-full hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95 shadow-md shadow-teal-600/30 cursor-pointer shrink-0"
+            className="glass glass-card text-white p-2.5 w-10 h-10 rounded-full hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 font-bold"
           >
             ↑
           </button>
@@ -346,10 +346,10 @@ export default function AIAssistantWidget() {
       >
         <button 
           onClick={() => setIsOpen(!isOpen)}
-          className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
+          className={`w-14 h-14 rounded-[18px] flex items-center justify-center  transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
             isOpen 
-              ? 'bg-slate-800 text-white rotate-90 shadow-slate-800/40' 
-              : 'bg-gradient-to-tr from-sky-500 to-teal-600 text-white shadow-teal-600/30 border border-teal-400/40'
+              ? 'glass text-white border rotate-90' 
+              : 'glass glass-card text-white border'
           }`}
           title="مساعد زاهي الذكي (AI Operations Agent)"
         >
