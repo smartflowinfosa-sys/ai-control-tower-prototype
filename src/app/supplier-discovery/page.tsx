@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import GlassSelect from '@/components/common/GlassSelect';
 import {
   UploadCloud,
   Image as ImageIcon,
@@ -400,7 +401,7 @@ export default function SupplierDiscoveryPage() {
                   <span>النطاق الجغرافي المستهدف (Geographic Scope):</span>
                 </label>
                 <div className="relative">
-                  <select
+                  <GlassSelect
                     value={selectedCity}
                     onChange={(e) => setSelectedCity(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-3 text-sm text-white font-bold focus:outline-none focus:appearance-none cursor-pointer pr-10"
@@ -410,7 +411,7 @@ export default function SupplierDiscoveryPage() {
                     <option value="الرياض">الرياض (المنطقة الوسطى - مصانع رئيسية)</option>
                     <option value="مكة">مكة المكرمة وضواحيها</option>
                     <option value="الدمام">الدمام والمنطقة الشرقية (مستودعات مركزية)</option>
-                  </select>
+                  </GlassSelect>
                   <MapPin className="w-4 h-4 text-white/65 absolute top-3.5 right-3 pointer-events-none" />
                 </div>
               </div>
@@ -422,7 +423,7 @@ export default function SupplierDiscoveryPage() {
                   <span>تصنيف خامة المنتج المرفق:</span>
                 </label>
                 <div className="relative">
-                  <select
+                  <GlassSelect
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-3 text-sm text-white font-bold focus:outline-none focus:appearance-none cursor-pointer pr-10"
@@ -431,7 +432,7 @@ export default function SupplierDiscoveryPage() {
                     <option value="كرتون وورقيات">كرتون مموج وورقيات معتمدة للمطاعم</option>
                     <option value="بلاستيك">بلاستيك حراري ومستلزمات صوص (PP-5)</option>
                     <option value="مستلزمات تقديم">أدوات مائدة صديقة للبيئة ومستهلكات</option>
-                  </select>
+                  </GlassSelect>
                   <Filter className="w-4 h-4 text-white/65 absolute top-3.5 right-3 pointer-events-none" />
                 </div>
               </div>

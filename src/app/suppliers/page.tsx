@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import GlassSelect from '@/components/common/GlassSelect';
 import {
   initialSuppliers,
   initialInventoryItems,
@@ -990,7 +991,7 @@ export default function SuppliersPage() {
 
                 <div className="space-y-1 text-center">
                   <label className="text-xs font-bold text-white">المورد المعتمد:</label>
-                  <select
+                  <GlassSelect
                     value={editPOSupplier}
                     onChange={(e) => setEditPOSupplier(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:text-center"
@@ -998,7 +999,7 @@ export default function SuppliersPage() {
                     {suppliers.map(s => (
                       <option key={s.id} value={s.name}>{s.name} ({s.city})</option>
                     ))}
-                  </select>
+                  </GlassSelect>
                 </div>
 
                 <div className="space-y-1 text-center">

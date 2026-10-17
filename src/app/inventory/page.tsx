@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { initialInventoryItems, InventoryItem, initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import Link from 'next/link';
+import GlassSelect from '@/components/common/GlassSelect';
 import { Edit2, FileText, Building2, Bot, User, Check, Mail, X } from 'lucide-react';
 
 // Helper to ensure all digits are English (0-9)
@@ -414,7 +415,7 @@ export default function InventoryPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-white mb-1">المورد المعتمد:</label>
-                <select
+                <GlassSelect
                   value={selectedSupplier}
                   onChange={(e) => setSelectedSupplier(e.target.value)}
                   className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:"
@@ -424,7 +425,7 @@ export default function InventoryPage() {
                       {sup.name} - (توصيل: {sup.leadTime})
                     </option>
                   ))}
-                </select>
+                </GlassSelect>
               </div>
 
               <div>
@@ -519,7 +520,7 @@ export default function InventoryPage() {
 
                 <div className="space-y-1 text-center">
                   <label className="text-xs font-bold text-white">المورد المعتمد:</label>
-                  <select
+                  <GlassSelect
                     value={editPOSupplier}
                     onChange={(e) => setEditPOSupplier(e.target.value)}
                     className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:text-center"
@@ -527,7 +528,7 @@ export default function InventoryPage() {
                     {initialSuppliers.map(s => (
                       <option key={s.id} value={s.name}>{s.name} ({s.city})</option>
                     ))}
-                  </select>
+                  </GlassSelect>
                 </div>
 
                 <div className="space-y-1 text-center">

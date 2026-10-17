@@ -106,3 +106,20 @@ select option {
   color: #1f2937;
   background-color: #ffffff;
 }
+
+/* Custom glass select portal dropdown */
+.glass-select-menu {
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  backdrop-filter: blur(20px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  border-radius: 18px;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-select-menu {
+    background: rgba(40, 50, 55, 0.92);
+  }
+}

@@ -72,8 +72,7 @@ export default function Sidebar() {
                 </div>
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-white">برج مراقبة زاهي</h3>
-                <p className="text-[10px] text-white/65 font-semibold">Zahi Control Tower</p>
+                <h3 className="font-extrabold text-sm text-white">Zahi Control System</h3>
               </div>
             </div>
             <button
@@ -131,8 +130,7 @@ export default function Sidebar() {
               </div>
               {!isCollapsed && (
                 <div className="overflow-hidden">
-                  <h3 className="font-extrabold text-sm text-white leading-tight">برج مراقبة زاهي</h3>
-                  <p className="text-[10px] text-white/65 font-mono font-semibold">Control Tower</p>
+                  <h3 className="font-extrabold text-sm text-white leading-tight">Zahi Control System</h3>
                 </div>
               )}
             </div>
