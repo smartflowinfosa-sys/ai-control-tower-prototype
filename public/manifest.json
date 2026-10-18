@@ -1,0 +1,22 @@
+{
+  "name": "زاهي | برج المراقبة",
+  "short_name": "زاهي",
+  "description": "Zahi Control System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

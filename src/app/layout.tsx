@@ -14,8 +14,18 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
-  title: "برج مراقبة زاهي | Zahi AI Control Tower",
-  description: "برج المراقبة والتحكم بـ AI Agent لعمليات مطاعم زاهي",
+  title: "Zahi Control System",
+  description: "برج مراقبة زاهي",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "زاهي",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({
