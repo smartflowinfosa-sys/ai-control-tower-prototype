@@ -271,7 +271,7 @@ export default function SuppliersPage() {
   const deliveredCount = purchaseOrders.filter(p => p.status === 'DELIVERED').length;
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-8 font-sans">
+    <div className="page-shell w-full mx-auto space-y-8 font-sans">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 glass text-white px-6 py-3.5 rounded-[18px] flex items-center gap-3 border animate-in fade-in slide-in-from-top-4">
@@ -281,7 +281,7 @@ export default function SuppliersPage() {
       )}
 
       {/* Header */}
-      <header className="glass rounded-[24px] p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="glass page-header rounded-[24px]  mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2.5 rounded-[18px] glass glass-card text-white/65 border">
@@ -300,7 +300,7 @@ export default function SuppliersPage() {
           {/* Add Supplier Button */}
           <button
             onClick={handleOpenAddSupplier}
-            className="glass glass-card hover:bg-white/10 active:scale-95 text-white font-bold px-5 py-2.5 rounded-[18px] transition-all text-sm flex items-center gap-2 cursor-pointer"
+            className="glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold px-5 py-2.5 rounded-[18px] transition-all text-sm flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>إضافة مورد جديد +</span>
@@ -308,7 +308,7 @@ export default function SuppliersPage() {
 
           <Link
             href="/inventory"
-            className="glass glass-card hover:bg-white/10 text-white font-bold px-4 py-2.5 rounded-[18px] border transition-all text-sm flex items-center gap-2 group cursor-pointer"
+            className="glass glass-card hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-[18px] border transition-all text-sm flex items-center gap-2 group cursor-pointer"
           >
             <Package className="w-4 h-4 text-white/65 group-hover:scale-110 transition-transform" />
             <span>العودة للمخزون</span>
@@ -319,7 +319,7 @@ export default function SuppliersPage() {
 
       {/* KPI Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-300">
+        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">إجمالي الأوامر (POs)</div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">{toEnglishDigits(purchaseOrders.length)}</div>
@@ -330,7 +330,7 @@ export default function SuppliersPage() {
           </div>
         </div>
 
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-300">
+        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">جاري التوصيل</div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">{toEnglishDigits(inTransitCount)}</div>
@@ -343,13 +343,13 @@ export default function SuppliersPage() {
           </div>
         </div>
 
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-300">
+        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">بانتظار الموافقة</div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">{toEnglishDigits(pendingCount)}</div>
             <div className="text-[11px] text-rose-700/80 mt-0.5">تتطلب اعتماد المشتريات</div>
           </div>
-          <div className="p-3.5 rounded-[18px] glass glass-card text-rose-700 border">
+          <div className="p-3.5 rounded-[18px] glass glass-card text-rose-200 border">
             <Clock className="w-6 h-6 animate-pulse" />
           </div>
         </div>
@@ -359,21 +359,21 @@ export default function SuppliersPage() {
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 glass glass-card text-white/65 border rounded-[18px]">
+            <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
               <Layers className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
                 لوحة تتبع أوامر الشراء التفاعلية (Animated PO Tracker)
               </h2>
-              <p className="text-xs text-white/65">
+              <p className="text-xs text-white/80">
                 متابعة آنية ودقيقة لحالة أوامر الشراء الصادرة من الـ AI والمشتريات
               </p>
             </div>
           </div>
 
           {/* Quick Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 glass glass-card p-1.5 rounded-[18px] border overflow-x-auto">
+          <div className="flex items-center gap-1.5 glass border border-white/40 p-1.5 rounded-[18px] overflow-x-auto">
             {[
               { id: 'ALL', label: 'الكل', count: purchaseOrders.length },
               { id: 'PENDING_APPROVAL', label: 'بانتظار الموافقة', count: pendingCount },
@@ -386,13 +386,13 @@ export default function SuppliersPage() {
                 onClick={() => setActiveStatusFilter(tab.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   activeStatusFilter === tab.id
-                    ? 'glass glass-active text-white'
-                    : 'text-white/65 hover:text-white hover:bg-white/10'
+                    ? 'glass-active text-white'
+                    : 'text-white/80 hover:text-white hover:bg-white/15'
                 }`}
               >
                 <span>{tab.label}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
-                  activeStatusFilter === tab.id ? 'glass glass-card text-white' : 'glass glass-card text-white/65 border'
+                  activeStatusFilter === tab.id ? 'bg-teal-600/15 text-teal-100' : 'bg-white/8 text-white/80 border border-white/50'
                 }`}>
                   {toEnglishDigits(tab.count)}
                 </span>
@@ -405,7 +405,7 @@ export default function SuppliersPage() {
         <div className="glass rounded-[24px]">
           <div className="overflow-x-auto">
             <table className="w-full text-right text-sm text-white">
-              <thead className="glass glass-card text-white text-xs font-bold border-b">
+              <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/25">
                 <tr>
                   <th className="px-5 py-4">رقم الأمر</th>
                   <th className="px-5 py-4">الصنف المطلوب</th>
@@ -418,7 +418,7 @@ export default function SuppliersPage() {
                   <th className="px-5 py-4 text-center">إجراء</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/20">
+              <tbody className="divide-y divide-white/15">
                 {filteredPOs.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="text-center py-10 text-white/65 text-sm">
@@ -430,7 +430,7 @@ export default function SuppliersPage() {
                     return (
                       <tr
                         key={po.id}
-                        className="hover:bg-white/10 transition-colors group"
+                        className="hover:bg-white/15 transition-colors group"
                       >
                         {/* ID */}
                         <td className="px-5 py-4 font-mono font-bold text-white">
@@ -439,7 +439,7 @@ export default function SuppliersPage() {
                               setSelectedPO(po);
                               setIsEditingPO(false);
                             }}
-                            className="hover:underline decoration-white/65 flex items-center gap-1 group/btn cursor-pointer"
+                            className="hover:underline decoration-white/50 flex items-center gap-1 group/btn cursor-pointer"
                             title="عرض تفاصيل أمر الشراء"
                           >
                             <span>{toEnglishDigits(po.id)}</span>
@@ -453,7 +453,7 @@ export default function SuppliersPage() {
                         </td>
 
                         {/* Supplier Name */}
-                        <td className="px-5 py-4 text-white font-medium">
+                        <td className="px-5 py-4 text-white/80 font-medium">
                           <div className="flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-white/65 shrink-0" />
                             <span>{po.supplierName}</span>
@@ -473,12 +473,12 @@ export default function SuppliersPage() {
                         {/* Created By */}
                         <td className="px-5 py-4">
                           {po.createdBy === 'AI_AGENT' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold glass glass-active text-white">
-                              <Bot className="w-3.5 h-3.5 text-white/65" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                              <Bot className="w-3.5 h-3.5 text-white" />
                               <span>وكيل الذكاء الاصطناعي</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium glass text-white/65">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/40 text-white/80">
                               <User className="w-3.5 h-3.5 text-white/65" />
                               <span>مسؤول المشتريات</span>
                             </span>
@@ -486,48 +486,48 @@ export default function SuppliersPage() {
                         </td>
 
                         {/* Created At */}
-                        <td className="px-5 py-4 text-xs text-white/65 font-medium font-mono">
+                        <td className="px-5 py-4 text-xs text-white/80 font-medium font-mono">
                           {toEnglishDigits(po.createdAt)}
                         </td>
 
                         {/* Status */}
                         <td className="px-5 py-4">
                           {po.status === 'PENDING_APPROVAL' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-800">
-                              <Clock className="w-3.5 h-3.5 text-rose-700 animate-pulse" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-200">
+                              <Clock className="w-3.5 h-3.5 text-rose-200 animate-pulse" />
                               <span>بانتظار الموافقة</span>
                             </span>
                           )}
 
                           {po.status === 'SENT' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass glass-active text-white">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-600/15 border border-teal-300/30 text-teal-100">
                               <motion.div
                                 animate={{ y: [0, -3, 0] }}
                                 transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
                               >
-                                <Mail className="w-3.5 h-3.5 text-white/65" />
+                                <Mail className="w-3.5 h-3.5 text-white" />
                               </motion.div>
                               <span>تم إرسال الإيميل</span>
                             </span>
                           )}
 
                           {po.status === 'IN_TRANSIT' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass glass-active text-white">
-                              <Loader2 className="w-3.5 h-3.5 text-white/65 animate-spin" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-200">
+                              <Loader2 className="w-3.5 h-3.5 text-amber-200 animate-spin" />
                               <span>جاري التوصيل</span>
                             </span>
                           )}
 
                           {po.status === 'DELIVERED' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold glass text-white">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-white/65" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-200">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
                               <span>تم الاستلام</span>
                             </span>
                           )}
 
                           {po.status === 'APPROVED' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold glass glass-active text-white">
-                              <BadgeCheck className="w-3.5 h-3.5 text-white/65" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                              <BadgeCheck className="w-3.5 h-3.5 text-white" />
                               <span>معتمد</span>
                             </span>
                           )}
@@ -540,7 +540,7 @@ export default function SuppliersPage() {
                               setSelectedPO(po);
                               setIsEditingPO(false);
                             }}
-                            className="text-xs font-bold text-white glass glass-card hover:bg-white/10 border px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
+                            className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/40 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
                           >
                             التفاصيل
                           </button>
@@ -556,53 +556,53 @@ export default function SuppliersPage() {
       </section>
 
       {/* 2. Smart Bidding Comparison */}
-      <section className="glass rounded-[24px] p-6 space-y-6">
-        <div className="border-b border-white/14 pb-5 space-y-4">
+      <section className="glass p-6 space-y-6">
+        <div className="border-b border-white/25 pb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-[18px] glass glass-card text-white/65 border">
+                <span className="p-2 rounded-[18px] bg-white/8 border border-white/40 text-white">
                   <Bot className="w-5 h-5" />
                 </span>
                 <h2 className="text-xl font-bold text-white">
                   شاشة المفاضلة الذكية (Smart Bidding Comparison)
                 </h2>
-                <span className="glass text-white/65 border text-xs px-2.5 py-0.5 rounded-full font-bold">
+                <span className="bg-teal-600/15 border border-teal-300/30 text-teal-100 text-xs px-2.5 py-0.5 rounded-full font-bold">
                   AI Procurement
                 </span>
               </div>
-              <p className="text-xs text-white/65 mt-1">
+              <p className="text-xs text-white/80 mt-1">
                 مقارنة أسعار الموردين جنباً إلى جنب (مورد سريع vs مورد جملة) وتوصيات الوكيل الذكي
               </p>
             </div>
 
-            <div className="text-xs font-semibold text-white glass glass-card px-3.5 py-1.5 rounded-[18px] border self-start sm:self-auto flex items-center gap-2">
+            <div className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
               <span>أصناف تتطلب إعادة توريد:</span>
-              <span className="font-extrabold text-white glass glass-active px-2 py-0.5 rounded-md">
+              <span className="font-extrabold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2 py-0.5 rounded-md">
                 {toEnglishDigits(lowStockItems.length)}
               </span>
             </div>
           </div>
 
           {/* Sub-navigation Pills */}
-          <div className="flex flex-row items-center gap-2.5 overflow-x-auto pb-1 pt-1 glass glass-card p-2 rounded-[18px] border">
-            <span className="text-xs font-bold text-white shrink-0 px-2 flex items-center gap-1.5">
-              <Package className="w-4 h-4 text-white/65" />
+          <div className="flex flex-row items-center gap-2.5 overflow-x-auto pb-1 pt-1 bg-white/8 border border-white/40 p-2 rounded-[18px]">
+            <span className="text-xs font-bold text-white/80 shrink-0 px-2 flex items-center gap-1.5">
+              <Package className="w-4 h-4 text-white" />
               <span>اختر صنفاً للمقارنة:</span>
             </span>
             {lowStockItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => handleAnalyzeQuotes(item.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer  ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   analyzingItemId === item.id
-                    ? 'glass glass-active text-white ring-2 ring-white/25 scale-[1.02]'
-                    : 'glass glass-card text-white/65 hover:text-white hover:bg-white/10 border'
+                    ? 'bg-teal-600/15 border border-teal-300/30 text-teal-100 scale-[1.02]'
+                    : 'bg-white/8 border border-white/40 text-white/80 hover:text-white hover:bg-white/15'
                 }`}
               >
                 <span>{item.name}</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-colors ${
-                  analyzingItemId === item.id ? 'glass glass-card text-white' : 'glass glass-card text-white/65 border'
+                  analyzingItemId === item.id ? 'bg-teal-600/15 text-teal-100' : 'bg-white/8 text-white/80 border border-white/50'
                 }`}>
                   مفاضلة الأسعار
                 </span>
@@ -616,26 +616,26 @@ export default function SuppliersPage() {
           <div className="space-y-4">
             <div className="flex justify-between items-center flex-wrap gap-2">
               <div className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                <span className="text-white/65">عروض الأسعار المتاحة لصنف:</span>
-                <span className="text-white font-extrabold text-base glass glass-active px-3 py-1 rounded-[18px]">
+                <span className="text-white/80">عروض الأسعار المتاحة لصنف:</span>
+                <span className="text-teal-100 font-extrabold text-base bg-teal-600/15 border border-teal-300/30 px-3 py-1 rounded-[18px]">
                   {selectedItem.name}
                 </span>
-                <span className="text-xs text-white/65 font-semibold glass glass-card px-2.5 py-1 rounded-[18px] border font-mono">
+                <span className="text-xs text-white/80 font-semibold bg-white/8 border border-white/40 px-2.5 py-1 rounded-[18px] font-mono">
                   المخزون الحالي: {toEnglishDigits(selectedItem.currentStock)} / الحد الأدنى: {toEnglishDigits(selectedItem.minThreshold)}
                 </span>
               </div>
 
               {bestQuote && (
-                <div className="glass glass-active text-white px-3.5 py-1.5 rounded-[18px] text-xs font-bold flex items-center gap-2">
+                <div className="bg-teal-600/15 border border-teal-300/30 text-teal-100 px-3.5 py-1.5 rounded-[18px] text-xs font-bold flex items-center gap-2">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ repeat: Infinity, duration: 6, ease: "linear" }}
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-white/65" />
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
                   </motion.div>
                   <span>التوصية الذكية المعتمدة:</span>
                   <span className="font-extrabold text-white">{bestQuote.supplierName}</span>
-                  <span className="text-[10px] glass px-1.5 py-0.5 rounded text-white/65 font-semibold border">
+                  <span className="text-[10px] bg-white/8 border border-white/50 px-1.5 py-0.5 rounded text-white/80 font-semibold">
                     مطابقة {toEnglishDigits(bestQuote.aiRecommendationScore)}%
                   </span>
                 </div>
@@ -650,15 +650,15 @@ export default function SuppliersPage() {
                   return (
                     <div
                       key={quote.supplierId}
-                      className={`glass rounded-[18px] p-6 transition-all flex flex-col justify-between relative ${
+                      className={`glass border border-white/40 rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
                         isBest
-                          ? 'ring-2 ring-white/25'
+                          ? 'ring-2 ring-white/25 '
                           : ''
                       }`}
                     >
                       {/* Floating Badge for Best AI Choice */}
                       {isBest && (
-                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 glass glass-card text-white text-xs font-bold px-3.5 py-1 rounded-full border flex items-center gap-1.5 z-10 whitespace-nowrap">
+                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-teal-600/15 border border-teal-300/30 text-teal-100 text-xs font-bold px-3.5 py-1 rounded-full flex items-center gap-1.5 z-10 whitespace-nowrap ">
                           <motion.div
                             animate={{ rotate: 360 }}
                             transition={{ repeat: Infinity, duration: 6, ease: "linear" }}
@@ -674,25 +674,25 @@ export default function SuppliersPage() {
                         <div className="flex justify-between items-start">
                           <div>
                             <h4 className="font-bold text-white text-base flex items-center gap-1.5">
-                              <Building2 className="w-4 h-4 text-white/65 shrink-0" />
+                              <Building2 className="w-4 h-4 text-white shrink-0" />
                               <span>{quote.supplierName}</span>
                             </h4>
-                            <span className="text-[11px] text-white/65">
+                            <span className="text-[11px] text-white/80">
                               {quote.leadTimeHours <= 18 ? 'مورد سريع (توريد فوري)' : quote.leadTimeHours <= 24 ? 'مورد معتمد (مباشر)' : 'مورد جملة (كميات كبيرة)'}
                             </span>
                           </div>
                         </div>
 
                         {/* Specs Card */}
-                        <div className="glass glass-card p-4 rounded-[18px] border space-y-2 text-xs">
+                        <div className="bg-white/8 border border-white/40 p-4 rounded-[18px] space-y-2 text-xs">
                           <div className="flex justify-between items-center">
-                            <span className="text-white/65">سعر الوحدة:</span>
+                            <span className="text-white/80">سعر الوحدة:</span>
                             <span className="font-extrabold text-white text-lg font-mono">
                               {toEnglishDigits(quote.unitPrice)} ر.س
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-white/65 flex items-center gap-1">
+                            <span className="text-white/80 flex items-center gap-1">
                               <Clock className="w-3 h-3 text-white/65" />
                               <span>مدة التوصيل:</span>
                             </span>
@@ -701,7 +701,7 @@ export default function SuppliersPage() {
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-white/65 flex items-center gap-1">
+                            <span className="text-white/80 flex items-center gap-1">
                               <Package className="w-3 h-3 text-white/65" />
                               <span>الحد الأدنى للطلب:</span>
                             </span>
@@ -710,7 +710,7 @@ export default function SuppliersPage() {
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-white/65 flex items-center gap-1">
+                            <span className="text-white/80 flex items-center gap-1">
                               <ShieldCheck className="w-3 h-3 text-white/65" />
                               <span>مؤشر الجودة:</span>
                             </span>
@@ -721,9 +721,9 @@ export default function SuppliersPage() {
                         </div>
 
                         {/* AI Reasoning */}
-                        <div className="text-xs text-white leading-relaxed glass glass-card p-3.5 rounded-[18px] border">
-                          <strong className="text-white/65 flex items-center gap-1 text-[11px] mb-1 font-bold">
-                            <Bot className="w-3.5 h-3.5 text-white/65" />
+                        <div className="text-xs text-white/80 leading-relaxed bg-white/8 border border-white/40 p-3.5 rounded-[18px]">
+                          <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
+                            <Bot className="w-3.5 h-3.5 text-white" />
                             <span>تحليل الوكيل الذكي:</span>
                           </strong>
                           {quote.aiReasoning}
@@ -735,8 +735,8 @@ export default function SuppliersPage() {
                         onClick={() => handleQuickOrder(quote.supplierName, selectedItem.name)}
                         className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer mt-4 ${
                           isBest
-                            ? 'glass glass-card hover:bg-white/10 active:scale-95 text-white'
-                            : 'glass glass-card hover:bg-white/10 text-white border'
+                            ? 'bg-white/20 hover:bg-white/25 active:scale-95 text-white '
+                            : 'bg-white/8 hover:bg-white/15 text-white border border-white/40'
                         }`}
                       >
                         <Send className="w-3.5 h-3.5" />
@@ -747,7 +747,7 @@ export default function SuppliersPage() {
                 })}
               </div>
             ) : (
-              <div className="p-8 text-center text-white/65 text-sm glass rounded-[18px]">
+              <div className="p-8 text-center text-white/65 text-sm bg-white/8 border border-white/40 rounded-[18px]">
                 لا توجد عروض أسعار مسجلة لهذا الصنف حالياً
               </div>
             )}
@@ -759,20 +759,20 @@ export default function SuppliersPage() {
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 glass glass-card text-white/65 border rounded-[18px]">
+            <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
                 بطاقات تقييم الموردين (Supplier Scorecard)
               </h2>
-              <p className="text-xs text-white/65">
+              <p className="text-xs text-white/80">
                 تقييم حي ومتحرك للموردين المعتمدين وفق سرعة التوصيل وجودة البضاعة واستقرار السعر
               </p>
             </div>
           </div>
 
-          <span className="text-xs font-semibold text-white glass glass-card px-3.5 py-1.5 rounded-[18px] border">
+          <span className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px]">
             {toEnglishDigits(suppliers.length)} موردين مسجلين
           </span>
         </div>
@@ -788,17 +788,17 @@ export default function SuppliersPage() {
             return (
               <div
                 key={sup.id}
-                className="glass rounded-[18px] p-6 flex flex-col justify-between /40 transition-all duration-300 group relative"
+                className="glass border border-white/40 rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative"
               >
                 <div className="space-y-4">
                   {/* Supplier Header */}
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-extrabold text-base text-white flex items-center gap-1.5">
-                        <Building2 className="w-4 h-4 text-white/65" />
+                        <Building2 className="w-4 h-4 text-white" />
                         <span>{sup.name}</span>
                       </h3>
-                      <p className="text-xs text-white/65 mt-0.5">{sup.category}</p>
+                      <p className="text-xs text-white/80 mt-0.5">{sup.category}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -806,22 +806,22 @@ export default function SuppliersPage() {
                       <button
                         type="button"
                         onClick={() => handleOpenEditSupplier(sup)}
-                        className="p-1.5 rounded-[18px] glass glass-card hover:bg-white/10 text-white border transition-colors cursor-pointer"
+                        className="p-1.5 rounded-[18px] bg-white/8 hover:bg-white/15 border border-white/40 text-white/80 transition-colors cursor-pointer"
                         title="تعديل بيانات المورد"
                       >
-                        <Edit2 size={14} className="text-white/65" />
+                        <Edit2 size={14} className="text-white/80" />
                       </button>
 
-                      <span className="text-xs font-bold text-white glass glass-active px-2.5 py-1 rounded-[18px] flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-white/65" />
+                      <span className="text-xs font-bold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2.5 py-1 rounded-[18px] flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-white" />
                         <span>{toEnglishDigits(sup.rating)} / 5</span>
                       </span>
                     </div>
                   </div>
 
                   {/* Dynamic Animated Progress Bars */}
-                  <div className="glass glass-card p-4 rounded-[18px] border space-y-3">
-                    <div className="text-xs font-bold text-white flex items-center justify-between border-b border-white/14 pb-2">
+                  <div className="bg-white/8 border border-white/40 p-4 rounded-[18px] space-y-3">
+                    <div className="text-xs font-bold text-white flex items-center justify-between border-b border-white/25 pb-2">
                       <span>مؤشرات أداء التوريد (KPIs)</span>
                       <span className="text-[10px] text-white/65 font-semibold">تحديث مستمر</span>
                     </div>
@@ -829,18 +829,18 @@ export default function SuppliersPage() {
                     {/* 1. Delivery Speed */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/65 flex items-center gap-1">
-                          <Zap className="w-3.5 h-3.5 text-white/65" />
+                        <span className="text-white/80 flex items-center gap-1">
+                          <Zap className="w-3.5 h-3.5 text-white" />
                           <span>سرعة التوصيل</span>
                         </span>
                         <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.deliverySpeed)}%</span>
                       </div>
-                      <div className="w-full glass glass-card rounded-full h-2 border">
+                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${metrics.deliverySpeed}%` }}
                           transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 }}
-                          className="h-full bg-white/65 rounded-full"
+                          className="h-full bg-teal-500/60 rounded-full"
                         />
                       </div>
                     </div>
@@ -848,18 +848,18 @@ export default function SuppliersPage() {
                     {/* 2. Product Quality */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/65 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-white/65" />
+                        <span className="text-white/80 flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5 text-white" />
                           <span>جودة البضاعة</span>
                         </span>
                         <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.qualityScore)}%</span>
                       </div>
-                      <div className="w-full glass glass-card rounded-full h-2 border">
+                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${metrics.qualityScore}%` }}
                           transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 + 0.1 }}
-                          className="h-full bg-white/65 rounded-full"
+                          className="h-full bg-emerald-500/60 rounded-full"
                         />
                       </div>
                     </div>
@@ -867,42 +867,42 @@ export default function SuppliersPage() {
                     {/* 3. Price Stability */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/65 flex items-center gap-1">
-                          <Scale className="w-3.5 h-3.5 text-white/85" />
+                        <span className="text-white/80 flex items-center gap-1">
+                          <Scale className="w-3.5 h-3.5 text-white" />
                           <span>استقرار السعر</span>
                         </span>
                         <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.priceStability)}%</span>
                       </div>
-                      <div className="w-full glass glass-card rounded-full h-2 border">
+                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${metrics.priceStability}%` }}
                           transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 + 0.2 }}
-                          className="h-full bg-white/65 rounded-full"
+                          className="h-full bg-amber-500/60 rounded-full"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Supplier Info Details */}
-                  <div className="glass glass-card p-3.5 rounded-[18px] border space-y-2 text-xs text-white/65">
+                  <div className="bg-white/8 border border-white/40 p-3.5 rounded-[18px] space-y-2 text-xs text-white/80">
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-white/65" />
+                        <MapPin className="w-3.5 h-3.5 text-white" />
                         <span>الموقع الجغرافي:</span>
                       </span>
                       <strong className="text-white">{sup.city}</strong>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-white/65" />
+                        <Clock className="w-3.5 h-3.5 text-white" />
                         <span>زمن التوريد المعتاد:</span>
                       </span>
                       <strong className="text-white font-mono">{toEnglishDigits(sup.leadTime)}</strong>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1.5">
-                        <Coins className="w-3.5 h-3.5 text-white/65" />
+                        <Coins className="w-3.5 h-3.5 text-white" />
                         <span>التصنيف المالي:</span>
                       </span>
                       <strong className="text-white">{sup.pricingTier}</strong>
@@ -914,9 +914,9 @@ export default function SuppliersPage() {
                     {sup.tags.map(t => (
                       <span
                         key={t}
-                        className="text-[10px] glass text-white border px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1"
+                        className="text-[10px] bg-white/8 border border-white/40 text-white/80 px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1"
                       >
-                        <Tag className="w-2.5 h-2.5 text-white/65" />
+                        <Tag className="w-2.5 h-2.5 text-white" />
                         <span>{t}</span>
                       </span>
                     ))}
@@ -924,12 +924,12 @@ export default function SuppliersPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="pt-4 mt-4 border-t border-white/14 flex justify-between items-center text-xs">
-                  <span className="text-white/65 flex items-center gap-1 font-mono">
-                    <Phone className="w-3 h-3 text-white/65" />
+                <div className="pt-4 mt-4 border-t border-white/25 flex justify-between items-center text-xs">
+                  <span className="text-white/80 flex items-center gap-1 font-mono">
+                    <Phone className="w-3 h-3 text-white" />
                     <span>{toEnglishDigits(sup.phone)}</span>
                   </span>
-                  <span className="text-white font-bold glass glass-active px-2.5 py-0.5 rounded-lg font-mono">
+                  <span className="text-teal-100 font-bold bg-teal-600/15 border border-teal-300/30 px-2.5 py-0.5 rounded-lg font-mono">
                     {toEnglishDigits(sup.activeOrdersCount)} طلبات جارية
                   </span>
                 </div>
@@ -942,13 +942,13 @@ export default function SuppliersPage() {
       {/* Modal: View & Edit Purchase Order Details (PO Modal) */}
       {selectedPO && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/[0.06] animate-in fade-in">
-          <div className="font-sans glass rounded-[24px] w-full max-w-lg p-6 space-y-5 text-white border relative">
+          <div className="font-sans glass-popover rounded-[24px] w-full max-w-lg p-6 space-y-5 text-white border relative">
             
             {/* Edit Button in Header (Far Left) */}
             <button
               type="button"
               onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
-              className="absolute left-6 top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-[18px] glass glass-card hover:bg-white/10 text-white border text-xs font-bold transition-all cursor-pointer z-10"
+              className="absolute left-6 top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-[18px] glass glass-card hover:bg-white/15 text-white border text-xs font-bold transition-all cursor-pointer z-10"
               title="تعديل تفاصيل أمر الشراء"
             >
               <Edit2 size={16} className="text-white/65" />
@@ -976,7 +976,7 @@ export default function SuppliersPage() {
                   setSelectedPO(null);
                   setIsEditingPO(false);
                 }}
-                className="text-white/65 hover:text-white glass glass-card hover:bg-white/10 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border"
+                className="text-white/65 hover:text-white glass glass-card hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1018,7 +1018,7 @@ export default function SuppliersPage() {
                   <button
                     type="button"
                     onClick={handleSavePOEdit}
-                    className="flex-1 glass glass-card hover:bg-white/10 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    className="flex-1 glass glass-card hover:bg-white/15 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <Check className="w-4 h-4" />
                     <span>حفظ التعديل</span>
@@ -1026,7 +1026,7 @@ export default function SuppliersPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditingPO(false)}
-                    className="px-4 glass glass-card hover:bg-white/10 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                    className="px-4 glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
                   >
                     إلغاء
                   </button>
@@ -1122,7 +1122,7 @@ export default function SuppliersPage() {
               {selectedPO.status === 'PENDING_APPROVAL' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'SENT')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/10 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <Mail className="w-4 h-4" />
                   <span>تأكيد وإرسال الإيميل للمورد</span>
@@ -1132,7 +1132,7 @@ export default function SuppliersPage() {
               {selectedPO.status === 'SENT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'IN_TRANSIT')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/10 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <Truck className="w-4 h-4" />
                   <span>تحديث إلى: جاري التوصيل (In Transit)</span>
@@ -1142,7 +1142,7 @@ export default function SuppliersPage() {
               {selectedPO.status === 'IN_TRANSIT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'DELIVERED')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/10 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>تأكيد استلام الشحنة وإضافتها للمخزون</span>
@@ -1154,7 +1154,7 @@ export default function SuppliersPage() {
                   setSelectedPO(null);
                   setIsEditingPO(false);
                 }}
-                className="w-full glass glass-card hover:bg-white/10 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                className="w-full glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
               >
                 إغلاق
               </button>
@@ -1166,7 +1166,7 @@ export default function SuppliersPage() {
       {/* Modal: Add or Edit Supplier (Supplier Form Modal) */}
       {isSupplierModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/[0.06] animate-in fade-in">
-          <div className="font-sans glass rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border relative">
+          <div className="font-sans glass-popover rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border relative">
             <div className="flex justify-between items-center border-b border-white/14 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-[18px] glass glass-card border flex items-center justify-center text-white/65">
@@ -1178,7 +1178,7 @@ export default function SuppliersPage() {
               </div>
               <button
                 onClick={() => setIsSupplierModalOpen(false)}
-                className="text-white/65 hover:text-white glass glass-card hover:bg-white/10 border p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
+                className="text-white/65 hover:text-white glass glass-card hover:bg-white/15 border p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1264,7 +1264,7 @@ export default function SuppliersPage() {
               <div className="pt-2 flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 glass glass-card hover:bg-white/10 active:scale-95 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
                   <span>{editingSupplier ? 'حفظ التعديلات' : 'إضافة المورد'}</span>
@@ -1272,7 +1272,7 @@ export default function SuppliersPage() {
                 <button
                   type="button"
                   onClick={() => setIsSupplierModalOpen(false)}
-                  className="px-4 glass glass-card hover:bg-white/10 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                  className="px-4 glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
                 >
                   إلغاء
                 </button>

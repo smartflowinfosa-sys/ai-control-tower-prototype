@@ -266,7 +266,7 @@ export default function GlassSelect({
       >
         <span className="truncate flex-1 text-right">{selectedLabel}</span>
         <ChevronDown
-          className={`w-4 h-4 text-white/70 transition-transform duration-200 shrink-0 ${
+          className={`w-4 h-4 text-white/65 transition-transform duration-200 shrink-0 ${
             isOpen ? 'rotate-180' : ''
           }`}
           aria-hidden="true"
@@ -311,16 +311,13 @@ export default function GlassSelect({
                     aria-selected={isSelected}
                     onClick={() => handleSelect(opt.value)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
-                    className={`flex items-center justify-between gap-2 rounded-[12px] py-2.5 px-3.5 text-sm text-right cursor-pointer transition-colors ${
+                    className={`flex items-center justify-between gap-2 rounded-xl py-2.5 px-3.5 text-sm text-right cursor-pointer transition-colors ${
                       isSelected
-                        ? 'bg-white/[0.26] font-bold text-white'
+                        ? 'glass-active font-bold text-white'
                         : isHighlighted
-                        ? 'bg-white/[0.18] text-white'
-                        : 'text-white/90 hover:bg-white/[0.18] hover:text-white'
+                        ? 'bg-white/8 text-white'
+                        : 'text-white/80 hover:bg-white/15 hover:text-white'
                     }`}
-                    style={{
-                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                    }}
                   >
                     <span className="truncate flex-1">{opt.label}</span>
                     {isSelected && (

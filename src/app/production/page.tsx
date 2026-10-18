@@ -10,14 +10,14 @@ export default function ProductionPage() {
   });
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-6">
+    <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="glass rounded-[24px] p-6 mb-8 flex justify-between items-end flex-wrap gap-4">
+      <header className="glass page-header mb-8 flex justify-between items-end flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-white">شاشة الإنتاج (KDS)</h1>
-          <p className="text-white/65 font-semibold text-sm mt-2">الطلبات الحالية في محطات التحضير والمطبخ</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">شاشة الإنتاج (KDS)</h1>
+          <p className="text-white/80 font-semibold text-sm mt-2">الطلبات الحالية في محطات التحضير والمطبخ</p>
         </div>
-        <div className="text-sm font-bold glass glass-card text-white border px-3.5 py-1.5 rounded-full font-mono">
+        <div className="text-sm font-bold bg-teal-500/15 text-teal-100 border border-teal-300/30 px-3.5 py-1.5 rounded-full font-mono ">
           إجمالي الطلبات النشطة: {activeOrders.length}
         </div>
       </header>
@@ -29,20 +29,20 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`glass rounded-[18px] border flex flex-col relative transition-all 
-                ${isDelayed ? 'border-rose-400' : ''}
-              `}
+              className={`glass flex flex-col relative transition-all overflow-hidden ${
+                isDelayed ? 'border-rose-400 ' : ''
+              }`}
             >
               {isDelayed && (
-                <div className="bg-rose-500 text-white text-center text-xs font-bold py-1 animate-pulse border-b border-rose-400">
+                <div className="bg-rose-600 text-white text-center text-xs font-bold py-1 animate-pulse border-b border-rose-400">
                   متأخر
                 </div>
               )}
               
-              <div className="p-4 border-b glass glass-card flex justify-between items-center">
+              <div className="p-4 border-b border-white/25 bg-white/8 flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-extrabold text-white font-mono">{order.orderNumber}</h3>
-                  <span className="text-xs font-bold text-white glass glass-card border px-2 py-0.5 rounded-md mt-1 inline-block">
+                  <span className="text-xs font-bold text-white bg-white/8 border border-white/50 px-2 py-0.5 rounded-md mt-1 inline-block">
                     زاهي
                   </span>
                 </div>
@@ -57,7 +57,7 @@ export default function ProductionPage() {
               <div className="p-4 flex-1">
                 <ul className="space-y-3">
                   {order.items.map(item => (
-                    <li key={item.id} className="border-b border-white/14 pb-2.5 last:border-0 last:pb-0">
+                    <li key={item.id} className="border-b border-white/25 pb-2.5 last:border-0 last:pb-0">
                       <div className="flex justify-between items-start">
                         <span className="font-extrabold text-white text-base">
                           <span className="text-white font-mono ml-1.5 font-bold">{item.quantity}x</span> 
@@ -66,13 +66,13 @@ export default function ProductionPage() {
                       </div>
                       
                       {item.customizations.length > 0 && (
-                        <div className="mt-1.5 text-xs text-white glass glass-card border px-2.5 py-1 rounded-[18px] font-semibold">
+                        <div className="mt-1.5 text-xs text-white bg-white/8 border border-white/25 px-2.5 py-1 rounded-xl font-semibold">
                           <span className="font-bold text-white">تعديل:</span> {item.customizations.join('، ')}
                         </div>
                       )}
                       
                       {item.removedIngredients.length > 0 && (
-                        <div className="mt-1.5 text-xs text-rose-800 bg-rose-500/20 border border-rose-400/40 px-2.5 py-1 rounded-xl line-through font-semibold">
+                        <div className="mt-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-300/30 px-2.5 py-1 rounded-xl line-through font-semibold">
                           <span className="font-bold no-underline">بدون:</span> {item.removedIngredients.join('، ')}
                         </div>
                       )}
@@ -81,11 +81,11 @@ export default function ProductionPage() {
                 </ul>
               </div>
               
-              <div className="p-4 border-t glass glass-card flex justify-between items-center mt-auto">
-                <span className="text-xs text-white/65 font-bold">
+              <div className="p-4 border-t border-white/25 bg-white/8 flex justify-between items-center mt-auto">
+                <span className="text-xs text-white/80 font-bold">
                   حالة المطبخ: {order.kitchenStatus.updated ? 'مُحدّث' : 'قيد الانتظار'}
                 </span>
-                <button className="glass glass-card hover:bg-white/10 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-[18px] transition-all cursor-pointer">
+                <button className="bg-white/20 hover:bg-white/25 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ">
                   تحديث الحالة
                 </button>
               </div>

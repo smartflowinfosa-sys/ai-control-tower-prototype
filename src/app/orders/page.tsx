@@ -6,13 +6,13 @@ import Link from 'next/link';
 import SmartFilterBar from '@/components/common/SmartFilterBar';
 
 const statusColorMap: Record<string, string> = {
-  PENDING: 'glass glass-card text-white border ',
-  KITCHEN_PREP: 'glass glass-card text-white border ',
-  PACKING: 'glass glass-card text-white border ',
-  READY_FOR_DELIVERY: 'glass glass-card text-white border ',
-  OUT_FOR_DELIVERY: 'glass glass-card text-white border ',
-  DELIVERED: 'bg-teal-700/20 text-white border border-white/14',
-  CANCELLED: 'bg-rose-500/20 text-rose-800 border border-rose-400/40',
+  PENDING: 'bg-white/8 text-white border border-white/25',
+  KITCHEN_PREP: 'bg-amber-500/15 text-amber-200 border border-amber-300/30',
+  PACKING: 'bg-blue-500/15 text-blue-200 border border-blue-300/30',
+  READY_FOR_DELIVERY: 'bg-indigo-500/15 text-indigo-200 border border-indigo-300/30',
+  OUT_FOR_DELIVERY: 'bg-purple-500/15 text-purple-200 border border-purple-300/30',
+  DELIVERED: 'bg-teal-500/15 text-teal-100 border border-teal-300/30',
+  CANCELLED: 'bg-rose-500/15 text-rose-200 border border-rose-300/30',
 };
 
 const statusNameMap: Record<string, string> = {
@@ -37,11 +37,11 @@ export default function OrdersPage() {
   const sortedOrders = [...filteredOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-6">
+    <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="glass rounded-[24px] p-6 mb-6">
-        <h1 className="text-3xl font-extrabold text-white">سجل الطلبات</h1>
-        <p className="text-white/65 font-semibold text-sm mt-2">عرض شامل لجميع الطلبات في النظام</p>
+      <header className="glass page-header mb-6">
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">سجل الطلبات</h1>
+        <p className="text-white/80 font-semibold text-sm mt-2">عرض شامل لجميع الطلبات في النظام</p>
       </header>
 
       <SmartFilterBar 
@@ -50,9 +50,9 @@ export default function OrdersPage() {
         showDepartment={false}
       />
 
-      <div className="glass rounded-[24px] mt-6 border">
+      <div className="glass mt-6 overflow-x-auto">
         <table className="w-full text-right text-sm text-white">
-          <thead className="glass glass-card text-white text-xs uppercase font-extrabold border-b">
+          <thead className="bg-white/8 text-white/80 text-xs uppercase font-extrabold border-b border-white/25">
             <tr>
               <th className="px-6 py-4">رقم الطلب</th>
               <th className="px-6 py-4">العلامة التجارية</th>
@@ -61,20 +61,20 @@ export default function OrdersPage() {
               <th className="px-6 py-4">وقت الإنشاء</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/20">
+          <tbody className="divide-y divide-white/15">
             {sortedOrders.length > 0 ? (
               sortedOrders.map((order) => {
                 const status = order.status || 'KITCHEN_PREP';
                 
                 return (
-                  <tr key={order.id} className="hover:bg-white/10 transition-colors">
+                  <tr key={order.id} className="hover:bg-white/15 transition-colors">
                     <td className="px-6 py-4 font-bold text-white font-mono">
                       <Link href={`/orders/${order.id}`} className="hover:underline">
                         {order.orderNumber}
                       </Link>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs glass glass-card text-white border px-2.5 py-1 rounded-lg font-bold">
+                      <span className="text-xs bg-white/8 text-white border border-white/50 px-2.5 py-1 rounded-lg font-bold">
                         زاهي
                       </span>
                     </td>
@@ -92,7 +92,7 @@ export default function OrdersPage() {
               })
             ) : (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-white font-bold glass glass-card">
+                <td colSpan={5} className="px-6 py-12 text-center text-white/80 font-bold">
                   لا توجد طلبات تتطابق مع الفلتر المختار
                 </td>
               </tr>

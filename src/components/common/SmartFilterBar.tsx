@@ -24,13 +24,13 @@ export default function SmartFilterBar({
   showRisk = false
 }: SmartFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-6 glass rounded-[24px] p-5 mb-6">
+    <div className="flex flex-wrap items-center gap-6 glass p-5 mb-6">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-bold text-white">العلامة التجارية:</span>
+        <span className="whitespace-nowrap text-sm font-bold text-white">العلامة التجارية:</span>
         <GlassSelect 
           value={selectedBrand}
           onChange={(e) => onBrandChange(e.target.value)}
-          className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
+          className="glass glass-card border text-white font-bold text-sm rounded-xl focus:ring-1 focus:ring-white/25 p-2.5 outline-none min-w-[140px] cursor-pointer"
         >
           <option value="zahi">زاهي (Zahi)</option>
         </GlassSelect>
@@ -38,11 +38,11 @@ export default function SmartFilterBar({
 
       {showDepartment && onDepartmentChange && (
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-white">القسم التشغيلي:</span>
+          <span className="whitespace-nowrap text-sm font-bold text-white">القسم التشغيلي:</span>
           <GlassSelect 
             value={selectedDepartment}
             onChange={(e) => onDepartmentChange(e.target.value)}
-            className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
+            className="glass glass-card border text-white font-bold text-sm rounded-xl focus:ring-1 focus:ring-white/25 p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
             <option value="ALL">الكل (All)</option>
             <option value="KITCHEN">المطبخ (Kitchen)</option>
@@ -55,11 +55,11 @@ export default function SmartFilterBar({
 
       {showRisk && onRiskChange && (
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-white">مستوى الخطورة:</span>
+          <span className="whitespace-nowrap text-sm font-bold text-white">مستوى الخطورة:</span>
           <GlassSelect 
             value={selectedRisk}
             onChange={(e) => onRiskChange(e.target.value)}
-            className="glass glass-card border text-white font-bold text-sm rounded-[18px] focus:ring-1 focus:ring-white/25 focus:block p-2.5 outline-none min-w-[140px] cursor-pointer"
+            className="glass glass-card border text-white font-bold text-sm rounded-xl focus:ring-1 focus:ring-white/25 p-2.5 outline-none min-w-[140px] cursor-pointer"
           >
             <option value="ALL">الكل (All Risks)</option>
             <option value="CRITICAL">حرج (Critical)</option>

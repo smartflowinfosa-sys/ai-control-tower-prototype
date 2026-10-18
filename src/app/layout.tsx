@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Tajawal } from "next/font/google";
 import "./globals.css";
+import "./glass-theme.css";
 import Sidebar from "@/components/layout/Sidebar";
 import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
 import { NotificationProvider } from "@/components/common/NotificationContext";
@@ -28,17 +29,12 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} antialiased h-full`}
     >
-      <body className="h-screen min-h-screen flex font-sans selection:bg-white/20 selection:text-white relative">
-        {/* 3 Animated teal blobs using extracted green shades behind content */}
-        <div className="bg-blob bg-blob-1" aria-hidden="true" />
-        <div className="bg-blob bg-blob-2" aria-hidden="true" />
-        <div className="bg-blob bg-blob-3" aria-hidden="true" />
-
+      <body className="app-shell font-sans relative">
         <NotificationProvider>
-          <Suspense fallback={<aside className="w-20 m-4 my-6 rounded-[24px] glass hidden md:flex shrink-0"></aside>}>
+          <Suspense fallback={<aside className="desktop-sidebar is-collapsed glass hidden md:flex" />}>
             <Sidebar />
           </Suspense>
-          <main className="flex-1 min-w-0 m-4 my-6 mr-6 overflow-y-auto relative z-10">
+          <main className="app-main">
             {children}
           </main>
           <AIAssistantWidget />

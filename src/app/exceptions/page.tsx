@@ -73,14 +73,14 @@ export default function ExceptionsPage() {
   };
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-6">
+    <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="glass rounded-[24px] p-6 mb-6">
+      <header className="glass page-header mb-6">
         <h1 className="text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight">
-          <span className="w-3 h-3 rounded-full bg-white/85 animate-ping" />
+          <span className="w-3 h-3 rounded-full bg-teal-600 animate-pulse" />
           مركز الاستثناءات (AI Exceptions)
         </h1>
-        <p className="text-white/65 font-semibold text-sm mt-1.5">
+        <p className="text-white/80 font-semibold text-sm mt-1.5">
           الحالات التشغيلية التي تتطلب الانتباه والتدخل في مطاعم زاهي (Zahi)
         </p>
       </header>
@@ -96,19 +96,19 @@ export default function ExceptionsPage() {
       />
 
       {eligibleForBulk.length > 0 && (
-        <div className="glass rounded-[18px] p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all border">
+        <div className="glass border border-white/25 rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ">
           <div className="flex items-center gap-3">
             <span className="text-3xl">✨</span>
             <div>
               <h3 className="font-extrabold text-white text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
-              <p className="text-sm text-white font-semibold mt-1">
+              <p className="text-sm text-white/80 font-semibold mt-1">
                 يوجد <strong className="text-white font-extrabold">{eligibleForBulk.length}</strong> حالة بسيطة/متوسطة مقترحة للحل التلقائي بواسطة الذكاء الاصطناعي.
               </p>
             </div>
           </div>
           <button 
             onClick={handleBulkResolve}
-            className="glass glass-card hover:bg-white/10 text-white font-bold py-3 px-6 rounded-[18px] transition-all flex items-center gap-2 whitespace-nowrap active:scale-95 cursor-pointer text-sm"
+            className="bg-white/20 hover:bg-white/25 text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap active:scale-95 cursor-pointer text-sm "
           >
             تنفيذ الإجراءات المجمعة بنقرة واحدة ⚡
           </button>
@@ -121,7 +121,7 @@ export default function ExceptionsPage() {
             <ExceptionCard key={exc.id} exception={exc} />
           ))
         ) : (
-          <div className="col-span-full glass text-center py-16 rounded-[18px] text-white font-bold border">
+          <div className="col-span-full glass text-center py-16 text-white/80 font-bold border">
             <div className="text-4xl mb-4">👍</div>
             لا توجد استثناءات نشطة تتطابق مع الفلتر المختار
           </div>

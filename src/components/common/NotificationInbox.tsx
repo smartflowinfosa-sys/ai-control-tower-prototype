@@ -13,26 +13,26 @@ export default function NotificationInbox() {
     <div className="relative z-[55]">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2.5 text-white hover:text-white glass glass-card rounded-[18px] border transition-all hover:bg-white/10"
+        className="relative p-2.5 text-white hover:text-white glass transition-all hover:bg-white/15"
       >
         <span className="text-xl">🔔</span>
         {pendingCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-teal-600/20 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-bounce">
+          <span className="absolute -top-1 -right-1 bg-teal-600 text-white text-[10px] font-extrabold w-5 h-5 flex items-center justify-center rounded-full animate-bounce">
             {pendingCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 glass glass-card border rounded-[18px] flex flex-col max-h-[500px]">
-          <div className="glass glass-card border-b p-4 flex justify-between items-center">
+        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 glass-popover glass-dropdown border border-white/40 rounded-2xl flex flex-col max-h-[500px] z-50 text-white">
+          <div className="border-b border-white/25 p-4 flex justify-between items-center">
             <h3 className="font-bold text-white">سجل إشعارات زاهي</h3>
-            <span className="text-xs bg-sky-100 text-white border border-sky-200 px-2 py-1 rounded-lg font-bold">
+            <span className="text-xs bg-teal-500/15 text-teal-100 border border-teal-300/30 px-2 py-0.5 rounded-lg font-bold">
               {notifications.length} إشعار
             </span>
           </div>
 
-          <div className="overflow-y-auto flex-1 p-3 glass glass-card">
+          <div className="overflow-y-auto flex-1 p-3">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-white/65 text-sm font-medium">
                 <div className="text-3xl mb-2 opacity-50">📭</div>
@@ -41,16 +41,12 @@ export default function NotificationInbox() {
             ) : (
               <ul className="space-y-3">
                 {notifications.map((alert: AlertData) => (
-                  <li key={alert.id} className={`p-4 rounded-xl border text-sm transition-all ${
-                    alert.status === 'pending' ? 'glass glass-card' : 
-                    alert.status === 'resolved' ? 'glass glass-card' : 
-                    'glass glass-card'
-                  }`}>
+                  <li key={alert.id} className="p-4 rounded-xl border border-white/25 bg-white/8 text-sm transition-all">
                     <div className="flex justify-between items-start mb-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white  ${
-                        alert.riskLevel === 'CRITICAL' ? 'bg-red-500/20' : 
-                        alert.riskLevel === 'HIGH' ? 'bg-amber-600/20' : 
-                        alert.riskLevel === 'MEDIUM' ? 'bg-yellow-600/20' : 'bg-teal-600/20'
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        alert.riskLevel === 'CRITICAL' ? 'bg-red-500/15 text-red-200 border border-red-300/30' :
+                        alert.riskLevel === 'HIGH' ? 'bg-amber-500/15 text-amber-200 border border-amber-300/30' :
+                        alert.riskLevel === 'MEDIUM' ? 'bg-yellow-500/15 text-yellow-200 border border-yellow-300/30' : 'bg-teal-500/15 text-teal-100 border border-teal-300/30'
                       }`}>
                         {alert.riskLevel}
                       </span>
@@ -59,19 +55,19 @@ export default function NotificationInbox() {
                       </span>
                     </div>
                     <h4 className="font-bold text-white mb-1">{alert.title}</h4>
-                    <p className="text-white/65 text-xs mb-3 leading-relaxed">{alert.details}</p>
+                    <p className="text-white/80 text-xs mb-3 leading-relaxed">{alert.details}</p>
                     
                     {alert.status === 'pending' && (
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => resolveNotification(alert.id)}
-                          className="flex-1 glass glass-card hover:bg-white/10 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors"
+                          className="flex-1 bg-white/20 hover:bg-white/25 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors "
                         >
                           تنفيذ: {alert.suggestedAction}
                         </button>
                         <button 
                           onClick={() => ignoreNotification(alert.id)}
-                          className="glass glass-card border text-white/65 text-[10px] font-bold py-2 px-3 rounded-lg hover:bg-white/10 transition-colors"
+                          className="bg-white/8 border border-white/25 text-white/80 hover:bg-white/15 text-[10px] font-bold py-2 px-3 rounded-lg transition-colors"
                         >
                           تجاهل
                         </button>
@@ -82,11 +78,11 @@ export default function NotificationInbox() {
                       <div className="text-xs font-bold text-white mt-1 flex items-center gap-1.5 flex-wrap">
                         <span>✅</span> تم اتخاذ الإجراء
                         {alert.resolvedBy === 'ai' ? (
-                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">
+                          <span className="text-[10px] bg-purple-500/15 text-purple-200 px-1.5 py-0.5 rounded font-bold border border-purple-300/30">
                             🤖 AI
                           </span>
                         ) : (
-                          <span className="text-[10px] glass glass-card text-white/65 px-1.5 py-0.5 rounded font-bold border">
+                          <span className="text-[10px] bg-white/8 text-white/80 px-1.5 py-0.5 rounded font-bold border border-white/25">
                             👤 بشري
                           </span>
                         )}

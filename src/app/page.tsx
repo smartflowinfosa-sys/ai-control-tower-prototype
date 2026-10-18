@@ -7,22 +7,22 @@ export default function DashboardPage() {
   const kpis = mockOperationService.getDashboardKPIs();
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-6">
+    <div className="page-shell dashboard-page">
       <DemoAlertTrigger />
       
-      {/* Title Container with 28px radius */}
-      <header className="glass rounded-[24px] p-6 mb-6">
+      {/* Title Container with 24px radius */}
+      <header className="glass page-header">
         <h1 className="text-3xl font-extrabold text-white tracking-tight">
           لوحة القيادة التشغيلية (Control Tower)
         </h1>
-        <p className="text-white/65 font-semibold text-sm mt-1.5">
+        <p className="text-white/80 font-semibold text-sm mt-1.5">
           مراقبة الأداء اللحظي وسلاسل الإمداد لعمليات مطاعم زاهي (Zahi)
         </p>
       </header>
 
       <AIAutonomyControl />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="dashboard-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <KPIWidget 
           title="إجمالي الطلبات" 
           value={kpis.totalOrders} 

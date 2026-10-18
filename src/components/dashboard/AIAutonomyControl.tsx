@@ -29,19 +29,19 @@ export default function AIAutonomyControl() {
   const currentConfig = autonomyConfig[level];
 
   return (
-    <div className="glass rounded-[24px] p-6 transition-all duration-300 mb-6">
+    <div className="glass autonomy-panel">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+          <h2 className="autonomy-heading font-extrabold text-white flex items-center gap-2">
             <span className="text-xl">🧠</span> مستوى تحكم الـ Agent
           </h2>
-          <p className="text-xs mt-1 font-semibold text-white/65">
+          <p className="autonomy-description mt-1 font-semibold text-white/80">
             الوضع الحالي: {currentConfig.desc}
           </p>
         </div>
 
         {/* Animated Segmented Control Capsule */}
-        <div className="glass glass-card p-1.5 rounded-full flex relative flex-wrap sm:flex-nowrap border">
+        <div className="glass-inset autonomy-segments flex relative flex-wrap sm:flex-nowrap">
           {(Object.keys(autonomyConfig) as AutonomyLevel[]).map(key => {
             const isActive = level === key;
             const Icon = autonomyConfig[key].icon;
@@ -51,21 +51,22 @@ export default function AIAutonomyControl() {
                 key={key}
                 type="button"
                 onClick={() => setLevel(key)}
-                className={`autonomy-option relative z-10 flex items-center justify-center gap-2 px-4 py-2 text-xs md:text-sm font-bold rounded-full transition-colors duration-300 cursor-pointer ${
-                  isActive ? 'text-white font-extrabold' : 'text-white/65 hover:text-white hover:bg-white/10'
+                aria-pressed={isActive}
+                className={`autonomy-option relative z-10 flex items-center justify-center gap-2 px-4 py-2 text-xs md:text-sm font-bold rounded-full transition-colors duration-200 cursor-pointer ${
+                  isActive ? 'text-white font-extrabold' : 'text-white/80 hover:text-white hover:bg-white/15'
                 }`}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeAutonomyTab"
-                    className="absolute inset-0 glass glass-active rounded-full -z-10"
+                    className="absolute inset-0 glass-active rounded-full -z-10"
                     transition={{ type: "spring", stiffness: 300, damping: 25 }}
                   />
                 )}
                 <div className="relative flex items-center gap-1.5">
                   <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-white/65'}`} />
                   {isActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/85 animate-pulse shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/65 shrink-0" />
                   )}
                 </div>
                 <span>{autonomyConfig[key].label}</span>
