@@ -1,7 +1,11 @@
 export interface InventoryItem {
   id: string;
   name: string;
+  item_name_ar?: string;
+  item_name_en?: string;
   category: string;
+  category_ar?: string;
+  category_en?: string;
   currentStock: number;
   minThreshold: number;
   maxCapacity: number;
@@ -9,6 +13,16 @@ export interface InventoryItem {
   unitCost: number; // in SAR
   lastRestocked: string;
   dailyConsumption: number;
+}
+
+export interface MenuItem {
+  id?: string;
+  meal_name_ar: string;
+  meal_name_en?: string;
+  category_ar?: string;
+  category_en?: string;
+  price?: number;
+  is_active?: boolean;
 }
 
 export interface SupplierQuote {
@@ -118,7 +132,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-1',
     name: 'بوكس وجبة زاهي',
+    item_name_ar: 'بوكس وجبة زاهي',
+    item_name_en: 'Zahi Meal Box',
     category: 'تغليف وعلب',
+    category_ar: 'تغليف وعلب',
+    category_en: 'Packaging & Boxes',
     currentStock: 850,
     minThreshold: 500,
     maxCapacity: 2000,
@@ -130,7 +148,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-2',
     name: 'كيس ورقي',
+    item_name_ar: 'كيس ورقي',
+    item_name_en: 'Paper Bag Holder',
     category: 'أكياس Holder',
+    category_ar: 'أكياس Holder',
+    category_en: 'Bags & Holders',
     currentStock: 1400,
     minThreshold: 1000,
     maxCapacity: 3500,
@@ -142,7 +164,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-3',
     name: 'سليف الوجبة',
+    item_name_ar: 'سليف الوجبة',
+    item_name_en: 'Meal Sleeve',
     category: 'تغليف وعلب',
+    category_ar: 'تغليف وعلب',
+    category_en: 'Packaging & Boxes',
     currentStock: 420,
     minThreshold: 500,
     maxCapacity: 1500,
@@ -154,7 +180,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-4',
     name: 'علبة صوص 2 أونص',
+    item_name_ar: 'علبة صوص 2 أونص',
+    item_name_en: '2oz Sauce Container',
     category: 'علب وبلاستيك',
+    category_ar: 'علب وبلاستيك',
+    category_en: 'Containers & Plastics',
     currentStock: 3200,
     minThreshold: 2000,
     maxCapacity: 6000,
@@ -166,7 +196,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-5',
     name: 'أدوات المائدة',
+    item_name_ar: 'أدوات المائدة',
+    item_name_en: 'Cutlery Set',
     category: 'مستلزمات تقديم',
+    category_ar: 'مستلزمات تقديم',
+    category_en: 'Serving Cutlery',
     currentStock: 1350,
     minThreshold: 1500,
     maxCapacity: 4000,
@@ -178,7 +212,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-6',
     name: 'صحن مقاس 24',
+    item_name_ar: 'صحن مقاس 24',
+    item_name_en: 'Plate Size 24',
     category: 'صحون وأطباق',
+    category_ar: 'صحون وأطباق',
+    category_en: 'Plates & Dishes',
     currentStock: 740,
     minThreshold: 800,
     maxCapacity: 2000,
@@ -190,7 +228,11 @@ export const initialInventoryItems: InventoryItem[] = [
   {
     id: 'inv-7',
     name: 'صحن مقاس 32',
+    item_name_ar: 'صحن مقاس 32',
+    item_name_en: 'Plate Size 32',
     category: 'صحون وأطباق',
+    category_ar: 'صحون وأطباق',
+    category_en: 'Plates & Dishes',
     currentStock: 1100,
     minThreshold: 800,
     maxCapacity: 2000,

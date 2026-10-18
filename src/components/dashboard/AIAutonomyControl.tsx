@@ -3,29 +3,32 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, Zap, Bot } from 'lucide-react';
+import { useLanguage } from '@/components/common/LanguageContext';
 
 type AutonomyLevel = 'COPILOT' | 'SEMI_AUTO' | 'FULL_AUTO';
 
-const autonomyConfig = {
-  COPILOT: {
-    label: 'مساعد (Copilot)',
-    desc: 'يراقب العمليات ويقترح الإجراءات لاعتمادها',
-    icon: Eye,
-  },
-  SEMI_AUTO: {
-    label: 'شبه مستقل (Semi-Auto)',
-    desc: 'يحل المشاكل البسيطة تلقائياً ويصعد المعقدة للإدارة',
-    icon: Zap,
-  },
-  FULL_AUTO: {
-    label: 'مستقل بالكامل (Full-Auto)',
-    desc: 'أتمتة كاملة للقرارات التشغيلية الذكية لزاهي',
-    icon: Bot,
-  },
-};
-
 export default function AIAutonomyControl() {
+  const { t } = useLanguage();
   const [level, setLevel] = useState<AutonomyLevel>('SEMI_AUTO');
+
+  const autonomyConfig = {
+    COPILOT: {
+      label: t('dashboard.copilotLabel'),
+      desc: t('dashboard.copilotDesc'),
+      icon: Eye,
+    },
+    SEMI_AUTO: {
+      label: t('dashboard.semiAutoLabel'),
+      desc: t('dashboard.semiAutoDesc'),
+      icon: Zap,
+    },
+    FULL_AUTO: {
+      label: t('dashboard.fullAutoLabel'),
+      desc: t('dashboard.fullAutoDesc'),
+      icon: Bot,
+    },
+  };
+
   const currentConfig = autonomyConfig[level];
 
   return (
@@ -33,10 +36,10 @@ export default function AIAutonomyControl() {
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h2 className="autonomy-heading font-extrabold text-white flex items-center gap-2">
-            <span className="text-xl">🧠</span> مستوى تحكم الـ Agent
+            <span className="text-xl">🧠</span> {t('dashboard.autonomyHeading')}
           </h2>
           <p className="autonomy-description mt-1 font-semibold text-white/80">
-            الوضع الحالي: {currentConfig.desc}
+            {t('dashboard.currentMode')} {currentConfig.desc}
           </p>
         </div>
 

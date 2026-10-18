@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Bot, Mic, MicOff, X } from 'lucide-react';
 import { mockOperationService } from '@/application/services/mockOperationService';
 import { useNotification } from '@/components/common/NotificationContext';
+import { useLanguage } from '@/components/common/LanguageContext';
 import { initialInventoryItems, addPurchaseOrderToSession, PurchaseOrder } from '@/lib/mockInventoryData';
 
 interface Message {
@@ -15,6 +16,7 @@ interface Message {
 }
 
 export default function AIAssistantWidget() {
+  const { lang, t, isRtl } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -25,7 +27,7 @@ export default function AIAssistantWidget() {
     {
       id: 'msg-1',
       sender: 'user',
-      text: 'ما أكثر المشاكل خطورة الآن؟',
+      text: lang === 'en' ? 'What are the most critical issues right now?' : 'ما أكثر المشاكل خطورة الآن؟',
     },
     {
       id: 'msg-2',
@@ -33,14 +35,22 @@ export default function AIAssistantWidget() {
       text: (
         <>
           <p className="mb-3 leading-relaxed">
-            لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ "الأرز".
+            {lang === 'en' ? (
+              <>We have a <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">critical issue (High Risk)</strong> in <strong className="text-white">Zahi</strong> regarding packaging data conflict for order <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> due to customer removing &quot;Rice&quot;.</>
+            ) : (
+              <>لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ &quot;الأرز&quot;.</>
+            )}
           </p>
           <p className="mb-3 leading-relaxed">
-            وقد قمت للتو <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨
+            {lang === 'en' ? (
+              <>I have just <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">automatically halted packaging</strong> and sent an instant alert to the operations supervisor. 🚨</>
+            ) : (
+              <>وقد قمت للتو <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨</>
+            )}
           </p>
           <div className="mt-3 pt-3 border-t border-white/14 text-xs text-white/65 font-bold flex items-start gap-1">
             <span>⚠️</span>
-            <span>وهناك أيضاً تأخير محتمل في طلب زاهي (ZH-1092) بسبب الازدحام.</span>
+            <span>{lang === 'en' ? 'There is also a potential delivery delay in Zahi order (ZH-1092) due to rush hour.' : 'وهناك أيضاً تأخير محتمل في طلب زاهي (ZH-1092) بسبب الازدحام.'}</span>
           </div>
         </>
       ),
@@ -83,7 +93,7 @@ export default function AIAssistantWidget() {
 
     try {
       const recognition = new SpeechRecognition();
-      recognition.lang = 'ar-SA';
+      recognition.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
       recognition.continuous = false;
       recognition.interimResults = true;
 
@@ -236,7 +246,7 @@ export default function AIAssistantWidget() {
   };
 
   return (
-    <div className="chat-anchor fixed bottom-6 left-6 z-50 flex flex-col items-start gap-4">
+    <div className={`chat-anchor fixed bottom-6 z-50 flex flex-col items-start gap-4 ${isRtl ? 'left-6' : 'right-6'}`}>
       {/* Floating Chat Modal */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.85, y: 30 }}
@@ -255,19 +265,19 @@ export default function AIAssistantWidget() {
               </div>
               <div>
                 <h3 className="font-extrabold text-sm tracking-wide flex items-center gap-1.5 text-white">
-                  برج مراقبة زاهي
+                  {t('chat.headerTitle')}
                   <span className="text-[10px] bg-teal-500/15 border border-teal-300/30 text-teal-100 px-1.5 py-0.5 rounded-md font-bold">AI</span>
                 </h3>
                 <p className="text-xs text-white/80 flex items-center gap-1 mt-0.5 font-bold">
                   <span className="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
-                  وكيل العمليات الذكي متصل
+                  {t('chat.headerStatus')}
                 </p>
               </div>
             </div>
             <button 
               onClick={() => setIsOpen(false)} 
               className="text-white/80 hover:text-white transition-colors bg-white/8 hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center border border-white/30 cursor-pointer"
-              title="إغلاق النافذة"
+              title={t('chat.closeTooltip')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -281,8 +291,8 @@ export default function AIAssistantWidget() {
               key={msg.id} 
               className={`p-3.5 rounded-2xl max-w-[85%] text-sm relative transition-all break-words ${
                 msg.sender === 'user' 
-                  ? 'self-end bg-white/8 border border-white/60 text-white rounded-tr-xs font-semibold '
-                  : 'self-start bg-teal-600/10 border border-teal-300/30 text-white rounded-tl-xs font-semibold '
+                  ? 'self-end bg-white/8 border border-white/60 text-white rounded-tr-xs font-semibold'
+                  : 'self-start bg-teal-600/10 border border-teal-300/30 text-white rounded-tl-xs font-semibold'
               }`}
             >
               {msg.sender === 'ai' && (
@@ -293,7 +303,7 @@ export default function AIAssistantWidget() {
           ))}
           
           {isTyping && (
-            <div className="self-start bg-teal-600/10 border border-teal-300/30 p-3.5 rounded-[18px] rounded-tl-xs max-w-[85%] flex gap-1.5 items-center h-12 ">
+            <div className="self-start bg-teal-600/10 border border-teal-300/30 p-3.5 rounded-[18px] rounded-tl-xs max-w-[85%] flex gap-1.5 items-center h-12">
               <div className="w-2 h-2 bg-teal-600 rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-teal-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
               <div className="w-2 h-2 bg-teal-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
@@ -305,7 +315,7 @@ export default function AIAssistantWidget() {
         <div className="p-3 border-t border-white/30 flex items-center gap-2">
           <input 
             type="text" 
-            placeholder={isListening ? "🎙️ جاري الاستماع لصوتك..." : "اسأل الذكاء الاصطناعي لزاهي..."} 
+            placeholder={isListening ? t('chat.listening') : t('chat.inputPlaceholder')} 
             className="flex-1 border border-white/35 bg-white/8 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-white/25 focus:bg-white/8 transition-all text-white placeholder:text-white/65 font-medium"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -316,7 +326,7 @@ export default function AIAssistantWidget() {
           <button
             type="button"
             onClick={toggleListening}
-            title={isListening ? "إيقاف التسجيل الصوتي" : "تحدث بصوتك (Speech-to-Text)"}
+            title={isListening ? t('chat.stopRecording') : t('chat.speakTooltip')}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               isListening
                 ? 'bg-rose-500/20 border border-rose-400/50 text-rose-200 animate-pulse'
@@ -331,7 +341,7 @@ export default function AIAssistantWidget() {
             type="button"
             onClick={handleSend}
             disabled={!inputValue.trim() || isTyping}
-            className="bg-white/20 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2.5 w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 font-extrabold "
+            className="bg-white/20 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2.5 w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 font-extrabold"
           >
             ↑
           </button>
@@ -351,7 +361,7 @@ export default function AIAssistantWidget() {
               ? 'text-white rotate-90'
               : 'text-white hover:bg-white/15'
           }`}
-          title="مساعد زاهي الذكي (AI Operations Agent)"
+          title={t('chat.launcherTooltip')}
         >
           {isOpen ? <X className="w-6 h-6" /> : <Bot className="w-7 h-7" />}
         </button>

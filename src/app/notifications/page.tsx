@@ -1,10 +1,12 @@
 "use client";
 
 import { useNotification } from '@/components/common/NotificationContext';
+import { useLanguage } from '@/components/common/LanguageContext';
 import { Bell, Bot, Check, RotateCcw, User } from 'lucide-react';
 
 export default function NotificationsPage() {
   const { notifications, resolveNotification, ignoreNotification, undoNotification } = useNotification();
+  const { lang, t } = useLanguage();
 
   const pendingList = notifications.filter(n => n.status === 'pending');
   const resolvedList = notifications.filter(n => n.status !== 'pending');
@@ -14,14 +16,14 @@ export default function NotificationsPage() {
       <header className="glass page-header mb-6">
         <h1 className="text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight">
           <Bell className="w-8 h-8 text-white" />
-          <span>مركز الإشعارات (Notification Center)</span>
+          <span>{t('notifications.title')}</span>
         </h1>
-        <p className="text-white/80 font-semibold text-sm mt-2">سجل التنبيهات التشغيلية التي تتطلب تدخلك</p>
+        <p className="text-white/80 font-semibold text-sm mt-2">{t('notifications.subtitle')}</p>
       </header>
 
       <div className="mb-8">
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <span>إشعارات بانتظار الإجراء</span>
+          <span>{t('notifications.pendingTitle')}</span>
           <span className="bg-rose-500/15 text-rose-200 border border-rose-300/30 text-xs px-2.5 py-0.5 rounded-full font-bold font-mono">
             {pendingList.length}
           </span>
@@ -30,7 +32,7 @@ export default function NotificationsPage() {
         {pendingList.length === 0 ? (
           <div className="glass text-white/80 text-center py-12 font-medium">
             <div className="text-4xl mb-3 opacity-60">✨</div>
-            العمليات مستقرة، لا توجد تنبيهات معلقة حالياً
+            {t('notifications.allClear')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -54,15 +56,15 @@ export default function NotificationsPage() {
                 <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
                   <button 
                     onClick={() => resolveNotification(alert.id)}
-                    className="flex-1 md:flex-none bg-white/20 hover:bg-white/25 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-all whitespace-nowrap cursor-pointer "
+                    className="flex-1 md:flex-none bg-white/20 hover:bg-white/25 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-all whitespace-nowrap cursor-pointer"
                   >
-                    تنفيذ الإجراء
+                    {t('notifications.executeAction')}
                   </button>
                   <button 
                     onClick={() => ignoreNotification(alert.id)}
                     className="flex-1 md:flex-none bg-white/8 border border-white/25 hover:bg-white/15 text-white/80 text-xs font-bold py-2.5 px-4 rounded-xl transition-colors cursor-pointer"
                   >
-                    تجاهل
+                    {lang === 'ar' ? 'تجاهل' : 'Ignore'}
                   </button>
                 </div>
               </div>
@@ -72,10 +74,10 @@ export default function NotificationsPage() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold text-white mb-4">أرشيف الإجراءات (History)</h2>
+        <h2 className="text-xl font-bold text-white mb-4">{lang === 'ar' ? 'أرشيف الإجراءات (History)' : 'Action History'}</h2>
         
         {resolvedList.length === 0 ? (
-          <div className="glass text-white/65 text-sm text-center py-6 ">لا يوجد سجل سابق</div>
+          <div className="glass text-white/65 text-sm text-center py-6">{lang === 'ar' ? 'لا يوجد سجل سابق' : 'No history records'}</div>
         ) : (
           <div className="space-y-3">
             {resolvedList.map(alert => (

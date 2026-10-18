@@ -15,7 +15,7 @@
 
 body {
   color: var(--foreground);
-  font-family: var(--font-tajawal),Arial,sans-serif;
+  font-family: var(--font-tajawal), var(--font-inter), Arial, sans-serif;
   background: transparent;
   isolation: isolate;
   text-shadow: 0 1px 2px rgba(0,0,0,.22);
@@ -220,7 +220,9 @@ body::before {
   position: sticky;
   top: 26px;
   height: calc(100dvh - 52px);
-  margin: 26px 18px 26px 0;
+  margin: 26px 0;
+  margin-inline-start: 18px;
+  margin-inline-end: 0;
   padding: 24px 16px 14px;
   width: 292px;
   flex-shrink: 0;
@@ -236,6 +238,8 @@ body::before {
   top: 16px;
   height: calc(100dvh - 32px);
   margin-block: 16px;
+  margin-inline-start: 18px;
+  margin-inline-end: 0;
   padding: clamp(24px,calc(4dvh - 1.6px),32px) clamp(12px,calc(2dvh - .8px),16px) clamp(10px,calc(2dvh - 2.8px),14px);
   align-items: center;
 }

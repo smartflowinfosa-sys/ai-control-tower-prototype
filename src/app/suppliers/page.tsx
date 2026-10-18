@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
+import { useLanguage } from '@/components/common/LanguageContext';
 import {
   initialSuppliers,
   initialInventoryItems,
@@ -53,6 +54,7 @@ const toEnglishDigits = (str: string | number): string => {
 };
 
 export default function SuppliersPage() {
+  const { lang, t } = useLanguage();
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
   const [analyzingItemId, setAnalyzingItemId] = useState<string | null>('inv-5'); // Default analyze "أدوات المائدة"
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
@@ -288,11 +290,11 @@ export default function SuppliersPage() {
               <Truck className="w-6 h-6" />
             </span>
             <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-              إدارة الموردين والمشتريات الذكية
+              {t('suppliers.title')}
             </h1>
           </div>
           <p className="text-white/65 text-sm mt-1.5">
-            لوحة تتبع أوامر الشراء التفاعلية، بطاقات تقييم الموردين، والمفاضلة الذكية بعروض الأسعار
+            {t('suppliers.subtitle')}
           </p>
         </div>
 

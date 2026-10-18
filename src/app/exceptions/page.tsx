@@ -5,6 +5,7 @@ import ExceptionCard from '@/components/exceptions/ExceptionCard';
 import { mockOperationService } from '@/application/services/mockOperationService';
 import SmartFilterBar from '@/components/common/SmartFilterBar';
 import { useNotification } from '@/components/common/NotificationContext';
+import { useLanguage } from '@/components/common/LanguageContext';
 import { OperationalException } from '@/domain/types/exception';
 
 const riskWeight: Record<string, number> = {
@@ -15,6 +16,7 @@ const riskWeight: Record<string, number> = {
 };
 
 export default function ExceptionsPage() {
+  const { t } = useLanguage();
   const [selectedBrand, setSelectedBrand] = useState('zahi');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedRisk, setSelectedRisk] = useState('ALL');
@@ -78,10 +80,10 @@ export default function ExceptionsPage() {
       <header className="glass page-header mb-6">
         <h1 className="text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight">
           <span className="w-3 h-3 rounded-full bg-teal-600 animate-pulse" />
-          مركز الاستثناءات (AI Exceptions)
+          {t('exceptions.title')}
         </h1>
         <p className="text-white/80 font-semibold text-sm mt-1.5">
-          الحالات التشغيلية التي تتطلب الانتباه والتدخل في مطاعم زاهي (Zahi)
+          {t('exceptions.subtitle')}
         </p>
       </header>
 
@@ -100,9 +102,9 @@ export default function ExceptionsPage() {
           <div className="flex items-center gap-3">
             <span className="text-3xl">✨</span>
             <div>
-              <h3 className="font-extrabold text-white text-lg">إجراءات مجمعة ذكية (Smart Bulk Actions)</h3>
+              <h3 className="font-extrabold text-white text-lg">{t('exceptions.bulkTitle')}</h3>
               <p className="text-sm text-white/80 font-semibold mt-1">
-                يوجد <strong className="text-white font-extrabold">{eligibleForBulk.length}</strong> حالة بسيطة/متوسطة مقترحة للحل التلقائي بواسطة الذكاء الاصطناعي.
+                {t('common.all')} <strong className="text-white font-extrabold">{eligibleForBulk.length}</strong> {t('exceptions.bulkDesc')}
               </p>
             </div>
           </div>
@@ -110,7 +112,7 @@ export default function ExceptionsPage() {
             onClick={handleBulkResolve}
             className="bg-white/20 hover:bg-white/25 text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap active:scale-95 cursor-pointer text-sm "
           >
-            تنفيذ الإجراءات المجمعة بنقرة واحدة ⚡
+            {t('exceptions.bulkBtn')}
           </button>
         </div>
       )}
@@ -123,7 +125,7 @@ export default function ExceptionsPage() {
         ) : (
           <div className="col-span-full glass text-center py-16 text-white/80 font-bold border">
             <div className="text-4xl mb-4">👍</div>
-            لا توجد استثناءات نشطة تتطابق مع الفلتر المختار
+            {t('exceptions.noExceptions')}
           </div>
         )}
       </div>
