@@ -105,7 +105,7 @@ export function sortSuppliersByDefault(list: SupabaseSupplier[]): SupabaseSuppli
 export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('*')
+    .select('item_code, item_name_ar, item_name_en, current_stock, reorder_level, cost_per_unit, category_ar, category_en')
     .order('item_code', { ascending: true });
 
   if (error) {
@@ -149,7 +149,7 @@ function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): Sup
 export async function fetchSuppliers(): Promise<SupabaseSupplier[]> {
   const { data, error } = await supabase
     .from('suppliers')
-    .select('*')
+    .select('id, name_ar, name_en, delivery_time_hours, rating, location_ar, location_en, cr_number, tax_number, phone_number, created_at')
     .order('created_at', { ascending: true });
 
   if (error) {

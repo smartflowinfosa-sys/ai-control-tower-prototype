@@ -21,16 +21,14 @@ body {
   text-shadow: 0 1px 2px rgba(0,0,0,.22);
 }
 
-/* Independent photograph layer: no overlay or clipping of glass surfaces. */
+/* Background photograph layer is optimized & preloaded via Next.js Image in layout.tsx */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: url('/bg_plants.jpg') center 75% / cover no-repeat;
-  filter: blur(10px);
-  transform: scale(1.06);
+  background: transparent;
 }
 
 @layer components {

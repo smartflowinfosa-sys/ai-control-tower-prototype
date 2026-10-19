@@ -146,24 +146,32 @@ export default function AIAssistantWidget() {
         suggestedAction: e.suggestedAction
       }));
 
-      const activeOrders = mockOperationService.getAllOrders().map(o => ({
-        id: o.id,
-        orderNumber: o.orderNumber,
-        status: o.status,
-        brand: o.brand,
-        isDelayed: o.deliveryStatus?.isDelayed
-      }));
+      // Optimized context payload: send only active (non-delivered) orders and relevant items to drastically reduce latency & tokens
+      const activeOrders = mockOperationService
+        .getAllOrders()
+        .filter(o => o.status !== 'DELIVERED')
+        .slice(0, 15)
+        .map(o => ({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          status: o.status,
+          brand: o.brand,
+          isDelayed: o.deliveryStatus?.isDelayed
+        }));
 
       const contextData = {
         activeExceptions,
         activeOrders,
-        inventoryStatus: initialInventoryItems.map(i => ({
-          name: i.name,
-          currentStock: i.currentStock,
-          minThreshold: i.minThreshold,
-          unit: i.unit,
-          category: i.category
-        }))
+        inventoryStatus: initialInventoryItems
+          .filter(i => i.currentStock <= i.minThreshold * 1.5 || i.currentStock < 500)
+          .slice(0, 15)
+          .map(i => ({
+            name: i.name,
+            currentStock: i.currentStock,
+            minThreshold: i.minThreshold,
+            unit: i.unit,
+            category: i.category
+          }))
       };
 
       const res = await fetch('/api/chat', {

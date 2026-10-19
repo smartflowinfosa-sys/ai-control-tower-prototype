@@ -4,6 +4,7 @@ import OpenAI from "openai";
 const openai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY,
+  timeout: 15000, // 15s timeout to eliminate hanging requests
 });
 
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -66,10 +67,23 @@ export async function POST(req: NextRequest) {
 
     if (!process.env.OPENROUTER_API_KEY) {
       return NextResponse.json(
-        { error: "OPENROUTER_API_KEY is missing in .env" },
+        { error: "خدمة الذكاء الاصطناعي غير متوفرة حالياً (يرجى التحقق من مفتاح الخدمة في البيئة)." },
         { status: 500 }
       );
     }
+
+    // Compact context data to minimize token payload and latency
+    const compactContext = {
+      activeExceptions: Array.isArray(contextData?.activeExceptions)
+        ? contextData.activeExceptions.slice(0, 8)
+        : [],
+      activeOrders: Array.isArray(contextData?.activeOrders)
+        ? contextData.activeOrders.filter((o: any) => o.status !== 'DELIVERED').slice(0, 10)
+        : [],
+      inventoryStatus: Array.isArray(contextData?.inventoryStatus)
+        ? contextData.inventoryStatus.slice(0, 15)
+        : [],
+    };
 
     const systemInstruction = `أنت AI Operations Agent متطور مسؤول عن مراقبة وتوجيه عمليات مطاعم (زاهي) وإدارة سلسلة الإمداد والمخزون. مدير العمليات يسألك الآن.
 استخدم البيانات التشغيلية المرفقة للإجابة بدقة، باختصار، وباحترافية شديدة.
@@ -82,7 +96,7 @@ export async function POST(req: NextRequest) {
 6. إذا طلب المستخدم إنشاء أو إرسال أمر شراء لمادة من المخزون أو الموافقة على توريد، قم باستدعاء أداة create_purchase_order مع (itemId, supplierName, quantity).
 
 البيانات التشغيلية الحالية (Context):
-${JSON.stringify(contextData)}
+${JSON.stringify(compactContext)}
 `;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -90,10 +104,11 @@ ${JSON.stringify(contextData)}
       { role: "user", content: prompt },
     ];
 
-    // Priority model: "google/gemini-1.5-pro:free", then fallback to "google/gemini-1.5-flash:free", then "openrouter/free"
+    // Priority model: fast Flash tier first for sub-second latency, then fallback
     const modelCandidates = [
-      process.env.OPENROUTER_MODEL || "google/gemini-1.5-pro:free",
-      "google/gemini-1.5-flash:free",
+      process.env.OPENROUTER_MODEL || "google/gemini-1.5-flash:free",
+      "google/gemini-1.5-pro:free",
+      "meta-llama/llama-3.3-70b-instruct:free",
       "openrouter/free",
     ];
 
@@ -110,11 +125,18 @@ ${JSON.stringify(contextData)}
         if (completion) break;
       } catch (err: any) {
         lastError = err;
+        console.warn(`Model ${model} failed on OpenRouter (${err?.status || err?.message}), attempting fallback...`);
+        // Fallback on 400 (invalid model), 429 (rate limit), 502/503/504 (gateway), or timeout
         if (
-          err?.status === 400 &&
-          (err?.message?.includes("not a valid model ID") || err?.message?.includes("not found"))
+          err?.status === 400 ||
+          err?.status === 404 ||
+          err?.status === 429 ||
+          err?.status === 502 ||
+          err?.status === 503 ||
+          err?.status === 504 ||
+          err?.name === "APIConnectionTimeoutError" ||
+          err?.code === "ETIMEDOUT"
         ) {
-          console.warn(`Model ${model} unavailable on OpenRouter, trying fallback...`);
           continue;
         }
         throw err;
@@ -181,9 +203,16 @@ ${JSON.stringify(contextData)}
     });
   } catch (error: any) {
     console.error("OpenRouter API Error:", error);
+    // Sanitize user-facing error to protect internal architecture details
+    const safeMessage = error?.status === 429
+      ? "الخدمة تشهد ضغطاً عالياً حالياً، يرجى المحاولة بعد لحظات."
+      : error?.name === "APIConnectionTimeoutError"
+      ? "استغرقت استجابة الذكاء الاصطناعي وقتاً أطول من المعتاد، يرجى إعادة المحاولة."
+      : "حدث تعذر مؤقت في معالجة طلب الذكاء الاصطناعي.";
+
     return NextResponse.json(
-      { error: error?.message || "حدث خطأ غير معروف في خوادم OpenRouter." },
-      { status: 500 }
+      { error: safeMessage },
+      { status: error?.status && error.status >= 400 && error.status < 600 ? error.status : 500 }
     );
   }
 }
