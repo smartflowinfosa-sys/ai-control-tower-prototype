@@ -6,13 +6,13 @@ import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
 import { useLanguage } from '@/components/common/LanguageContext';
 import {
-  initialInventoryItems,
+  initialInventoryItems as mockInventoryItems,
   supplierQuotesMatrix,
   PurchaseOrder,
   getSessionPurchaseOrders,
   addPurchaseOrderToSession
 } from '@/lib/mockInventoryData';
-import { SupabaseSupplier, addSupplier, updateSupplier, sortSuppliersByDefault } from '@/lib/supabaseService';
+import { SupabaseSupplier, SupabaseInventoryItem, addSupplier, updateSupplier, sortSuppliersByDefault } from '@/lib/supabaseService';
 import {
   Clock,
   Mail,
@@ -55,18 +55,39 @@ const toEnglishDigits = (str: string | number): string => {
 
 interface SuppliersClientProps {
   initialSuppliers: SupabaseSupplier[];
+  initialInventoryItems?: SupabaseInventoryItem[];
   fetchError?: string | null;
 }
 
 export default function SuppliersClient({
   initialSuppliers,
+  initialInventoryItems = [],
   fetchError
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
+
+  // Resolve inventory items from database or fallback to mock data
+  const availableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
+    ? initialInventoryItems
+    : mockInventoryItems.map(m => ({
+        item_code: m.id,
+        item_name_ar: m.name,
+        item_name_en: m.item_name_en || m.name,
+        current_stock: m.currentStock,
+        reorder_level: m.minThreshold,
+        cost_per_unit: m.unitCost,
+        category_ar: m.category,
+        category_en: m.category_en,
+      }));
   
   // State initialization directly from Supabase props (strictly sorted by default order)
   const [suppliers, setSuppliers] = useState<SupabaseSupplier[]>(() => sortSuppliersByDefault(initialSuppliers || []));
-  const [analyzingItemId, setAnalyzingItemId] = useState<string | null>('inv-5'); // Default analyze "أدوات المائدة"
+  const [analyzingItemId, setAnalyzingItemId] = useState<string>(() => {
+    if (initialInventoryItems && initialInventoryItems.length > 0) {
+      return initialInventoryItems[0].item_code;
+    }
+    return 'P1';
+  });
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
@@ -79,6 +100,12 @@ export default function SuppliersClient({
       setSuppliers(sortSuppliersByDefault(initialSuppliers));
     }
   }, [initialSuppliers]);
+
+  useEffect(() => {
+    if (initialInventoryItems && initialInventoryItems.length > 0 && !analyzingItemId) {
+      setAnalyzingItemId(initialInventoryItems[0].item_code);
+    }
+  }, [initialInventoryItems, analyzingItemId]);
 
   // PO Edit State
   const [isEditingPO, setIsEditingPO] = useState<boolean>(false);
@@ -118,22 +145,22 @@ export default function SuppliersClient({
     };
   }, []);
 
-  const lowStockItems = initialInventoryItems.filter(item => item.currentStock <= item.minThreshold);
+  const lowStockItems = availableItems.filter(item => (item.current_stock ?? 0) <= (item.reorder_level ?? 0));
 
   const handleAnalyzeQuotes = (itemId: string) => {
     setAnalyzingItemId(itemId);
   };
 
   const handleQuickOrder = (supplierName: string, itemName: string) => {
-    const matchedItem = initialInventoryItems.find(i => i.name === itemName);
-    const unitCost = matchedItem ? matchedItem.unitCost : 0.45;
+    const matchedItem = availableItems.find(i => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === analyzingItemId);
+    const unitCost = matchedItem?.cost_per_unit || 0.45;
     const quantity = 2500;
     const totalCost = Number((quantity * unitCost).toFixed(2));
 
     const newPO: PurchaseOrder = {
       id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
-      itemId: matchedItem ? matchedItem.id : 'inv-quick',
-      itemName: itemName,
+      itemId: matchedItem ? matchedItem.item_code : (analyzingItemId || 'inv-quick'),
+      itemName: matchedItem ? matchedItem.item_name_ar : itemName,
       supplierName: supplierName,
       quantity: quantity,
       totalCost: totalCost,
@@ -179,8 +206,8 @@ export default function SuppliersClient({
   const handleSavePOEdit = () => {
     if (!selectedPO) return;
 
-    const matchedItem = initialInventoryItems.find(i => i.name === selectedPO.itemName);
-    const unitCost = matchedItem ? matchedItem.unitCost : 0.5;
+    const matchedItem = availableItems.find(i => i.item_name_ar === selectedPO.itemName || i.item_code === selectedPO.itemId);
+    const unitCost = matchedItem?.cost_per_unit || 0.5;
     const newTotalCost = Number((editPOQuantity * unitCost).toFixed(2));
 
     const updatedPO: PurchaseOrder = {
@@ -348,8 +375,8 @@ export default function SuppliersClient({
     }, 4500);
   };
 
-  const currentQuotes = analyzingItemId ? supplierQuotesMatrix[analyzingItemId] || [] : [];
-  const selectedItem = initialInventoryItems.find(i => i.id === analyzingItemId);
+  const currentQuotes = analyzingItemId ? (supplierQuotesMatrix[analyzingItemId] || []) : [];
+  const selectedItem = availableItems.find(i => i.item_code === analyzingItemId) || availableItems[0];
   const bestQuote = currentQuotes.length > 0
     ? [...currentQuotes].sort((a, b) => b.aiRecommendationScore - a.aiRecommendationScore)[0]
     : null;
@@ -703,7 +730,7 @@ export default function SuppliersClient({
                   <Bot className="w-5 h-5" />
                 </span>
                 <h2 className="text-xl font-bold text-white">
-                  {lang === 'en' ? 'Smart Bidding Comparison' : 'شاشة المفاضلة الذكية (Smart Bidding Comparison)'}
+                  {lang === 'en' ? 'Price Comparison' : 'مقارنة الأسعار'}
                 </h2>
                 <span className="bg-teal-600/15 border border-teal-300/30 text-teal-100 text-xs px-2.5 py-0.5 rounded-full font-bold">
                   AI Procurement
@@ -717,37 +744,37 @@ export default function SuppliersClient({
             </div>
 
             <div className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
-              <span>{lang === 'en' ? 'Items Requiring Restock:' : 'أصناف تتطلب إعادة توريد:'}</span>
-              <span className="font-extrabold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2 py-0.5 rounded-md">
-                {toEnglishDigits(lowStockItems.length)}
+              <span>{lang === 'en' ? 'Available Items for Comparison:' : 'أصناف متاحة للمقارنة:'}</span>
+              <span className="font-extrabold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2 py-0.5 rounded-md font-mono">
+                {toEnglishDigits(availableItems.length)}
               </span>
             </div>
           </div>
 
-          {/* Sub-navigation Pills */}
-          <div className="flex flex-row items-center gap-2.5 overflow-x-auto pb-1 pt-1 bg-white/8 border border-white/40 p-2 rounded-[18px]">
-            <span className="text-xs font-bold text-white/80 shrink-0 px-2 flex items-center gap-1.5">
+          {/* Item Selector Dropdown */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/8 border border-white/40 p-3 rounded-[18px]">
+            <label htmlFor="compare-item-select" className="text-xs font-bold text-white/90 shrink-0 px-1 flex items-center gap-2">
               <Package className="w-4 h-4 text-white" />
               <span>{lang === 'en' ? 'Choose item to compare:' : 'اختر صنفاً للمقارنة:'}</span>
-            </span>
-            {lowStockItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleAnalyzeQuotes(item.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-                  analyzingItemId === item.id
-                    ? 'bg-teal-600/15 border border-teal-300/30 text-teal-100 scale-[1.02]'
-                    : 'bg-white/8 border border-white/40 text-white/80 hover:text-white hover:bg-white/15'
-                }`}
+            </label>
+            <div className="w-full sm:w-80">
+              <select
+                id="compare-item-select"
+                value={analyzingItemId || ''}
+                onChange={(e) => handleAnalyzeQuotes(e.target.value)}
+                className="w-full glass bg-white/8 border border-white/40 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
               >
-                <span>{lang === 'en' ? (item.item_name_en || item.name) : (item.item_name_ar || item.name)}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-colors ${
-                  analyzingItemId === item.id ? 'bg-teal-600/15 text-teal-100' : 'bg-white/8 text-white/80 border border-white/50'
-                }`}>
-                  {lang === 'en' ? 'Compare' : 'مفاضلة الأسعار'}
-                </span>
-              </button>
-            ))}
+                {availableItems.map(item => {
+                  const code = item.item_code;
+                  const name = lang === 'en' ? (item.item_name_en || item.item_name_ar) : item.item_name_ar;
+                  return (
+                    <option key={code} value={code} className="bg-slate-900 text-white">
+                      {name} ({code})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -760,10 +787,10 @@ export default function SuppliersClient({
                   {lang === 'en' ? 'Available quotes for:' : 'عروض الأسعار المتاحة لصنف:'}
                 </span>
                 <span className="text-teal-100 font-extrabold text-base bg-teal-600/15 border border-teal-300/30 px-3 py-1 rounded-[18px]">
-                  {lang === 'en' ? (selectedItem.item_name_en || selectedItem.name) : (selectedItem.item_name_ar || selectedItem.name)}
+                  {lang === 'en' ? (selectedItem.item_name_en || selectedItem.item_name_ar) : selectedItem.item_name_ar}
                 </span>
                 <span className="text-xs text-white/80 font-semibold bg-white/8 border border-white/40 px-2.5 py-1 rounded-[18px] font-mono">
-                  {lang === 'en' ? 'Current Stock:' : 'المخزون الحالي:'} {toEnglishDigits(selectedItem.currentStock)} / {lang === 'en' ? 'Min Threshold:' : 'الحد الأدنى:'} {toEnglishDigits(selectedItem.minThreshold)}
+                  {lang === 'en' ? 'Current Stock:' : 'المخزون الحالي:'} {toEnglishDigits((selectedItem.current_stock ?? 0).toLocaleString('en-US'))} / {lang === 'en' ? 'Reorder Level:' : 'الحد الأدنى:'} {toEnglishDigits((selectedItem.reorder_level ?? 0).toLocaleString('en-US'))}
                 </span>
               </div>
 
@@ -878,7 +905,7 @@ export default function SuppliersClient({
 
                       {/* Action Button */}
                       <button
-                        onClick={() => handleQuickOrder(quote.supplierName, selectedItem.name)}
+                        onClick={() => handleQuickOrder(quote.supplierName, selectedItem.item_name_ar)}
                         className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer mt-4 ${
                           isBest
                             ? 'bg-white/20 hover:bg-white/25 active:scale-95 text-white '

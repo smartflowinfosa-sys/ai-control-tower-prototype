@@ -277,8 +277,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredItems.map(item => {
           const isLowStock = item.current_stock <= item.reorder_level;
-          const targetCapacity = Math.max(item.current_stock, item.reorder_level * 3);
-          const percentage = Math.min(100, Math.max(8, Math.round((item.current_stock / targetCapacity) * 100)));
+          const percentage = Math.min(100, Math.round((item.current_stock / item.reorder_level) * 100));
           const displayName = getItemDisplayName(item);
           const displayCategory = getItemCategoryDisplay(item);
 
@@ -303,15 +302,20 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                       </span>
                     </div>
                   </div>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-1 rounded-xl border ${
-                      isLowStock
-                        ? 'bg-rose-500/15 text-rose-200 border-rose-300/30 animate-pulse'
-                        : 'bg-teal-500/15 text-teal-100 border-teal-300/30'
-                    }`}
-                  >
-                    {isLowStock ? t('inventory.statusLow') : t('inventory.statusStable')}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-xl border ${
+                        isLowStock
+                          ? 'bg-rose-500/15 text-rose-200 border-rose-300/30 animate-pulse'
+                          : 'bg-teal-500/15 text-teal-100 border-teal-300/30'
+                      }`}
+                    >
+                      {isLowStock ? t('inventory.statusLow') : t('inventory.statusStable')}
+                    </span>
+                    <span className={`text-xs font-mono font-bold ${percentage > 30 ? 'text-teal-500' : 'text-orange-500'}`}>
+                      {toEnglishDigits(percentage)}%
+                    </span>
+                  </div>
                 </div>
 
                 {/* Stock Level Display */}
@@ -332,13 +336,14 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                   <div className="w-full bg-white/8 rounded-full h-2 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        isLowStock ? 'bg-gradient-to-r from-amber-500 to-rose-500' : 'bg-teal-500'
+                        percentage <= 30
+                          ? 'bg-orange-500'
+                          : isLowStock
+                          ? 'bg-gradient-to-r from-amber-500 to-rose-500'
+                          : 'bg-teal-500'
                       }`}
-                      style={{ width: `${percentage}%` }}
+                      style={{ width: `${Math.min(100, Math.max(5, percentage))}%` }}
                     />
-                  </div>
-                  <div className={`text-[10px] text-white/65 mt-1 font-mono ${isRtl ? 'text-left' : 'text-right'}`}>
-                    {t('inventory.coverageLevelLabel')} {toEnglishDigits(percentage)}% ({t('inventory.reorderLevelValue')} {toEnglishDigits(item.reorder_level.toLocaleString('en-US'))})
                   </div>
                 </div>
               </div>
