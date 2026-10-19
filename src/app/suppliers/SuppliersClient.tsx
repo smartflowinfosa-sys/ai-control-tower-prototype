@@ -25,7 +25,6 @@ import {
   Truck,
   Building2,
   MapPin,
-  Phone,
   Layers,
   Tag,
   Package,
@@ -279,7 +278,7 @@ export default function SuppliersClient({
 
     setIsSavingSupplier(true);
     const hours = Number(supplierForm.delivery_time_hours) || 24;
-    const ratingVal = Number(supplierForm.rating) || 4.8;
+    const ratingVal = parseFloat(String(supplierForm.rating)) || 4.8;
     const phoneVal = supplierForm.phone_number || supplierForm.phone || '+966 12 654 3210';
 
     try {
@@ -535,7 +534,7 @@ export default function SuppliersClient({
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {lang === 'en' ? 'Animated Purchase Orders Tracker' : 'لوحة تتبع أوامر الشراء التفاعلية (Animated PO Tracker)'}
+                {lang === 'en' ? 'Purchase Orders Tracker' : 'لوحة تتبع أوامر الشراء'}
               </h2>
               <p className="text-xs text-white/80">
                 {lang === 'en'
@@ -952,7 +951,7 @@ export default function SuppliersClient({
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {lang === 'en' ? 'Supplier Scorecards' : 'بطاقات تقييم الموردين (Supplier Scorecard)'}
+                {lang === 'en' ? 'Supplier Evaluation' : 'تقييم الموردين'}
               </h2>
               <p className="text-xs text-white/80">
                 {lang === 'en'
@@ -1092,17 +1091,6 @@ export default function SuppliersClient({
                       <strong className="text-white font-mono">{toEnglishDigits(sup.tax_number || '—')}</strong>
                     </div>
                   </div>
-                </div>
-
-                {/* Footer */}
-                <div className="pt-4 mt-4 border-t border-white/25 flex justify-between items-center text-xs">
-                  <span className="text-white/80 flex items-center gap-1 font-mono">
-                    <Phone className="w-3 h-3 text-white" />
-                    <span>{toEnglishDigits(sup.phone_number || sup.phone || '+966 12 000 0000')}</span>
-                  </span>
-                  <span className="text-teal-100 font-bold bg-teal-600/15 border border-teal-300/30 px-2.5 py-0.5 rounded-lg font-mono">
-                    {toEnglishDigits(sup.activeOrdersCount ?? 1)} {lang === 'en' ? 'orders' : 'طلبات جارية'}
-                  </span>
                 </div>
               </div>
             );
@@ -1416,11 +1404,14 @@ export default function SuppliersClient({
                   <input
                     type="number"
                     step="0.1"
-                    min="1"
+                    min="0"
                     max="5"
                     required
                     value={supplierForm.rating}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, rating: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSupplierForm({ ...supplierForm, rating: val === '' ? ('' as any) : parseFloat(val) });
+                    }}
                     className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white focus:outline-none font-mono"
                   />
                 </div>
