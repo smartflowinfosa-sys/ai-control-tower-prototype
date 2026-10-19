@@ -91,8 +91,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'profile.securityLevel': 'مستوى التحكم الكامل (Level 4 - Operations Ops)',
 
     // Dashboard Page & KPIs
-    'dashboard.title': 'لوحة القيادة التشغيلية (Control Tower)',
-    'dashboard.subtitle': 'مراقبة الأداء اللحظي وسلاسل الإمداد لعمليات مطاعم زاهي (Zahi)',
+    'dashboard.title': 'لوحة التحكم',
+    'dashboard.subtitle': 'مراقبة الأداء اللحظي وسلاسل الإمداد لعمليات (Zahi)',
     'dashboard.totalOrders': 'إجمالي الطلبات',
     'dashboard.activeOrders': 'الطلبات النشطة',
     'dashboard.openExceptions': 'استثناءات مفتوحة',
@@ -112,7 +112,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Smart Inventory Page
     'inventory.title': 'إدارة المخزون',
-    'inventory.subtitle': 'مراقبة استهلاك المواد التشغيلية والتنبؤ بطلبيات إعادة الشحن التلقائية لعمليات زاهي',
+    'inventory.subtitle': 'مراقبة استهلاك المواد التشغيلية',
     'inventory.supabaseLive': 'قاعدة بيانات مباشرة (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'دليل الموردين والعروض',
     'inventory.dbErrorTitle': 'تنبيه اتصال قاعدة البيانات (Supabase)',
@@ -270,8 +270,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'profile.securityLevel': 'Full Administrative Control (Level 4 - Operations Ops)',
 
     // Dashboard Page & KPIs
-    'dashboard.title': 'Operational Control Tower',
-    'dashboard.subtitle': 'Real-time performance & supply chain monitoring for Zahi restaurants',
+    'dashboard.title': 'Control Panel',
+    'dashboard.subtitle': 'Real-time performance & supply chain monitoring for (Zahi) operations',
     'dashboard.totalOrders': 'Total Orders',
     'dashboard.activeOrders': 'Active Orders',
     'dashboard.openExceptions': 'Open Exceptions',
@@ -291,7 +291,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Smart Inventory Page
     'inventory.title': 'Inventory Management',
-    'inventory.subtitle': 'Monitor consumables consumption and forecast automated restocking for Zahi operations',
+    'inventory.subtitle': 'Monitor consumables consumption',
     'inventory.supabaseLive': 'Live Database (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'Suppliers Directory & Quotes',
     'inventory.dbErrorTitle': 'Database Connection Alert (Supabase)',
