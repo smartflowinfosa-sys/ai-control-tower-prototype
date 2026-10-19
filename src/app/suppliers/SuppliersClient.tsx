@@ -66,8 +66,8 @@ export default function SuppliersClient({
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
 
-  // Resolve inventory items from database or fallback to mock data
-  const availableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
+  // Resolve inventory items from database or fallback to mock data, strictly sorted alphanumerically (P1, P2... P9, P10)
+  const rawAvailableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
     ? initialInventoryItems
     : mockInventoryItems.map(m => ({
         item_code: m.id,
@@ -79,12 +79,16 @@ export default function SuppliersClient({
         category_ar: m.category,
         category_en: m.category_en,
       }));
+
+  const availableItems = [...rawAvailableItems].sort((a, b) =>
+    a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+  );
   
   // State initialization directly from Supabase props (strictly sorted by default order)
   const [suppliers, setSuppliers] = useState<SupabaseSupplier[]>(() => sortSuppliersByDefault(initialSuppliers || []));
   const [analyzingItemId, setAnalyzingItemId] = useState<string>(() => {
-    if (initialInventoryItems && initialInventoryItems.length > 0) {
-      return initialInventoryItems[0].item_code;
+    if (availableItems && availableItems.length > 0) {
+      return availableItems[0].item_code;
     }
     return 'P1';
   });
@@ -102,10 +106,10 @@ export default function SuppliersClient({
   }, [initialSuppliers]);
 
   useEffect(() => {
-    if (initialInventoryItems && initialInventoryItems.length > 0 && !analyzingItemId) {
-      setAnalyzingItemId(initialInventoryItems[0].item_code);
+    if (availableItems && availableItems.length > 0 && !analyzingItemId) {
+      setAnalyzingItemId(availableItems[0].item_code);
     }
-  }, [initialInventoryItems, analyzingItemId]);
+  }, [availableItems, analyzingItemId]);
 
   // PO Edit State
   const [isEditingPO, setIsEditingPO] = useState<boolean>(false);
@@ -126,6 +130,8 @@ export default function SuppliersClient({
     phone: '+966 12 654 3210',
     phone_number: '+966 12 654 3210',
     pricingTier: 'أسعار جملة معتمدة',
+    cr_number: '',
+    tax_number: '',
   });
 
   // Sync with global purchase orders event from AI assistant or inventory
@@ -241,6 +247,8 @@ export default function SuppliersClient({
       phone: '+966 12 654 3210',
       phone_number: '+966 12 654 3210',
       pricingTier: 'أسعار جملة معتمدة',
+      cr_number: '',
+      tax_number: '',
     });
     setIsSupplierModalOpen(true);
   };
@@ -259,6 +267,8 @@ export default function SuppliersClient({
       phone: phoneVal,
       phone_number: phoneVal,
       pricingTier: sup.pricingTier || 'أسعار جملة معتمدة',
+      cr_number: sup.cr_number || '',
+      tax_number: sup.tax_number || '',
     });
     setIsSupplierModalOpen(true);
   };
@@ -286,6 +296,8 @@ export default function SuppliersClient({
           phone: phoneVal,
           phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
+          cr_number: supplierForm.cr_number || null,
+          tax_number: supplierForm.tax_number || null,
         });
 
         setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? updatedSupFromDB : s));
@@ -307,6 +319,8 @@ export default function SuppliersClient({
           phone: phoneVal,
           phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
+          cr_number: supplierForm.cr_number || null,
+          tax_number: supplierForm.tax_number || null,
         });
 
         setSuppliers(prev => sortSuppliersByDefault([newSupFromDB, ...prev]));
@@ -336,6 +350,8 @@ export default function SuppliersClient({
           phone: phoneVal,
           phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
+          cr_number: supplierForm.cr_number || null,
+          tax_number: supplierForm.tax_number || null,
         };
         setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? localUpdated : s));
       } else {
@@ -354,6 +370,8 @@ export default function SuppliersClient({
           phone: phoneVal,
           phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier || 'أسعار جملة معتمدة',
+          cr_number: supplierForm.cr_number || null,
+          tax_number: supplierForm.tax_number || null,
         };
         setSuppliers(prev => sortSuppliersByDefault([localNew, ...prev]));
       }
@@ -732,9 +750,6 @@ export default function SuppliersClient({
                 <h2 className="text-xl font-bold text-white">
                   {lang === 'en' ? 'Price Comparison' : 'مقارنة الأسعار'}
                 </h2>
-                <span className="bg-teal-600/15 border border-teal-300/30 text-teal-100 text-xs px-2.5 py-0.5 rounded-full font-bold">
-                  AI Procurement
-                </span>
               </div>
               <p className="text-xs text-white/80 mt-1">
                 {lang === 'en'
@@ -762,13 +777,13 @@ export default function SuppliersClient({
                 id="compare-item-select"
                 value={analyzingItemId || ''}
                 onChange={(e) => handleAnalyzeQuotes(e.target.value)}
-                className="w-full glass bg-white/8 border border-white/40 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
+                className="w-full bg-white/10 backdrop-blur-md border border-white/40 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none cursor-pointer"
               >
                 {availableItems.map(item => {
                   const code = item.item_code;
                   const name = lang === 'en' ? (item.item_name_en || item.item_name_ar) : item.item_name_ar;
                   return (
-                    <option key={code} value={code} className="bg-slate-900 text-white">
+                    <option key={code} value={code} className="bg-white text-slate-800 py-1">
                       {name} ({code})
                     </option>
                   );
@@ -961,10 +976,6 @@ export default function SuppliersClient({
             };
 
             const displayName = lang === 'en' ? (sup.name_en || sup.name_ar || sup.name) : (sup.name_ar || sup.name);
-            const displayCity = lang === 'en' ? (sup.location_en || sup.location_ar || sup.city) : (sup.location_ar || sup.city || 'جدة');
-            const displayDeliveryTime = sup.delivery_time_hours
-              ? (lang === 'en' ? `${toEnglishDigits(sup.delivery_time_hours)} hours` : `${toEnglishDigits(sup.delivery_time_hours)} ساعة`)
-              : toEnglishDigits(sup.leadTime || '24 ساعة');
 
             return (
               <div
@@ -979,7 +990,6 @@ export default function SuppliersClient({
                         <Building2 className="w-4 h-4 text-white" />
                         <span>{displayName}</span>
                       </h3>
-                      <p className="text-xs text-white/80 mt-0.5">{sup.category || (lang === 'en' ? 'Packaging & Supplies' : 'تغليف ومستلزمات تشغيل')}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1065,42 +1075,22 @@ export default function SuppliersClient({
                     </div>
                   </div>
 
-                  {/* Supplier Info Details */}
+                  {/* Commercial Registry & Tax Number */}
                   <div className="bg-white/8 border border-white/40 p-3.5 rounded-[18px] space-y-2 text-xs text-white/80">
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-white" />
-                        <span>{lang === 'en' ? 'Location:' : 'الموقع الجغرافي:'}</span>
+                        <FileText className="w-3.5 h-3.5 text-white" />
+                        <span>{lang === 'en' ? 'Commercial Registry:' : 'رقم السجل التجاري:'}</span>
                       </span>
-                      <strong className="text-white">{displayCity}</strong>
+                      <strong className="text-white font-mono">{toEnglishDigits(sup.cr_number || '—')}</strong>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-white" />
-                        <span>{lang === 'en' ? 'Delivery Time:' : 'زمن التوريد المعتاد:'}</span>
+                        <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                        <span>{lang === 'en' ? 'Tax Number:' : 'الرقم الضريبي:'}</span>
                       </span>
-                      <strong className="text-white font-mono">{displayDeliveryTime}</strong>
+                      <strong className="text-white font-mono">{toEnglishDigits(sup.tax_number || '—')}</strong>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="flex items-center gap-1.5">
-                        <Coins className="w-3.5 h-3.5 text-white" />
-                        <span>{lang === 'en' ? 'Pricing Tier:' : 'التصنيف المالي:'}</span>
-                      </span>
-                      <strong className="text-white">{sup.pricingTier || (lang === 'en' ? 'Wholesale' : 'أسعار معتمدة')}</strong>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {(sup.tags || [lang === 'en' ? 'Certified Supplier' : 'مورد معتمد']).map(t => (
-                      <span
-                        key={t}
-                        className="text-[10px] bg-white/8 border border-white/40 text-white/80 px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1"
-                      >
-                        <Tag className="w-2.5 h-2.5 text-white" />
-                        <span>{t}</span>
-                      </span>
-                    ))}
                   </div>
                 </div>
 
@@ -1466,17 +1456,32 @@ export default function SuppliersClient({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-white mb-1">
-                  {lang === 'en' ? 'Supply Category:' : 'فئة التوريد:'}
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: تغليف وكرتون ومستلزمات شحن"
-                  value={supplierForm.category}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, category: e.target.value })}
-                  className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-white mb-1">
+                    {lang === 'en' ? 'Commercial Registry:' : 'رقم السجل التجاري:'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="4030123456"
+                    value={supplierForm.cr_number}
+                    onChange={(e) => setSupplierForm({ ...supplierForm, cr_number: e.target.value })}
+                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-white mb-1">
+                    {lang === 'en' ? 'Tax Number:' : 'الرقم الضريبي:'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="300123456700003"
+                    value={supplierForm.tax_number}
+                    onChange={(e) => setSupplierForm({ ...supplierForm, tax_number: e.target.value })}
+                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 flex gap-2">

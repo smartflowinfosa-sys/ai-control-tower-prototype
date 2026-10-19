@@ -34,7 +34,9 @@ interface InventoryClientProps {
 
 export default function InventoryClient({ initialItems, fetchError }: InventoryClientProps) {
   const { lang, t, isRtl } = useLanguage();
-  const items = initialItems;
+  const items = [...initialItems].sort((a, b) =>
+    a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedItemForPO, setSelectedItemForPO] = useState<SupabaseInventoryItem | null>(null);

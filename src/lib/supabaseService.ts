@@ -52,6 +52,8 @@ export interface SupabaseSupplier {
   location_ar?: string;
   location_en?: string;
   created_at?: string;
+  cr_number?: string | null;
+  tax_number?: string | null;
   // Normalized & UI compatibility fields:
   name?: string;
   category?: string;
@@ -111,7 +113,8 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
     throw new Error(error.message);
   }
 
-  return (data as SupabaseInventoryItem[]) || [];
+  const items = (data as SupabaseInventoryItem[]) || [];
+  return items.sort((a, b) => a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
 function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): SupabaseSupplier {
@@ -119,6 +122,8 @@ function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): Sup
   return {
     ...row,
     ...overrides,
+    cr_number: overrides?.cr_number !== undefined ? overrides.cr_number : (row?.cr_number || null),
+    tax_number: overrides?.tax_number !== undefined ? overrides.tax_number : (row?.tax_number || null),
     name: row?.name_ar || row?.name_en || overrides?.name || '',
     city: row?.location_ar || row?.location_en || overrides?.city || 'جدة',
     leadTime: row?.delivery_time_hours ? `${row.delivery_time_hours} ساعة` : (overrides?.leadTime || '24 ساعة'),
@@ -170,6 +175,8 @@ export async function addSupplier(supplierData: {
   phone?: string;
   category?: string;
   pricingTier?: string;
+  cr_number?: string | null;
+  tax_number?: string | null;
 }): Promise<SupabaseSupplier> {
   const phoneVal = supplierData.phone_number || supplierData.phone || null;
   const insertPayload = {
@@ -180,6 +187,8 @@ export async function addSupplier(supplierData: {
     location_ar: supplierData.location_ar || 'جدة',
     location_en: supplierData.location_en || 'Jeddah',
     phone_number: phoneVal,
+    cr_number: supplierData.cr_number || null,
+    tax_number: supplierData.tax_number || null,
   };
 
   const { data, error } = await supabase
@@ -213,6 +222,8 @@ export async function updateSupplier(
   if (supplierData.phone_number !== undefined || supplierData.phone !== undefined) {
     updatePayload.phone_number = supplierData.phone_number || supplierData.phone;
   }
+  if (supplierData.cr_number !== undefined) updatePayload.cr_number = supplierData.cr_number;
+  if (supplierData.tax_number !== undefined) updatePayload.tax_number = supplierData.tax_number;
 
   const { data, error } = await supabase
     .from('suppliers')
