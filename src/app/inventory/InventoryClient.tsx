@@ -324,7 +324,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                   </div>
 
                   <div className="flex justify-between text-[11px] text-white/80 mb-2 font-mono">
-                    <span>{t('inventory.reorderLevelLabel')} <strong className="text-white">{toEnglishDigits(item.reorder_level.toLocaleString('en-US'))}</strong></span>
+                    <span>{t('inventory.reorderLevelLabel')}: <strong className="text-white">{toEnglishDigits(item.reorder_level.toLocaleString('en-US'))}</strong></span>
                     <span>{t('inventory.itemCodeLabel')} <strong className="text-white">{item.item_code}</strong></span>
                   </div>
 

@@ -111,7 +111,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.fullAutoDesc': 'أتمتة كاملة للقرارات التشغيلية الذكية لزاهي',
 
     // Smart Inventory Page
-    'inventory.title': 'إدارة المخزون (Smart Inventory)',
+    'inventory.title': 'إدارة المخزون',
     'inventory.subtitle': 'مراقبة استهلاك المواد التشغيلية والتنبؤ بطلبيات إعادة الشحن التلقائية لعمليات زاهي',
     'inventory.supabaseLive': 'قاعدة بيانات مباشرة (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'دليل الموردين والعروض',
@@ -129,8 +129,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.searchPlaceholder': 'بحث بالاسم أو الكود أو التصنيف...',
     'inventory.statusStable': 'المخزون مستقر',
     'inventory.statusLow': 'تحت الحد الأدنى',
-    'inventory.currentStockLabel': 'الكمية الحالية (current_stock):',
-    'inventory.reorderLevelLabel': 'الحد الأدنى (reorder_level):',
+    'inventory.currentStockLabel': 'الكمية الحالية',
+    'inventory.reorderLevelLabel': 'الحد الأدنى',
     'inventory.itemCodeLabel': 'كود الصنف:',
     'inventory.coverageLevelLabel': 'مستوى التغطية:',
     'inventory.reorderLevelValue': 'مستوى إعادة الطلب:',
@@ -290,7 +290,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.fullAutoDesc': 'Complete autonomous operational decisions for Zahi',
 
     // Smart Inventory Page
-    'inventory.title': 'Smart Inventory',
+    'inventory.title': 'Inventory Management',
     'inventory.subtitle': 'Monitor consumables consumption and forecast automated restocking for Zahi operations',
     'inventory.supabaseLive': 'Live Database (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'Suppliers Directory & Quotes',
@@ -308,8 +308,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.searchPlaceholder': 'Search by name, code or category...',
     'inventory.statusStable': 'Stable Stock',
     'inventory.statusLow': 'Low Stock',
-    'inventory.currentStockLabel': 'Current Stock (current_stock):',
-    'inventory.reorderLevelLabel': 'Reorder Level (reorder_level):',
+    'inventory.currentStockLabel': 'Current Stock',
+    'inventory.reorderLevelLabel': 'Reorder Level',
     'inventory.itemCodeLabel': 'Item Code:',
     'inventory.coverageLevelLabel': 'Coverage Level:',
     'inventory.reorderLevelValue': 'Reorder Level:',

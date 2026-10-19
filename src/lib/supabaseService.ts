@@ -56,6 +56,7 @@ export interface SupabaseSupplier {
   name?: string;
   category?: string;
   city?: string;
+  phone_number?: string;
   phone?: string;
   email?: string;
   leadTime?: string;
@@ -68,6 +69,32 @@ export interface SupabaseSupplier {
     qualityScore: number;
     priceStability: number;
   };
+}
+
+/**
+ * Strict default ordering of suppliers:
+ * 1. الصندوق المناسب
+ * 2. أمجد كميت
+ * 3. مزايا
+ * 4. عالم الوسام
+ */
+export const DEFAULT_SUPPLIER_ORDER = [
+  'الصندوق المناسب',
+  'أمجد كميت',
+  'مزايا',
+  'عالم الوسام',
+];
+
+export function sortSuppliersByDefault(list: SupabaseSupplier[]): SupabaseSupplier[] {
+  return [...list].sort((a, b) => {
+    const nameA = a.name_ar || a.name || '';
+    const nameB = b.name_ar || b.name || '';
+    const indexA = DEFAULT_SUPPLIER_ORDER.indexOf(nameA);
+    const indexB = DEFAULT_SUPPLIER_ORDER.indexOf(nameB);
+    const weightA = indexA !== -1 ? indexA : 999;
+    const weightB = indexB !== -1 ? indexB : 999;
+    return weightA - weightB;
+  });
 }
 
 /**
@@ -88,29 +115,31 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
 }
 
 function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): SupabaseSupplier {
+  const phoneVal = overrides?.phone_number || overrides?.phone || row?.phone_number || row?.phone || '+966 12 654 3210';
   return {
     ...row,
     ...overrides,
-    name: row.name_ar || row.name_en || overrides?.name || '',
-    city: row.location_ar || row.location_en || overrides?.city || 'جدة',
-    leadTime: row.delivery_time_hours ? `${row.delivery_time_hours} ساعة` : (overrides?.leadTime || '24 ساعة'),
-    category: overrides?.category || row.category || 'تغليف ومستلزمات تشغيل',
-    phone: overrides?.phone || row.phone || '+966 12 654 3210',
-    email: overrides?.email || row.email || 'orders@supplier.sa',
-    reliability: overrides?.reliability || row.reliability || '98%',
-    pricingTier: overrides?.pricingTier || row.pricingTier || 'أسعار جملة معتمدة',
-    activeOrdersCount: overrides?.activeOrdersCount ?? row.activeOrdersCount ?? 1,
-    tags: overrides?.tags || row.tags || ['تغليف وعلب', 'مورد معتمد'],
-    metrics: overrides?.metrics || row.metrics || {
-      deliverySpeed: Math.round(Math.min(99, Math.max(80, 100 - ((row.delivery_time_hours || 24) - 20) * 0.5))),
-      qualityScore: Math.round((row.rating || 4.5) * 20),
+    name: row?.name_ar || row?.name_en || overrides?.name || '',
+    city: row?.location_ar || row?.location_en || overrides?.city || 'جدة',
+    leadTime: row?.delivery_time_hours ? `${row.delivery_time_hours} ساعة` : (overrides?.leadTime || '24 ساعة'),
+    category: overrides?.category || row?.category || 'تغليف ومستلزمات تشغيل',
+    phone: phoneVal,
+    phone_number: phoneVal,
+    email: overrides?.email || row?.email || 'orders@supplier.sa',
+    reliability: overrides?.reliability || row?.reliability || '98%',
+    pricingTier: overrides?.pricingTier || row?.pricingTier || 'أسعار جملة معتمدة',
+    activeOrdersCount: overrides?.activeOrdersCount ?? row?.activeOrdersCount ?? 1,
+    tags: overrides?.tags || row?.tags || ['تغليف وعلب', 'مورد معتمد'],
+    metrics: overrides?.metrics || row?.metrics || {
+      deliverySpeed: Math.round(Math.min(99, Math.max(80, 100 - ((row?.delivery_time_hours || 24) - 20) * 0.5))),
+      qualityScore: Math.round((row?.rating || 4.5) * 20),
       priceStability: 95,
     },
   };
 }
 
 /**
- * Fetch all real suppliers from the Supabase database
+ * Fetch all real suppliers from the Supabase database in strict default order
  */
 export async function fetchSuppliers(): Promise<SupabaseSupplier[]> {
   const { data, error } = await supabase
@@ -123,7 +152,8 @@ export async function fetchSuppliers(): Promise<SupabaseSupplier[]> {
     throw new Error(error.message);
   }
 
-  return ((data as SupabaseSupplier[]) || []).map(row => normalizeSupplier(row));
+  const normalized = ((data as SupabaseSupplier[]) || []).map(row => normalizeSupplier(row));
+  return sortSuppliersByDefault(normalized);
 }
 
 /**
@@ -136,10 +166,12 @@ export async function addSupplier(supplierData: {
   rating: number;
   location_ar?: string;
   location_en?: string;
-  category?: string;
+  phone_number?: string;
   phone?: string;
+  category?: string;
   pricingTier?: string;
 }): Promise<SupabaseSupplier> {
+  const phoneVal = supplierData.phone_number || supplierData.phone || null;
   const insertPayload = {
     name_ar: supplierData.name_ar,
     name_en: supplierData.name_en || supplierData.name_ar,
@@ -147,6 +179,7 @@ export async function addSupplier(supplierData: {
     rating: supplierData.rating,
     location_ar: supplierData.location_ar || 'جدة',
     location_en: supplierData.location_en || 'Jeddah',
+    phone_number: phoneVal,
   };
 
   const { data, error } = await supabase
@@ -177,6 +210,9 @@ export async function updateSupplier(
   if (supplierData.rating !== undefined) updatePayload.rating = supplierData.rating;
   if (supplierData.location_ar !== undefined) updatePayload.location_ar = supplierData.location_ar;
   if (supplierData.location_en !== undefined) updatePayload.location_en = supplierData.location_en;
+  if (supplierData.phone_number !== undefined || supplierData.phone !== undefined) {
+    updatePayload.phone_number = supplierData.phone_number || supplierData.phone;
+  }
 
   const { data, error } = await supabase
     .from('suppliers')

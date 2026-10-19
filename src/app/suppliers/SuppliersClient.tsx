@@ -12,7 +12,7 @@ import {
   getSessionPurchaseOrders,
   addPurchaseOrderToSession
 } from '@/lib/mockInventoryData';
-import { SupabaseSupplier, addSupplier, updateSupplier } from '@/lib/supabaseService';
+import { SupabaseSupplier, addSupplier, updateSupplier, sortSuppliersByDefault } from '@/lib/supabaseService';
 import {
   Clock,
   Mail,
@@ -64,8 +64,8 @@ export default function SuppliersClient({
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
   
-  // State initialization directly from Supabase props (No mock data fallback)
-  const [suppliers, setSuppliers] = useState<SupabaseSupplier[]>(initialSuppliers);
+  // State initialization directly from Supabase props (strictly sorted by default order)
+  const [suppliers, setSuppliers] = useState<SupabaseSupplier[]>(() => sortSuppliersByDefault(initialSuppliers || []));
   const [analyzingItemId, setAnalyzingItemId] = useState<string | null>('inv-5'); // Default analyze "أدوات المائدة"
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
@@ -76,7 +76,7 @@ export default function SuppliersClient({
   // Sync state if server props update
   useEffect(() => {
     if (initialSuppliers && initialSuppliers.length > 0) {
-      setSuppliers(initialSuppliers);
+      setSuppliers(sortSuppliersByDefault(initialSuppliers));
     }
   }, [initialSuppliers]);
 
@@ -97,6 +97,7 @@ export default function SuppliersClient({
     delivery_time_hours: 24,
     category: 'تغليف ومستلزمات تشغيل',
     phone: '+966 12 654 3210',
+    phone_number: '+966 12 654 3210',
     pricingTier: 'أسعار جملة معتمدة',
   });
 
@@ -211,6 +212,7 @@ export default function SuppliersClient({
       delivery_time_hours: 24,
       category: 'تغليف ومستلزمات تشغيل',
       phone: '+966 12 654 3210',
+      phone_number: '+966 12 654 3210',
       pricingTier: 'أسعار جملة معتمدة',
     });
     setIsSupplierModalOpen(true);
@@ -218,6 +220,7 @@ export default function SuppliersClient({
 
   const handleOpenEditSupplier = (sup: SupabaseSupplier) => {
     setEditingSupplier(sup);
+    const phoneVal = sup.phone_number || sup.phone || '+966 12 654 3210';
     setSupplierForm({
       name: sup.name_ar || sup.name || '',
       name_en: sup.name_en || '',
@@ -226,7 +229,8 @@ export default function SuppliersClient({
       rating: sup.rating || 4.8,
       delivery_time_hours: sup.delivery_time_hours || 24,
       category: sup.category || 'تغليف ومستلزمات تشغيل',
-      phone: sup.phone || '+966 12 654 3210',
+      phone: phoneVal,
+      phone_number: phoneVal,
       pricingTier: sup.pricingTier || 'أسعار جملة معتمدة',
     });
     setIsSupplierModalOpen(true);
@@ -239,6 +243,7 @@ export default function SuppliersClient({
     setIsSavingSupplier(true);
     const hours = Number(supplierForm.delivery_time_hours) || 24;
     const ratingVal = Number(supplierForm.rating) || 4.8;
+    const phoneVal = supplierForm.phone_number || supplierForm.phone || '+966 12 654 3210';
 
     try {
       if (editingSupplier) {
@@ -251,7 +256,8 @@ export default function SuppliersClient({
           location_ar: supplierForm.city,
           location_en: supplierForm.city_en || 'Jeddah',
           category: supplierForm.category,
-          phone: supplierForm.phone,
+          phone: phoneVal,
+          phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
         });
 
@@ -271,11 +277,12 @@ export default function SuppliersClient({
           location_ar: supplierForm.city,
           location_en: supplierForm.city_en || 'Jeddah',
           category: supplierForm.category,
-          phone: supplierForm.phone,
+          phone: phoneVal,
+          phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
         });
 
-        setSuppliers(prev => [newSupFromDB, ...prev]);
+        setSuppliers(prev => sortSuppliersByDefault([newSupFromDB, ...prev]));
         showToast(
           lang === 'en'
             ? `New supplier (${newSupFromDB.name_en || newSupFromDB.name}) added to database successfully`
@@ -299,7 +306,8 @@ export default function SuppliersClient({
           delivery_time_hours: hours,
           leadTime: `${hours} ساعة`,
           category: supplierForm.category,
-          phone: supplierForm.phone,
+          phone: phoneVal,
+          phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier,
         };
         setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? localUpdated : s));
@@ -316,10 +324,11 @@ export default function SuppliersClient({
           location_en: supplierForm.city_en || 'Jeddah',
           city: supplierForm.city,
           category: supplierForm.category || 'تغليف ومستلزمات تشغيل',
-          phone: supplierForm.phone || '+966 12 654 3210',
+          phone: phoneVal,
+          phone_number: phoneVal,
           pricingTier: supplierForm.pricingTier || 'أسعار جملة معتمدة',
         };
-        setSuppliers(prev => [localNew, ...prev]);
+        setSuppliers(prev => sortSuppliersByDefault([localNew, ...prev]));
       }
       showToast(
         lang === 'en'
@@ -1072,7 +1081,7 @@ export default function SuppliersClient({
                 <div className="pt-4 mt-4 border-t border-white/25 flex justify-between items-center text-xs">
                   <span className="text-white/80 flex items-center gap-1 font-mono">
                     <Phone className="w-3 h-3 text-white" />
-                    <span>{toEnglishDigits(sup.phone || '+966 12 000 0000')}</span>
+                    <span>{toEnglishDigits(sup.phone_number || sup.phone || '+966 12 000 0000')}</span>
                   </span>
                   <span className="text-teal-100 font-bold bg-teal-600/15 border border-teal-300/30 px-2.5 py-0.5 rounded-lg font-mono">
                     {toEnglishDigits(sup.activeOrdersCount ?? 1)} {lang === 'en' ? 'orders' : 'طلبات جارية'}
@@ -1423,8 +1432,8 @@ export default function SuppliersClient({
                   <input
                     type="text"
                     placeholder="+966 12 000 0000"
-                    value={supplierForm.phone}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
+                    value={supplierForm.phone_number || supplierForm.phone}
+                    onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value, phone_number: e.target.value })}
                     className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>
