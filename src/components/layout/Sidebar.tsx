@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage } from '@/components/common/LanguageContext';
 import UserProfileModal from '@/components/common/UserProfileModal';
-import { Menu, X, PanelLeft, LayoutDashboard, AlertTriangle, Bell, ShoppingBag, ChefHat, Package, Truck, PackageSearch } from 'lucide-react';
+import { Menu, X, PanelLeft, LayoutDashboard, ShoppingBag, ChefHat, Package, Truck } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -24,13 +24,10 @@ export default function Sidebar() {
 
   const navItems = [
     { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard },
-    { href: '/exceptions', labelKey: 'nav.exceptions', icon: AlertTriangle },
-    { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
     { href: '/orders', labelKey: 'nav.orders', icon: ShoppingBag },
     { href: '/production', labelKey: 'nav.production', icon: ChefHat },
     { href: '/inventory', labelKey: 'nav.inventory', icon: Package },
     { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck },
-    { href: '/supplier-discovery', labelKey: 'nav.discovery', icon: PackageSearch },
   ];
 
   const showTooltip = (event: MouseEvent<HTMLAnchorElement> | FocusEvent<HTMLAnchorElement>, label: string) => {
