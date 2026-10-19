@@ -12,7 +12,7 @@ import {
   getSessionPurchaseOrders,
   addPurchaseOrderToSession
 } from '@/lib/mockInventoryData';
-import { SupabaseSupplier } from '@/lib/supabaseService';
+import { SupabaseSupplier, addSupplier, updateSupplier } from '@/lib/supabaseService';
 import {
   Clock,
   Mail,
@@ -41,7 +41,6 @@ import {
   Plus,
   Edit2,
   Check,
-  Database,
   AlertTriangle
 } from 'lucide-react';
 
@@ -72,6 +71,7 @@ export default function SuppliersClient({
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSavingSupplier, setIsSavingSupplier] = useState<boolean>(false);
 
   // Sync state if server props update
   useEffect(() => {
@@ -232,76 +232,104 @@ export default function SuppliersClient({
     setIsSupplierModalOpen(true);
   };
 
-  const handleSaveSupplier = (e: React.FormEvent) => {
+  const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierForm.name.trim()) return;
+    if (!supplierForm.name.trim() || isSavingSupplier) return;
 
+    setIsSavingSupplier(true);
     const hours = Number(supplierForm.delivery_time_hours) || 24;
     const ratingVal = Number(supplierForm.rating) || 4.8;
 
-    if (editingSupplier) {
-      // Edit existing supplier
-      const updatedSup: SupabaseSupplier = {
-        ...editingSupplier,
-        name: supplierForm.name,
-        name_ar: supplierForm.name,
-        name_en: supplierForm.name_en || supplierForm.name,
-        city: supplierForm.city,
-        location_ar: supplierForm.city,
-        location_en: supplierForm.city_en || 'Jeddah',
-        rating: ratingVal,
-        delivery_time_hours: hours,
-        leadTime: `${hours} ساعة`,
-        category: supplierForm.category,
-        phone: supplierForm.phone,
-        pricingTier: supplierForm.pricingTier,
-        metrics: {
-          deliverySpeed: Math.min(99, Math.round(ratingVal * 19.5)),
-          qualityScore: Math.min(100, Math.round(ratingVal * 20)),
-          priceStability: editingSupplier.metrics?.priceStability || 95,
-        },
-      };
-      setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? updatedSup : s));
-      showToast(
-        lang === 'en'
-          ? `Supplier (${updatedSup.name_en || updatedSup.name}) updated successfully`
-          : `تم تعديل بيانات المورد (${updatedSup.name_ar || updatedSup.name}) بنجاح`
-      );
-    } else {
-      // Add new supplier
-      const newSup: SupabaseSupplier = {
-        id: `sup-${Date.now()}`,
-        name: supplierForm.name,
-        name_ar: supplierForm.name,
-        name_en: supplierForm.name_en || supplierForm.name,
-        category: supplierForm.category || 'تغليف ومستلزمات',
-        city: supplierForm.city || 'جدة',
-        location_ar: supplierForm.city || 'جدة',
-        location_en: supplierForm.city_en || 'Jeddah',
-        phone: supplierForm.phone || '+966 12 000 0000',
-        email: 'info@supplier.sa',
-        rating: ratingVal,
-        delivery_time_hours: hours,
-        leadTime: `${hours} ساعة`,
-        reliability: '98%',
-        pricingTier: supplierForm.pricingTier || 'أسعار معتمدة',
-        activeOrdersCount: 0,
-        tags: ['مورد جديد', 'معتمد'],
-        metrics: {
-          deliverySpeed: Math.min(99, Math.round(ratingVal * 19.5)),
-          qualityScore: Math.min(100, Math.round(ratingVal * 20)),
-          priceStability: 95,
-        },
-      };
-      setSuppliers(prev => [newSup, ...prev]);
-      showToast(
-        lang === 'en'
-          ? `New supplier (${newSup.name_en || newSup.name}) added successfully`
-          : `تمت إضافة المورد الجديد (${newSup.name_ar || newSup.name}) بنجاح`
-      );
-    }
+    try {
+      if (editingSupplier) {
+        // Edit existing supplier in Supabase
+        const updatedSupFromDB = await updateSupplier(editingSupplier.id, {
+          name_ar: supplierForm.name,
+          name_en: supplierForm.name_en || supplierForm.name,
+          delivery_time_hours: hours,
+          rating: ratingVal,
+          location_ar: supplierForm.city,
+          location_en: supplierForm.city_en || 'Jeddah',
+          category: supplierForm.category,
+          phone: supplierForm.phone,
+          pricingTier: supplierForm.pricingTier,
+        });
 
-    setIsSupplierModalOpen(false);
+        setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? updatedSupFromDB : s));
+        showToast(
+          lang === 'en'
+            ? `Supplier (${updatedSupFromDB.name_en || updatedSupFromDB.name}) updated successfully`
+            : `تم تعديل بيانات المورد (${updatedSupFromDB.name_ar || updatedSupFromDB.name}) بنجاح`
+        );
+      } else {
+        // Add new supplier to Supabase
+        const newSupFromDB = await addSupplier({
+          name_ar: supplierForm.name,
+          name_en: supplierForm.name_en || supplierForm.name,
+          delivery_time_hours: hours,
+          rating: ratingVal,
+          location_ar: supplierForm.city,
+          location_en: supplierForm.city_en || 'Jeddah',
+          category: supplierForm.category,
+          phone: supplierForm.phone,
+          pricingTier: supplierForm.pricingTier,
+        });
+
+        setSuppliers(prev => [newSupFromDB, ...prev]);
+        showToast(
+          lang === 'en'
+            ? `New supplier (${newSupFromDB.name_en || newSupFromDB.name}) added to database successfully`
+            : `تمت إضافة المورد الجديد (${newSupFromDB.name_ar || newSupFromDB.name}) بنجاح`
+        );
+      }
+      setIsSupplierModalOpen(false);
+    } catch (err: unknown) {
+      console.error('Error saving supplier to Supabase:', err);
+      // Fallback local update if network issue occurs, but notify user
+      if (editingSupplier) {
+        const localUpdated: SupabaseSupplier = {
+          ...editingSupplier,
+          name_ar: supplierForm.name,
+          name_en: supplierForm.name_en || supplierForm.name,
+          name: supplierForm.name,
+          city: supplierForm.city,
+          location_ar: supplierForm.city,
+          location_en: supplierForm.city_en || 'Jeddah',
+          rating: ratingVal,
+          delivery_time_hours: hours,
+          leadTime: `${hours} ساعة`,
+          category: supplierForm.category,
+          phone: supplierForm.phone,
+          pricingTier: supplierForm.pricingTier,
+        };
+        setSuppliers(prev => prev.map(s => s.id === editingSupplier.id ? localUpdated : s));
+      } else {
+        const localNew: SupabaseSupplier = {
+          id: `sup-${Date.now()}`,
+          name: supplierForm.name,
+          name_ar: supplierForm.name,
+          name_en: supplierForm.name_en || supplierForm.name,
+          delivery_time_hours: hours,
+          leadTime: `${hours} ساعة`,
+          rating: ratingVal,
+          location_ar: supplierForm.city,
+          location_en: supplierForm.city_en || 'Jeddah',
+          city: supplierForm.city,
+          category: supplierForm.category || 'تغليف ومستلزمات تشغيل',
+          phone: supplierForm.phone || '+966 12 654 3210',
+          pricingTier: supplierForm.pricingTier || 'أسعار جملة معتمدة',
+        };
+        setSuppliers(prev => [localNew, ...prev]);
+      }
+      showToast(
+        lang === 'en'
+          ? 'Supplier updated (local fallback notice)'
+          : 'تم تحديث المورد محلياً (تنبيه تعذر اتصال Supabase)'
+      );
+      setIsSupplierModalOpen(false);
+    } finally {
+      setIsSavingSupplier(false);
+    }
   };
 
   const showToast = (msg: string) => {
@@ -362,10 +390,6 @@ export default function SuppliersClient({
             <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
               {t('suppliers.title')}
             </h1>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-              <Database className="w-3.5 h-3.5 text-teal-300" />
-              <span>{lang === 'en' ? 'Supabase Live' : 'بيانات Supabase الحية'}</span>
-            </span>
           </div>
           <p className="text-white/65 text-sm mt-1.5">
             {t('suppliers.subtitle')}
@@ -516,10 +540,18 @@ export default function SuppliersClient({
               <tbody className="divide-y divide-white/15">
                 {filteredPOs.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-10 text-white/65 text-sm">
-                      {lang === 'en'
-                        ? 'No purchase orders matching this filter currently'
-                        : 'لا توجد أوامر شراء مطابقة لهذا الفلتر حالياً'}
+                    <td colSpan={9} className="text-center py-12 text-white/65 text-sm">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <FileText className="w-8 h-8 text-white/35" />
+                        <span className="font-bold text-white/80">
+                          {lang === 'en' ? 'No active orders' : 'لا توجد طلبات نشطة'}
+                        </span>
+                        <span className="text-xs text-white/50">
+                          {lang === 'en'
+                            ? 'New purchase orders will appear here automatically when issued'
+                            : 'أوامر الشراء الصادرة ستظهر هنا تلقائياً في الوقت الفعلي'}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -1414,10 +1446,21 @@ export default function SuppliersClient({
               <div className="pt-2 flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                  disabled={isSavingSupplier}
+                  className="flex-1 glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>{editingSupplier ? (lang === 'en' ? 'Save Changes' : 'حفظ التعديلات') : (lang === 'en' ? 'Add Supplier' : 'إضافة المورد')}</span>
+                  {isSavingSupplier ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isSavingSupplier
+                      ? (lang === 'en' ? 'Saving to Database...' : 'جاري الحفظ في قاعدة البيانات...')
+                      : editingSupplier
+                      ? (lang === 'en' ? 'Save Changes' : 'حفظ التعديلات')
+                      : (lang === 'en' ? 'Add Supplier' : 'إضافة المورد')}
+                  </span>
                 </button>
                 <button
                   type="button"

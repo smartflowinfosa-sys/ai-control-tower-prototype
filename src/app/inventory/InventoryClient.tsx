@@ -6,7 +6,7 @@ import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseO
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
-import { Edit2, FileText, Building2, Bot, User, Check, Mail, X, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw } from 'lucide-react';
 
 // Helper to ensure all digits are English (0-9)
 const toEnglishDigits = (str: string | number): string => {
@@ -38,10 +38,6 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedItemForPO, setSelectedItemForPO] = useState<SupabaseInventoryItem | null>(null);
-  const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
-  const [isEditingPO, setIsEditingPO] = useState<boolean>(false);
-  const [editPOQuantity, setEditPOQuantity] = useState<number>(0);
-  const [editPOSupplier, setEditPOSupplier] = useState<string>('');
   const [poQuantity, setPoQuantity] = useState<number>(1000);
   const [selectedSupplier, setSelectedSupplier] = useState<string>(initialSuppliers[0].name);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
@@ -87,12 +83,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
     return arCat;
   };
 
-  const getPOItemDisplayName = (itemName: string): string => {
-    if (lang === 'en') {
-      return ITEM_NAME_TRANSLATIONS[itemName] || itemName;
-    }
-    return itemName;
-  };
+
 
   // Compute unique categories from real data
   const dynamicCategories = [
@@ -162,58 +153,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
     }, 4500);
   };
 
-  const handleConfirmAndSendPO = (poId: string) => {
-    setPurchaseOrders(prev =>
-      prev.map(p => (p.id === poId ? { ...p, status: 'SENT' } : p))
-    );
-    const existing = getSessionPurchaseOrders().find(p => p.id === poId);
-    if (existing) {
-      existing.status = 'SENT';
-    }
 
-    const msg = lang === 'ar'
-      ? `تم اعتماد وإرسال أمر الشراء ${poId} للمورد رسمياً عبر البريد الإلكتروني!`
-      : `Purchase order ${poId} officially confirmed and emailed to supplier!`;
-    setSuccessToast(msg);
-    setTimeout(() => {
-      setSuccessToast(null);
-    }, 4500);
-  };
-
-  const handleOpenEditPO = () => {
-    if (!viewingPO) return;
-    setEditPOQuantity(viewingPO.quantity);
-    setEditPOSupplier(viewingPO.supplierName);
-    setIsEditingPO(true);
-  };
-
-  const handleSavePOEdit = () => {
-    if (!viewingPO) return;
-
-    const matchedItem = items.find(i => i.item_code === viewingPO.itemId || i.item_name_ar === viewingPO.itemName);
-    const unitCost = matchedItem?.cost_per_unit || 0.45;
-    const newTotalCost = Number((editPOQuantity * unitCost).toFixed(2));
-
-    const updatedPO: PurchaseOrder = {
-      ...viewingPO,
-      quantity: editPOQuantity,
-      supplierName: editPOSupplier,
-      totalCost: newTotalCost,
-    };
-
-    setPurchaseOrders(prev => prev.map(p => p.id === viewingPO.id ? updatedPO : p));
-    setViewingPO(updatedPO);
-    setIsEditingPO(false);
-
-    const msg = lang === 'ar'
-      ? `تم تحديث بيانات أمر الشراء ${updatedPO.id} بنجاح!`
-      : `Purchase order ${updatedPO.id} updated successfully!`;
-    setSuccessToast(msg);
-
-    setTimeout(() => {
-      setSuccessToast(null);
-    }, 4500);
-  };
 
   return (
     <div className="page-shell w-full mx-auto space-y-6 font-sans">
@@ -248,10 +188,6 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
       {/* Header */}
       <header className="glass page-header mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
-            <span className="text-xs font-bold text-white">{t('inventory.supabaseLive')}</span>
-          </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">{t('inventory.title')}</h1>
           <p className="text-white/80 font-semibold text-sm mt-1.5">
             {t('inventory.subtitle')}
@@ -407,25 +343,18 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                 </div>
               </div>
 
-              {/* Action Button */}
-              <div>
-                {isLowStock ? (
+              {/* Action Button - Only when current_stock <= reorder_level */}
+              {isLowStock && (
+                <div>
                   <button
                     onClick={() => handleOpenPO(item)}
-                    className="w-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg"
                   >
                     <AlertTriangle className="w-4 h-4 text-white" />
-                    <span>{t('inventory.createUrgentPO')}</span>
+                    <span>{lang === 'en' ? 'Issue Purchase Order' : 'إصدار أمر شراء'}</span>
                   </button>
-                ) : (
-                  <button
-                    onClick={() => handleOpenPO(item)}
-                    className="w-full bg-white/8 hover:bg-white/15 text-white text-xs font-bold py-2.5 px-4 rounded-xl border border-white/40 transition-all flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    {t('inventory.proactiveSupply')}
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -438,83 +367,6 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
         </div>
       )}
 
-      {/* Recent Purchase Orders Table */}
-      <div className="glass mt-8 overflow-hidden">
-        <div className="p-5 border-b border-white/25 flex justify-between items-center bg-white/8">
-          <h3 className="font-bold text-white text-base flex items-center gap-2">
-            <FileText className="w-5 h-5 text-white" />
-            <span>{t('inventory.poTableTitle')}</span>
-          </h3>
-          <span className="text-xs bg-teal-600/15 text-teal-100 border border-teal-300/30 px-3 py-1 rounded-full font-bold font-mono">
-            {toEnglishDigits(purchaseOrders.length)} {t('common.orders')}
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-start text-sm text-white">
-            <thead className="bg-white/8 text-white/80 text-xs uppercase font-bold border-b border-white/25">
-              <tr>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colPONumber')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colItem')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colSupplier')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colQuantity')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colEstimatedCost')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colCreatedBy')}</th>
-                <th className="px-5 py-3.5 text-start">{t('inventory.colStatus')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/15">
-              {purchaseOrders.map(po => (
-                <tr key={po.id} className="hover:bg-white/15 transition-colors">
-                  <td className="px-5 py-3.5 text-start">
-                    <button
-                      onClick={() => {
-                        setViewingPO(po);
-                        setIsEditingPO(false);
-                      }}
-                      className="font-bold text-white underline decoration-white/25 hover:text-white cursor-pointer transition-colors flex items-center gap-1.5 group font-mono"
-                      title={t('common.view')}
-                    >
-                      <span>{toEnglishDigits(po.id)}</span>
-                      <span className="text-[10px] opacity-70 group-hover:opacity-100 transition-opacity">↗</span>
-                    </button>
-                  </td>
-                  <td className="px-5 py-3.5 text-start font-semibold text-white">{getPOItemDisplayName(po.itemName)}</td>
-                  <td className="px-5 py-3.5 text-start text-white/80">{po.supplierName}</td>
-                  <td className="px-5 py-3.5 text-start font-bold text-white font-mono">{toEnglishDigits(po.quantity.toLocaleString('en-US'))}</td>
-                  <td className="px-5 py-3.5 text-start font-bold text-white font-mono">{toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {t('common.sar')}</td>
-                  <td className="px-5 py-3.5 text-start">
-                    {po.createdBy === 'AI_AGENT' ? (
-                      <span className="text-xs bg-purple-500/15 text-purple-200 border border-purple-300/30 px-2.5 py-0.5 rounded-lg font-bold inline-flex items-center gap-1.5">
-                        <Bot className="w-3.5 h-3.5 text-purple-200" /> {t('inventory.agentCreator')}
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-white/8 text-white/80 border border-white/25 px-2.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-white/65" /> {t('inventory.humanCreator')}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5 text-start">
-                    {po.status === 'SENT' ? (
-                      <span className="text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-300/30 px-3 py-1 rounded-full font-bold inline-flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5 text-emerald-200" /> {t('inventory.statusSent')}
-                      </span>
-                    ) : po.status === 'APPROVED' ? (
-                      <span className="text-xs bg-teal-500/15 text-teal-100 border border-teal-300/30 px-3 py-1 rounded-full font-bold">
-                        {t('inventory.statusApproved')}
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-amber-500/15 text-amber-200 border border-amber-300/30 px-3 py-1 rounded-full font-bold">
-                        {t('inventory.statusPending')}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {/* Modal: Create Purchase Order */}
       {selectedItemForPO && (
@@ -594,207 +446,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
         </div>
       )}
 
-      {/* Modal: View & Edit Purchase Order Details */}
-      {viewingPO && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-          <div className="font-sans glass-popover rounded-2xl w-full max-w-lg p-6 space-y-5 text-white border border-white/40 relative shadow-2xl">
-            {/* Edit Button in Header */}
-            <button
-              type="button"
-              onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
-              className={`absolute ${isRtl ? 'left-6' : 'right-6'} top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/8 hover:bg-white/15 text-white/80 border border-white/25 text-xs font-bold transition-all cursor-pointer z-10`}
-              title={t('inventory.modalEditPO')}
-            >
-              <Edit2 size={16} className="text-white/65" />
-              <span>{isEditingPO ? t('common.cancel') : t('inventory.modalEditPO')}</span>
-            </button>
 
-            {/* Header */}
-            <div className={`flex justify-between items-start border-b border-white/25 pb-3 ${isRtl ? 'pl-20' : 'pr-20'}`}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-300/30 flex items-center justify-center text-teal-100">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">
-                    {t('inventory.modalViewPOTitle')} ({toEnglishDigits(viewingPO.id)})
-                  </h3>
-                  <p className="text-xs text-white/65 mt-0.5 font-medium">
-                    {t('inventory.modalPODocSubtitle')}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  setViewingPO(null);
-                  setIsEditingPO(false);
-                }}
-                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border border-white/25"
-                aria-label={t('common.close')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Edit Mode Form */}
-            {isEditingPO ? (
-              <div className="bg-white/8 rounded-xl p-4 border border-white/25 space-y-3.5 text-sm">
-                <div className="text-center font-bold text-white border-b border-white/25 pb-2">
-                  {t('inventory.modalEditPOTitle')}
-                </div>
-
-                <div className="space-y-1 text-center">
-                  <label className="text-xs font-bold text-white">{t('inventory.modalApprovedSupplier')}:</label>
-                  <GlassSelect
-                    value={editPOSupplier}
-                    onChange={(e) => setEditPOSupplier(e.target.value)}
-                    className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-sm text-white focus:outline-none"
-                  >
-                    {initialSuppliers.map(s => (
-                      <option key={s.id} value={s.name}>{s.name} ({s.city})</option>
-                    ))}
-                  </GlassSelect>
-                </div>
-
-                <div className="space-y-1 text-center">
-                  <label className="text-xs font-bold text-white">{t('inventory.modalQuantityLabel')}:</label>
-                  <input
-                    type="number"
-                    min="100"
-                    step="100"
-                    value={editPOQuantity}
-                    onChange={(e) => setEditPOQuantity(Number(e.target.value))}
-                    className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono"
-                  />
-                </div>
-
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSavePOEdit}
-                    className="flex-1 bg-white/20 hover:bg-white/25 text-white font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{t('inventory.modalSavePOEdit')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPO(false)}
-                    className="px-4 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/25 transition-all text-xs cursor-pointer"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Centered Details View */
-              <div className="bg-white/8 rounded-xl p-4 border border-white/25 divide-y divide-white/25 text-sm">
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.colPONumber')}</span>
-                  <span className="font-extrabold text-teal-100 font-mono text-base bg-teal-500/15 px-3 py-0.5 rounded-lg border border-teal-300/30 mt-0.5">
-                    {toEnglishDigits(viewingPO.id)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalRequestedItem')}</span>
-                  <span className="font-bold text-white text-base mt-0.5">
-                    {getPOItemDisplayName(viewingPO.itemName)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalApprovedSupplier')}</span>
-                  <span className="font-semibold text-white text-sm flex items-center justify-center gap-1.5 mt-0.5">
-                    <Building2 className="w-4 h-4 text-white" />
-                    <span>{viewingPO.supplierName}</span>
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.colQuantity')}</span>
-                  <span className="font-bold text-white text-base font-mono mt-0.5">
-                    {toEnglishDigits(viewingPO.quantity.toLocaleString('en-US'))} {t('common.unit')}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalTotalCostLabel')}</span>
-                  <span className="font-extrabold text-white text-lg font-mono mt-0.5">
-                    {toEnglishDigits(viewingPO.totalCost.toLocaleString('en-US'))} {t('common.sar')}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalCreatedAt')}</span>
-                  <span className="text-white/80 text-xs font-medium font-mono mt-0.5">
-                    {toEnglishDigits(viewingPO.createdAt)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalIssuer')}</span>
-                  <span className="text-xs font-bold text-white bg-white/8 px-3 py-1 rounded-md border border-white/25 flex items-center justify-center gap-1.5 mt-1">
-                    {viewingPO.createdBy === 'AI_AGENT' ? (
-                      <>
-                        <Bot className="w-3.5 h-3.5 text-purple-200" />
-                        <span>{t('inventory.agentCreator')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <User className="w-3.5 h-3.5 text-white/65" />
-                        <span>{t('inventory.humanCreator')}</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{t('inventory.modalCurrentStatus')}</span>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full border mt-1">
-                    {viewingPO.status === 'SENT' ? (
-                      <span className="text-emerald-200 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5 text-emerald-200" /> {t('inventory.modalSentToSupplierBadge')}
-                      </span>
-                    ) : viewingPO.status === 'APPROVED' ? (
-                      <span className="text-white">{t('inventory.statusApproved')}</span>
-                    ) : (
-                      <span className="text-amber-200">{t('inventory.statusPending')}</span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={() => handleConfirmAndSendPO(viewingPO.id)}
-                disabled={viewingPO.status === 'SENT'}
-                className={`w-full py-3.5 px-6 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm shadow-lg ${
-                  viewingPO.status === 'SENT'
-                    ? 'bg-white/8 text-white/65 cursor-not-allowed border border-white/25'
-                    : 'bg-white/20 hover:bg-white/25 active:scale-[0.99] text-white cursor-pointer'
-                }`}
-              >
-                <Mail className="w-4 h-4" />
-                <span>{viewingPO.status === 'SENT' ? t('inventory.modalAlreadySent') : t('inventory.modalSendToSupplier')}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setViewingPO(null);
-                  setIsEditingPO(false);
-                }}
-                className="w-full bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/25 transition-all text-xs cursor-pointer"
-              >
-                {t('inventory.modalClose')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

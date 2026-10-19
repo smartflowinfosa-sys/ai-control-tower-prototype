@@ -73,54 +73,9 @@ export interface PurchaseOrder {
   createdBy: 'AI_AGENT' | 'HUMAN';
 }
 
-export const initialPurchaseOrders: PurchaseOrder[] = [
-  {
-    id: 'PO-9041',
-    itemId: 'inv-5',
-    itemName: 'أدوات المائدة',
-    supplierName: 'مصنع البلاستيك الوطني',
-    quantity: 2000,
-    totalCost: 960,
-    status: 'PENDING_APPROVAL',
-    createdAt: '2026-10-15 11:30',
-    createdBy: 'AI_AGENT',
-  },
-  {
-    id: 'PO-9038',
-    itemId: 'inv-3',
-    itemName: 'سليف الوجبة',
-    supplierName: 'مورد التغليف السريع',
-    quantity: 1500,
-    totalCost: 495,
-    status: 'SENT',
-    createdAt: '2026-10-15 09:45',
-    createdBy: 'HUMAN',
-  },
-  {
-    id: 'PO-9035',
-    itemId: 'inv-4',
-    itemName: 'علبة صوص 2 أونص',
-    supplierName: 'مصنع البلاستيك الوطني',
-    quantity: 5000,
-    totalCost: 900,
-    status: 'IN_TRANSIT',
-    createdAt: '2026-10-14 16:20',
-    createdBy: 'AI_AGENT',
-  },
-  {
-    id: 'PO-9029',
-    itemId: 'inv-1',
-    itemName: 'بوكس وجبة زاهي',
-    supplierName: 'مورد التغليف السريع',
-    quantity: 2500,
-    totalCost: 3125,
-    status: 'DELIVERED',
-    createdAt: '2026-10-14 10:00',
-    createdBy: 'HUMAN',
-  },
-];
+export const initialPurchaseOrders: PurchaseOrder[] = [];
 
-let sessionPurchaseOrders: PurchaseOrder[] = [...initialPurchaseOrders];
+let sessionPurchaseOrders: PurchaseOrder[] = [];
 
 export function getSessionPurchaseOrders(): PurchaseOrder[] {
   return sessionPurchaseOrders;

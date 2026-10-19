@@ -111,7 +111,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.fullAutoDesc': 'أتمتة كاملة للقرارات التشغيلية الذكية لزاهي',
 
     // Smart Inventory Page
-    'inventory.title': 'إدارة المخزون والتوريد (Smart Inventory)',
+    'inventory.title': 'إدارة المخزون (Smart Inventory)',
     'inventory.subtitle': 'مراقبة استهلاك المواد التشغيلية والتنبؤ بطلبيات إعادة الشحن التلقائية لعمليات زاهي',
     'inventory.supabaseLive': 'قاعدة بيانات مباشرة (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'دليل الموردين والعروض',
@@ -134,7 +134,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.itemCodeLabel': 'كود الصنف:',
     'inventory.coverageLevelLabel': 'مستوى التغطية:',
     'inventory.reorderLevelValue': 'مستوى إعادة الطلب:',
-    'inventory.createUrgentPO': 'إنشاء أمر شراء عاجل (PO)',
+    'inventory.createUrgentPO': 'إصدار أمر شراء',
     'inventory.proactiveSupply': 'طلب توريد استباقي',
     'inventory.noItemsFound': 'لم يتم العثور على أي أصناف مخزون مطابقة للبحث',
     'inventory.noItemsFoundHint': 'جرّب اختيار تصنيف آخر أو مسح كلمة البحث.',
@@ -202,7 +202,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'notifications.executeAction': 'تنفيذ الإجراء',
 
     // Suppliers Page
-    'suppliers.title': 'شبكة الموردين والمشتريات الذكية',
+    'suppliers.title': 'إدارة الموردين',
     'suppliers.subtitle': 'إدارة الموردين وعروض الأسعار والتحليل الذكي لأفضل البدائل',
     'suppliers.compareTitle': 'تحليل المقارنة الذكية للموردين (AI Matrix)',
     'suppliers.orderNow': 'إصدار أمر توريد مباشر',
@@ -290,7 +290,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.fullAutoDesc': 'Complete autonomous operational decisions for Zahi',
 
     // Smart Inventory Page
-    'inventory.title': 'Smart Inventory & Supply Management',
+    'inventory.title': 'Smart Inventory',
     'inventory.subtitle': 'Monitor consumables consumption and forecast automated restocking for Zahi operations',
     'inventory.supabaseLive': 'Live Database (Supabase Live)',
     'inventory.suppliersDirectoryBtn': 'Suppliers Directory & Quotes',
@@ -313,7 +313,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.itemCodeLabel': 'Item Code:',
     'inventory.coverageLevelLabel': 'Coverage Level:',
     'inventory.reorderLevelValue': 'Reorder Level:',
-    'inventory.createUrgentPO': 'Create Urgent PO',
+    'inventory.createUrgentPO': 'Issue Purchase Order',
     'inventory.proactiveSupply': 'Proactive Supply Request',
     'inventory.noItemsFound': 'No inventory items matching your search',
     'inventory.noItemsFoundHint': 'Try selecting another category or clear search query.',
@@ -381,7 +381,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'notifications.executeAction': 'Execute Action',
 
     // Suppliers Page
-    'suppliers.title': 'Suppliers Network & Smart Procurement',
+    'suppliers.title': 'Suppliers Management',
     'suppliers.subtitle': 'Manage verified suppliers, quotes and smart multi-criteria quotes comparison',
     'suppliers.compareTitle': 'Smart Suppliers Quote Analysis (AI Matrix)',
     'suppliers.orderNow': 'Issue Direct Purchase Order',
