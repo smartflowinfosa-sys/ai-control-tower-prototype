@@ -38,7 +38,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
   return (
     <AnimatePresence>
       <div
-        className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200"
+        className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-200"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
@@ -49,7 +49,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 15 }}
           transition={{ type: "spring", duration: 0.35, bounce: 0.15 }}
-          className="glass-popover bg-slate-900/85 backdrop-blur-2xl border border-white/30 shadow-2xl rounded-3xl w-full max-w-lg p-6 sm:p-7 text-white space-y-6 relative"
+          className="bg-zinc-950/90 border border-white/20 shadow-2xl rounded-3xl w-full max-w-lg p-6 sm:p-7 text-white space-y-6 relative"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Toast Notification */}
@@ -58,7 +58,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-teal-500/20 border border-teal-300/40 text-teal-100 text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg backdrop-blur-md"
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-teal-500/20 border border-teal-300/40 text-teal-100 text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg"
             >
               <Sparkles className="w-4 h-4 text-teal-200" />
               <span>{toastMessage}</span>
@@ -91,10 +91,10 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
           </div>
 
           {/* User Identity Card */}
-          <div className="glass-inset rounded-2xl p-5 border border-white/20 bg-white/[0.04] space-y-4">
+          <div className="rounded-2xl p-5 border border-white/20 bg-white/5 space-y-4">
             <div className="flex items-center gap-4">
               <div className="relative">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-teal-600/40 to-white/20 border-2 border-white/40 flex items-center justify-center font-extrabold text-lg text-white shadow-xl shadow-teal-950/40">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-teal-600/40 to-white/20 border-2 border-white/20 flex items-center justify-center font-extrabold text-lg text-white shadow-xl shadow-teal-950/40">
                   {currentUser.avatar}
                 </div>
                 <span className="absolute bottom-0 end-0 w-4 h-4 rounded-full bg-teal-400 border-2 border-slate-900 ring-2 ring-teal-400/30" />
@@ -146,7 +146,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
             </p>
 
             {/* Segmented Switch */}
-            <div className="glass-inset p-1.5 rounded-2xl bg-white/[0.06] border border-white/25 flex relative gap-1.5">
+            <div className="p-1.5 rounded-2xl bg-white/5 border border-white/20 flex relative gap-1.5">
               <button
                 type="button"
                 onClick={() => toggleLanguage('ar')}
@@ -200,7 +200,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   type="text"
                   value={editNameAr}
                   onChange={(e) => setEditNameAr(e.target.value)}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
                 />
               </div>
 
@@ -210,7 +210,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   type="text"
                   value={editNameEn}
                   onChange={(e) => setEditNameEn(e.target.value)}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-mono"
                 />
               </div>
 
@@ -220,7 +220,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   type="email"
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-400 font-mono"
                 />
               </div>
 
@@ -254,7 +254,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
               <button
                 type="button"
                 onClick={onClose}
-                className="bg-white/15 hover:bg-white/25 text-white font-bold px-5 py-2.5 rounded-xl border border-white/30 transition-all text-xs cursor-pointer active:scale-95 shadow-md"
+                className="bg-white/10 hover:bg-white/20 text-white font-bold px-5 py-2.5 rounded-xl border border-white/20 transition-all text-xs cursor-pointer active:scale-95 shadow-md"
               >
                 {t('common.close')}
               </button>

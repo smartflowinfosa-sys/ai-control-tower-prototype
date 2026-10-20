@@ -6,7 +6,7 @@ import Link from 'next/link';
 import SmartFilterBar from '@/components/common/SmartFilterBar';
 
 const statusColorMap: Record<string, string> = {
-  PENDING: 'bg-white/8 text-white border border-white/25',
+  PENDING: 'bg-white/8 text-white border border-white/20',
   KITCHEN_PREP: 'bg-amber-500/15 text-amber-200 border border-amber-300/30',
   PACKING: 'bg-blue-500/15 text-blue-200 border border-blue-300/30',
   READY_FOR_DELIVERY: 'bg-indigo-500/15 text-indigo-200 border border-indigo-300/30',
@@ -38,10 +38,10 @@ export default function OrdersPage() {
 
   return (
     <div className="page-shell w-full mx-auto space-y-6">
-      {/* Title Container with 28px radius */}
-      <header className="glass page-header mb-6">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">سجل الطلبات</h1>
-        <p className="text-white/80 font-semibold text-sm mt-2">عرض شامل لجميع الطلبات في النظام</p>
+      {/* Title Container */}
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8">
+        <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">سجل الطلبات</h1>
+        <p className="text-slate-50 font-semibold text-sm mt-2 drop-shadow-sm">عرض شامل لجميع الطلبات في النظام</p>
       </header>
 
       <SmartFilterBar 
@@ -50,9 +50,9 @@ export default function OrdersPage() {
         showDepartment={false}
       />
 
-      <div className="glass mt-6 overflow-x-auto">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mt-6 overflow-x-auto">
         <table className="w-full text-right text-sm text-white">
-          <thead className="bg-white/8 text-white/80 text-xs uppercase font-extrabold border-b border-white/25">
+          <thead className="bg-white/8 text-white/80 text-xs uppercase font-extrabold border-b border-white/20">
             <tr>
               <th className="px-6 py-4">رقم الطلب</th>
               <th className="px-6 py-4">العلامة التجارية</th>
@@ -63,7 +63,7 @@ export default function OrdersPage() {
           </thead>
           <tbody className="divide-y divide-white/15">
             {sortedOrders.length > 0 ? (
-              sortedOrders.map((order) => {
+               sortedOrders.map((order) => {
                 const status = order.status || 'KITCHEN_PREP';
                 
                 return (
@@ -74,7 +74,7 @@ export default function OrdersPage() {
                       </Link>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs bg-white/8 text-white border border-white/50 px-2.5 py-1 rounded-lg font-bold">
+                      <span className="text-xs bg-white/8 text-white border border-white/20 px-2.5 py-1 rounded-lg font-bold">
                         زاهي
                       </span>
                     </td>

@@ -36,16 +36,16 @@ export default function AIAssistantWidget() {
         <>
           <p className="mb-3 leading-relaxed">
             {lang === 'en' ? (
-              <>We have a <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">critical issue (High Risk)</strong> in <strong className="text-white">Zahi</strong> regarding packaging data conflict for order <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> due to customer removing &quot;Rice&quot;.</>
+              <>We have a <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">critical issue (High Risk)</strong> in <strong className="text-white">Zahi</strong> regarding packaging data conflict for order <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> due to customer removing &quot;Rice&quot;.</>
             ) : (
-              <>لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline glass glass-card border px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ &quot;الأرز&quot;.</>
+              <>لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ &quot;الأرز&quot;.</>
             )}
           </p>
           <p className="mb-3 leading-relaxed">
             {lang === 'en' ? (
-              <>I have just <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">automatically halted packaging</strong> and sent an instant alert to the operations supervisor. 🚨</>
+              <>I have just <strong className="text-white bg-white/10 border border-white/20 px-1.5 py-0.5 rounded font-bold">automatically halted packaging</strong> and sent an instant alert to the operations supervisor. 🚨</>
             ) : (
-              <>وقد قمت للتو <strong className="text-white glass glass-card px-1.5 py-0.5 rounded font-bold">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨</>
+              <>وقد قمت للتو <strong className="text-white bg-white/10 border border-white/20 px-1.5 py-0.5 rounded font-bold">بإيقاف التغليف تلقائياً</strong> وإرسال تنبيه فوري للمشرف. 🚨</>
             )}
           </p>
           <div className="mt-3 pt-3 border-t border-white/14 text-xs text-white/65 font-bold flex items-start gap-1">
@@ -260,12 +260,12 @@ export default function AIAssistantWidget() {
         initial={{ opacity: 0, scale: 0.85, y: 30 }}
         animate={isOpen ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.85, y: 30, pointerEvents: 'none' }}
         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className={`chat-glass glass-popover flex flex-col text-white ${
+        className={`w-[380px] max-w-[calc(100vw-2rem)] h-[540px] max-h-[calc(100vh-6rem)] bg-zinc-950/95 border border-white/20 shadow-2xl rounded-2xl flex flex-col text-white ${
           !isOpen && 'hidden'
         }`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-white/30 flex items-center justify-between">
+        <div className="p-4 border-b border-white/20 flex items-center justify-between">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
               <div className="bg-teal-500/15 border border-teal-300/30 p-2 rounded-[18px] text-teal-100">
@@ -284,7 +284,7 @@ export default function AIAssistantWidget() {
             </div>
             <button 
               onClick={() => setIsOpen(false)} 
-              className="text-white/80 hover:text-white transition-colors bg-white/8 hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center border border-white/30 cursor-pointer"
+              className="text-white/80 hover:text-white transition-colors bg-white/8 hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center border border-white/20 cursor-pointer"
               title={t('chat.closeTooltip')}
             >
               <X className="w-4 h-4" />
@@ -299,7 +299,7 @@ export default function AIAssistantWidget() {
               key={msg.id} 
               className={`p-3.5 rounded-2xl max-w-[85%] text-sm relative transition-all break-words ${
                 msg.sender === 'user' 
-                  ? 'self-end bg-white/8 border border-white/60 text-white rounded-tr-xs font-semibold'
+                  ? 'self-end bg-white/8 border border-white/20 text-white rounded-tr-xs font-semibold'
                   : 'self-start bg-teal-600/10 border border-teal-300/30 text-white rounded-tl-xs font-semibold'
               }`}
             >
@@ -320,11 +320,11 @@ export default function AIAssistantWidget() {
         </div>
         
         {/* Chat Input Bar with Speech-to-Text */}
-        <div className="p-3 border-t border-white/30 flex items-center gap-2">
+        <div className="p-3 border-t border-white/20 flex items-center gap-2">
           <input 
             type="text" 
             placeholder={isListening ? t('chat.listening') : t('chat.inputPlaceholder')} 
-            className="flex-1 border border-white/35 bg-white/8 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-white/25 focus:bg-white/8 transition-all text-white placeholder:text-white/65 font-medium"
+            className="flex-1 border border-white/20 bg-white/8 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-white/40 focus:bg-white/8 transition-all text-white placeholder:text-white/65 font-medium"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -338,7 +338,7 @@ export default function AIAssistantWidget() {
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
               isListening
                 ? 'bg-rose-500/20 border border-rose-400/50 text-rose-200 animate-pulse'
-                : 'bg-white/8 hover:bg-white/15 text-white border border-white/30 active:scale-95'
+                : 'bg-white/8 hover:bg-white/15 text-white border border-white/20 active:scale-95'
             }`}
           >
             {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -364,10 +364,10 @@ export default function AIAssistantWidget() {
       >
         <button 
           onClick={() => setIsOpen(!isOpen)}
-          className={`chat-launcher glass flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
+          className={`w-14 h-14 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
             isOpen 
               ? 'text-white rotate-90'
-              : 'text-white hover:bg-white/15'
+              : 'text-white'
           }`}
           title={t('chat.launcherTooltip')}
         >

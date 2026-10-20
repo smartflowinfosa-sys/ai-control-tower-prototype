@@ -294,7 +294,7 @@ export default function GlassSelect({
               maxHeight: `${coords.maxHeight}px`,
               zIndex: 99999,
             }}
-            className="glass-select-menu overflow-y-auto overflow-x-hidden space-y-1 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-150"
+            className="bg-zinc-950/95 border border-white/20 shadow-2xl rounded-2xl p-1.5 overflow-y-auto overflow-x-hidden space-y-1 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-150"
           >
             {parsedOptions.length === 0 ? (
               <div className="py-2.5 px-3.5 text-center text-xs text-white/60">لا توجد خيارات</div>
@@ -313,10 +313,10 @@ export default function GlassSelect({
                     onMouseEnter={() => setHighlightedIndex(idx)}
                     className={`flex items-center justify-between gap-2 rounded-xl py-2.5 px-3.5 text-sm text-right cursor-pointer transition-colors ${
                       isSelected
-                        ? 'glass-active font-bold text-white'
+                        ? 'bg-white/20 border border-white/30 font-bold text-white'
                         : isHighlighted
-                        ? 'bg-white/8 text-white'
-                        : 'text-white/80 hover:bg-white/15 hover:text-white'
+                        ? 'bg-white/10 text-white'
+                        : 'text-white/80 hover:bg-white/10 hover:text-white'
                     }`}
                   >
                     <span className="truncate flex-1">{opt.label}</span>

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Tajawal, Inter } from "next/font/google";
-import Image from "next/image";
 import "./globals.css";
 import "./glass-theme.css";
 import Sidebar from "@/components/layout/Sidebar";
@@ -47,25 +46,13 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} ${inter.variable} antialiased h-full`}
     >
-      <body className="app-shell font-sans relative">
-        {/* Preloaded & optimized background image layer for instant LCP */}
-        <div className="fixed inset-0 -z-20 overflow-hidden pointer-events-none select-none">
-          <Image
-            src="/bg_plants.jpg"
-            alt=""
-            fill
-            priority
-            quality={75}
-            sizes="100vw"
-            className="object-cover object-[center_75%] blur-[10px] scale-105"
-          />
-        </div>
+      <body className="min-h-screen flex bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white">
         <LanguageProvider>
           <NotificationProvider>
-            <Suspense fallback={<aside className="desktop-sidebar is-collapsed glass hidden md:flex" />}>
+            <Suspense fallback={<aside className="w-20 hidden md:flex" />}>
               <Sidebar />
             </Suspense>
-            <main className="app-main">
+            <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
               {children}
             </main>
             <AIAssistantWidget />

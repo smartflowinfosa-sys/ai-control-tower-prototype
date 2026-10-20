@@ -420,7 +420,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
     <div className="page-shell w-full mx-auto space-y-6 font-sans">
       {/* Toast Notification */}
       {successToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 glass-popover border border-white/40 text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-2xl">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-black/80 border border-white/20 text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-2xl">
           <span className="text-xl">✨</span>
           <span className="text-sm font-bold">{successToast}</span>
         </div>
@@ -438,7 +438,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="bg-white/8 hover:bg-white/15 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/40 flex items-center gap-1.5 transition-all cursor-pointer"
+            className="bg-white/8 hover:bg-white/15 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>{t('common.retry')}</span>
@@ -447,10 +447,10 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       )}
 
       {/* Header */}
-      <header className="glass page-header mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">{t('inventory.title')}</h1>
-          <p className="text-white/80 font-semibold text-sm mt-1.5">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">{t('inventory.title')}</h1>
+          <p className="text-slate-50 font-semibold text-sm mt-1.5 drop-shadow-sm">
             {t('inventory.subtitle')}
           </p>
         </div>
@@ -459,7 +459,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           {isAuthorized && (
             <button
               onClick={() => openReceiveModal()}
-              className="px-4 py-2 text-sm bg-white/10 backdrop-blur-md border border-white/30 text-white hover:bg-white/20 transition-colors shadow-sm rounded-lg flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
             >
               <PackageCheck className="w-4 h-4 shrink-0 text-white" />
               <span>استلام مخزون</span>
@@ -468,7 +468,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
 
           <Link
             href="/suppliers"
-            className="bg-white/8 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/40 transition-all text-sm flex items-center gap-2 group cursor-pointer backdrop-blur-md"
+            className="bg-white/5 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer"
           >
             <Building2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
             <span>{t('inventory.suppliersDirectoryBtn')}</span>
@@ -478,39 +478,39 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
 
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="glass p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-white/80">{t('inventory.kpiTotalItems')}</div>
-          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2">{toEnglishDigits(items.length)}</div>
-          <div className="text-xs text-white/65 font-semibold mt-1">{t('inventory.kpiTotalItemsDesc')}</div>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiTotalItems')}</div>
+          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(items.length)}</div>
+          <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiTotalItemsDesc')}</div>
         </div>
 
-        <div className="glass p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-white/80">{t('inventory.kpiLowStock')}</div>
-          <div className={`text-3xl font-extrabold font-mono tracking-wider mt-2 ${lowStockCount > 0 ? 'text-rose-200' : 'text-white'}`}>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiLowStock')}</div>
+          <div className={`text-3xl font-extrabold font-mono tracking-wider mt-2 drop-shadow-sm ${lowStockCount > 0 ? 'text-rose-200' : 'text-white'}`}>
             {toEnglishDigits(lowStockCount)}
           </div>
-          <div className="text-xs text-rose-200 font-semibold mt-1">{t('inventory.kpiLowStockDesc')}</div>
+          <div className="text-xs text-rose-200 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiLowStockDesc')}</div>
         </div>
 
-        <div className="glass p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-white/80">{t('inventory.kpiActivePO')}</div>
-          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2">{toEnglishDigits(activePOs.length)}</div>
-          <div className="text-xs text-white/65 font-semibold mt-1">{t('inventory.kpiActivePODesc')}</div>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiActivePO')}</div>
+          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(activePOs.length)}</div>
+          <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiActivePODesc')}</div>
         </div>
 
-        <div className="glass p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-white/80">{t('inventory.kpiCoverage')}</div>
-          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiCoverage')}</div>
+          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">
             {items.length > 0 ? `${Math.round(((items.length - lowStockCount) / items.length) * 100)}%` : '0%'}
           </div>
-          <div className="text-xs text-white/65 font-semibold mt-1">{t('inventory.kpiCoverageDesc')}</div>
+          <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiCoverageDesc')}</div>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="glass p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <span className="text-sm font-bold text-white whitespace-nowrap">{t('inventory.categoryLabel')}</span>
+          <span className="text-sm font-bold text-white whitespace-nowrap drop-shadow-sm">{t('inventory.categoryLabel')}</span>
           <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto">
             {dynamicCategories.map(cat => {
               const displayLabel = cat === 'ALL'
@@ -523,8 +523,8 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                     selectedCategory === cat
-                      ? 'glass-active text-white'
-                      : 'bg-white/8 text-white/80 hover:text-white hover:bg-white/15 border border-white/40'
+                      ? 'bg-white/20 border border-white/30 text-white font-extrabold'
+                      : 'bg-white/8 text-white/80 hover:text-white hover:bg-white/15 border border-white/20'
                   }`}
                 >
                   {displayLabel}
@@ -540,7 +540,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
             placeholder={t('inventory.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full glass border border-white/40 rounded-xl px-4 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none focus:ring-2 focus:ring-white/25"
+            className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none focus:ring-2 focus:ring-white/25"
           />
         </div>
       </div>
@@ -556,7 +556,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           return (
             <div
               key={item.item_code}
-              className={`glass p-6 flex flex-col justify-between transition-all duration-200 ${
+              className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 ${
                 isLowStock ? 'border-rose-400/60' : ''
               }`}
             >
@@ -566,7 +566,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                   <div>
                     <h3 className="font-bold text-base text-white">{displayName}</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] font-semibold text-white/80 bg-white/8 px-2.5 py-0.5 rounded-lg border border-white/40 inline-block">
+                      <span className="text-[11px] font-semibold text-white/80 bg-white/8 px-2.5 py-0.5 rounded-lg border border-white/20 inline-block">
                         {displayCategory}
                       </span>
                       <span className="text-[10px] font-mono text-white font-bold">
@@ -591,7 +591,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                 </div>
 
                 {/* Stock Level Display */}
-                <div className="glass p-4 rounded-xl border border-white/40 mb-4">
+                <div className="bg-white/5 p-4 rounded-xl border border-white/20 mb-4">
                   <div className="flex justify-between items-baseline mb-1.5">
                     <span className="text-xs text-white/80 font-medium">{t('inventory.currentStockLabel')}</span>
                     <span className={`text-xl font-extrabold font-mono ${isLowStock ? 'text-rose-200' : 'text-white'}`}>
@@ -638,18 +638,18 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       </div>
 
       {filteredItems.length === 0 && (
-        <div className="glass border border-white/40 rounded-2xl p-12 text-center text-white">
-          <p className="text-lg font-bold">{t('inventory.noItemsFound')}</p>
-          <p className="text-xs text-white/80 mt-1">{t('inventory.noItemsFoundHint')}</p>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-12 text-center text-white">
+          <p className="text-lg font-bold drop-shadow-sm">{t('inventory.noItemsFound')}</p>
+          <p className="text-xs text-white/80 mt-1 drop-shadow-sm">{t('inventory.noItemsFoundHint')}</p>
         </div>
       )}
 
 
       {/* Modal: Create Purchase Order */}
       {selectedItemForPO && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-          <div className="font-sans glass-popover rounded-2xl w-full max-w-lg p-6 space-y-4 text-white border border-white/40 shadow-2xl">
-            <div className="flex justify-between items-start border-b border-white/25 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="font-sans bg-zinc-950/90 rounded-2xl w-full max-w-lg p-6 space-y-4 text-white border border-white/20 shadow-2xl">
+            <div className="flex justify-between items-start border-b border-white/20 pb-3">
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <span>{t('inventory.modalCreatePOTitle')}</span>
@@ -660,7 +660,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
               </div>
               <button
                 onClick={() => setSelectedItemForPO(null)}
-                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/25 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors"
+                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors"
                 aria-label={t('common.close')}
               >
                 <X className="w-4 h-4" />
@@ -673,7 +673,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                 <GlassSelect
                   value={selectedSupplier}
                   onChange={(e) => setSelectedSupplier(e.target.value)}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-sm text-white focus:outline-none"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none"
                 >
                   {initialSuppliers.map(sup => (
                     <option key={sup.id} value={sup.name}>
@@ -693,11 +693,11 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                   step="100"
                   value={poQuantity}
                   onChange={(e) => setPoQuantity(Number(e.target.value))}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono"
                 />
               </div>
 
-              <div className="bg-white/8 border border-white/25 p-3.5 rounded-xl flex justify-between items-center text-sm">
+              <div className="bg-white/8 border border-white/20 p-3.5 rounded-xl flex justify-between items-center text-sm">
                 <span className="text-white/80 font-medium">{t('inventory.modalTotalCostLabel')}</span>
                 <span className="text-lg font-bold text-white font-mono">
                   {toEnglishDigits((poQuantity * (selectedItemForPO.cost_per_unit || 0.45)).toFixed(2))} {t('common.sar')}
@@ -708,13 +708,13 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleCreatePO}
-                className="flex-1 bg-white/20 hover:bg-white/25 active:scale-95 text-white font-bold py-3 rounded-xl transition-all text-sm cursor-pointer shadow-lg"
+                className="flex-1 bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold py-3 rounded-xl transition-all text-sm cursor-pointer shadow-lg border border-white/20"
               >
                 {t('inventory.modalConfirmPOBtn')}
               </button>
               <button
                 onClick={() => setSelectedItemForPO(null)}
-                className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3 rounded-xl border border-white/25 transition-all text-sm cursor-pointer"
+                className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3 rounded-xl border border-white/20 transition-all text-sm cursor-pointer"
               >
                 {t('inventory.modalCancelBtn')}
               </button>
@@ -727,8 +727,8 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       {isReceiveModalOpen && (() => {
         const selectedReceivePO = purchaseOrders.find(p => p.id === receivePoId);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in">
-            <div className="font-sans glass-popover bg-white/10 backdrop-blur-md rounded-3xl w-full max-w-lg p-6 sm:p-7 space-y-4 text-white border border-white/40 shadow-2xl relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+            <div className="font-sans bg-zinc-950/90 rounded-3xl w-full max-w-lg p-6 sm:p-7 space-y-4 text-white border border-white/20 shadow-2xl relative">
               {/* Modal Header */}
               <div className="flex justify-between items-start border-b border-white/20 pb-3.5">
                 <div className="flex items-center gap-3">
@@ -749,7 +749,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                     if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
                   }}
                   disabled={isSubmittingReceipt}
-                  className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/25 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                  className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
                   aria-label={t('common.close')}
                 >
                   <X className="w-4 h-4" />
@@ -773,7 +773,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                   <GlassSelect
                     value={receivePoId}
                     onChange={(e) => handleSelectPO(e.target.value)}
-                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                    className="w-full bg-white/8 border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
                   >
                     <option value="" disabled>
                       {activePOs.length === 0
@@ -869,7 +869,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                     }}
                     placeholder="0"
                     style={{ direction: 'ltr', fontVariantNumeric: 'lining-nums tabular-nums' }}
-                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 font-mono text-left rtl:text-right [unicode-bidi:plaintext]"
+                    className="w-full bg-white/8 border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 font-mono text-left rtl:text-right [unicode-bidi:plaintext]"
                   />
                 </div>
 
@@ -908,7 +908,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                     className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
                       invoiceFile
                         ? 'border-emerald-400/60 bg-emerald-500/10'
-                        : 'border-white/25 bg-white/5 hover:bg-white/10 hover:border-white/40'
+                        : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'
                     }`}
                   >
                     {invoiceFile ? (
@@ -962,7 +962,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                     }}
                     placeholder={t('inventory.receiverSignaturePlaceholder')}
                     required
-                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 placeholder:text-white/40"
+                    className="w-full bg-white/8 border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 placeholder:text-white/40"
                   />
                 </div>
               </div>
@@ -991,7 +991,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
                     if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
                   }}
                   disabled={isSubmittingReceipt}
-                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3.5 rounded-xl border border-white/25 transition-all text-sm cursor-pointer disabled:opacity-50"
+                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3.5 rounded-xl border border-white/20 transition-all text-sm cursor-pointer disabled:opacity-50"
                 >
                   {t('inventory.modalCancelBtn')}
                 </button>

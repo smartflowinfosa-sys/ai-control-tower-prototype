@@ -6,15 +6,15 @@ import { AlertData } from './NotificationContext';
 const riskStyles = {
   CRITICAL: 'border-r-4 border-r-rose-500',
   HIGH: 'border-r-4 border-r-amber-500',
-  MEDIUM: 'border-r-4 border-r-white/25',
-  LOW: 'border-r-4 border-r-white/25',
+  MEDIUM: 'border-r-4 border-r-white/20',
+  LOW: 'border-r-4 border-r-white/20',
 };
 
 const badgeStyles = {
   CRITICAL: 'bg-rose-500/15 text-rose-200 border border-rose-300/30',
   HIGH: 'bg-amber-500/15 text-amber-200 border border-amber-300/30',
   MEDIUM: 'bg-teal-500/15 text-teal-100 border border-teal-300/30',
-  LOW: 'bg-white/8 text-white border border-white/25',
+  LOW: 'bg-white/8 text-white border border-white/20',
 };
 
 export default function SmartAlertToast({ 
@@ -56,9 +56,9 @@ export default function SmartAlertToast({
   };
 
   return (
-    <div className={`w-full glass transition-all duration-200 origin-bottom-right border
+    <div className={`w-full bg-black/85 border border-white/20 shadow-2xl rounded-2xl transition-all duration-200 origin-bottom-right
  ${isExiting ? 'opacity-0 translate-y-12 scale-95' : 'opacity-100'}
-      ${isResolved ? 'border-r-4 border-r-white/25' : riskStyles[alert.riskLevel]}
+      ${isResolved ? 'border-r-4 border-r-white/20' : riskStyles[alert.riskLevel]}
     `}>
       {isResolved ? (
         <div className="p-4 flex items-center justify-between">
@@ -88,7 +88,7 @@ export default function SmartAlertToast({
           <p className="text-sm text-white/80 mb-4 leading-relaxed font-semibold">
             {alert.details}
           </p>
-          <div className="flex gap-2 pt-3 border-t border-white/25">
+          <div className="flex gap-2 pt-3 border-t border-white/20">
             <button 
               onClick={handleExecute}
               className="flex-1 bg-white/20 hover:bg-white/25 text-white text-xs font-extrabold py-2.5 px-3 rounded-xl transition-all flex justify-center items-center gap-1 active:scale-95 cursor-pointer "
@@ -97,7 +97,7 @@ export default function SmartAlertToast({
             </button>
             <button 
               onClick={handleClose}
-              className="flex-1 bg-white/8 hover:bg-white/15 text-white/80 text-xs font-bold py-2.5 px-3 rounded-xl border border-white/25 transition-colors cursor-pointer"
+              className="flex-1 bg-white/8 hover:bg-white/15 text-white/80 text-xs font-bold py-2.5 px-3 rounded-xl border border-white/20 transition-colors cursor-pointer"
             >
               تجاهل
             </button>

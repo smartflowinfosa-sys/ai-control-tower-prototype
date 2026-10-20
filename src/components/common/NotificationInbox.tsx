@@ -13,7 +13,7 @@ export default function NotificationInbox() {
     <div className="relative z-[55]">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2.5 text-white hover:text-white glass transition-all hover:bg-white/15"
+        className="relative p-2.5 text-white hover:text-white bg-white/5 border border-white/20 rounded-xl transition-all hover:bg-white/10 cursor-pointer"
       >
         <span className="text-xl">🔔</span>
         {pendingCount > 0 && (
@@ -24,8 +24,8 @@ export default function NotificationInbox() {
       </button>
 
       {isOpen && (
-        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 glass-popover glass-dropdown border border-white/40 rounded-2xl flex flex-col max-h-[500px] z-50 text-white">
-          <div className="border-b border-white/25 p-4 flex justify-between items-center">
+        <div className="absolute top-14 left-0 md:left-auto md:-right-4 w-80 md:w-96 bg-zinc-950/95 border border-white/20 shadow-2xl rounded-2xl flex flex-col max-h-[500px] z-50 text-white">
+          <div className="border-b border-white/20 p-4 flex justify-between items-center">
             <h3 className="font-bold text-white">سجل إشعارات زاهي</h3>
             <span className="text-xs bg-teal-500/15 text-teal-100 border border-teal-300/30 px-2 py-0.5 rounded-lg font-bold">
               {notifications.length} إشعار
@@ -41,7 +41,7 @@ export default function NotificationInbox() {
             ) : (
               <ul className="space-y-3">
                 {notifications.map((alert: AlertData) => (
-                  <li key={alert.id} className="p-4 rounded-xl border border-white/25 bg-white/8 text-sm transition-all">
+                  <li key={alert.id} className="p-4 rounded-xl border border-white/20 bg-white/5 text-sm transition-all">
                     <div className="flex justify-between items-start mb-2">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                         alert.riskLevel === 'CRITICAL' ? 'bg-red-500/15 text-red-200 border border-red-300/30' :
@@ -61,13 +61,13 @@ export default function NotificationInbox() {
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => resolveNotification(alert.id)}
-                          className="flex-1 bg-white/20 hover:bg-white/25 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors "
+                          className="flex-1 bg-white/20 hover:bg-white/25 text-white text-[10px] font-bold py-2 px-2 rounded-lg transition-colors cursor-pointer"
                         >
                           تنفيذ: {alert.suggestedAction}
                         </button>
                         <button 
                           onClick={() => ignoreNotification(alert.id)}
-                          className="bg-white/8 border border-white/25 text-white/80 hover:bg-white/15 text-[10px] font-bold py-2 px-3 rounded-lg transition-colors"
+                          className="bg-white/5 border border-white/20 text-white/80 hover:bg-white/10 text-[10px] font-bold py-2 px-3 rounded-lg transition-colors cursor-pointer"
                         >
                           تجاهل
                         </button>
@@ -82,7 +82,7 @@ export default function NotificationInbox() {
                             🤖 AI
                           </span>
                         ) : (
-                          <span className="text-[10px] bg-white/8 text-white/80 px-1.5 py-0.5 rounded font-bold border border-white/25">
+                          <span className="text-[10px] bg-white/5 text-white/80 px-1.5 py-0.5 rounded font-bold border border-white/20">
                             👤 بشري
                           </span>
                         )}

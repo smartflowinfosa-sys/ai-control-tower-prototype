@@ -235,24 +235,24 @@ export default function SupplierDiscoveryPage() {
     <div className="page-shell w-full mx-auto space-y-8 font-sans pb-16">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 glass-popover border border-white/40 text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-black/80 border border-white/20 shadow-2xl text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
           <Sparkles className="w-5 h-5 text-white animate-spin" />
           <span className="text-sm font-bold">{toastMessage}</span>
         </div>
       )}
 
       {/* Header */}
-      <header className="glass page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2.5 rounded-2xl bg-white/8 border border-white/40 text-white ">
+            <span className="p-2.5 rounded-2xl bg-white/8 border border-white/20 text-white ">
               <PackageSearch className="w-6 h-6" />
             </span>
             <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
                 مساحة عمل اكتشاف الموردين (Supplier Discovery Workspace)
               </h1>
-              <p className="text-white/80 font-semibold text-sm mt-1">
+              <p className="text-slate-50 font-semibold text-sm mt-1 drop-shadow-sm">
                 البحث الذكي بالرؤية الحاسوبية والنطاق الجغرافي لمطابقة خامات التغليف واعتماد سلاسل الإمداد
               </p>
             </div>
@@ -261,14 +261,14 @@ export default function SupplierDiscoveryPage() {
 
         <div className="flex items-center gap-3 flex-wrap">
           {/* AI Vision Status Badge */}
-          <div className="bg-white/8 border border-white/40 px-4 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-2 ">
+          <div className="bg-white/8 border border-white/20 px-4 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-2 ">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>AI Vision Engine v2.4 متصل</span>
           </div>
 
           <Link
             href="/suppliers"
-            className="bg-white/8 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/40 transition-all text-sm flex items-center gap-2 group "
+            className="bg-white/8 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/20 transition-all text-sm flex items-center gap-2 group "
           >
             <Building2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
             <span>دليل الموردين المعتمدين</span>
@@ -278,10 +278,10 @@ export default function SupplierDiscoveryPage() {
       </header>
 
       {/* 1. INPUT ZONE: AI Vision & Geographic Filtering */}
-      <section className="glass p-6 md:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/25 pb-4">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 md:p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/20 pb-4">
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-xl bg-white/8 border border-white/40 text-white">
+            <span className="p-1.5 rounded-xl bg-white/8 border border-white/20 text-white">
               <Sparkles className="w-4 h-4" />
             </span>
             <h2 className="text-lg font-bold text-white">
@@ -310,8 +310,8 @@ export default function SupplierDiscoveryPage() {
 
             {uploadedImage ? (
               /* Uploaded Preview State */
-              <div className="relative rounded-2xl border border-white/40 glass p-4 flex items-center gap-4 group">
-                <div className="w-24 h-24 rounded-xl border border-white/40 overflow-hidden shrink-0 flex items-center justify-center relative bg-white/8">
+              <div className="relative rounded-2xl border border-white/20 bg-white/5 p-4 flex items-center gap-4 group">
+                <div className="w-24 h-24 rounded-xl border border-white/20 overflow-hidden shrink-0 flex items-center justify-center relative bg-white/8">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={uploadedImage}
@@ -343,7 +343,7 @@ export default function SupplierDiscoveryPage() {
                     setUploadedImage(null);
                     setUploadedFileName(null);
                   }}
-                  className="p-2 rounded-xl bg-white/8 hover:bg-rose-500/15 text-white/65 hover:text-rose-200 transition-colors cursor-pointer border border-white/40"
+                  className="p-2 rounded-xl bg-white/8 hover:bg-rose-500/15 text-white/65 hover:text-rose-200 transition-colors cursor-pointer border border-white/20"
                   title="حذف الصورة واختيار غيرها"
                 >
                   <X className="w-4 h-4" />
@@ -355,9 +355,9 @@ export default function SupplierDiscoveryPage() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-white/25 hover:border-white/25 bg-white/8 hover:bg-white/15 backdrop-blur-[10px] rounded-2xl p-7 transition-all cursor-pointer flex flex-col items-center justify-center text-center group"
+                className="border-2 border-dashed border-white/20 hover:border-white/30 bg-white/5 hover:bg-white/10 rounded-2xl p-7 transition-all cursor-pointer flex flex-col items-center justify-center text-center group"
               >
-                <div className="w-12 h-12 rounded-2xl bg-white/8 text-white flex items-center justify-center mb-3 transition-colors border border-white/50">
+                <div className="w-12 h-12 rounded-2xl bg-white/8 text-white flex items-center justify-center mb-3 transition-colors border border-white/20">
                   <UploadCloud className="w-6 h-6 group-hover:scale-110 transition-transform" />
                 </div>
                 <div className="text-sm font-bold text-white">
@@ -383,7 +383,7 @@ export default function SupplierDiscoveryPage() {
                   key={sample.name}
                   type="button"
                   onClick={() => handleSelectPredefinedSample(sample.name, sample.img)}
-                  className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-white/8 hover:bg-white/15 text-white border border-white/40 transition-all cursor-pointer "
+                  className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-white/8 hover:bg-white/15 text-white border border-white/20 transition-all cursor-pointer "
                 >
                   + {sample.name}
                 </button>
@@ -404,7 +404,7 @@ export default function SupplierDiscoveryPage() {
                   <GlassSelect
                     value={selectedCity}
                     onChange={(e) => setSelectedCity(e.target.value)}
-                    className="w-full glass border border-white/40 rounded-2xl p-3 text-sm text-white font-bold focus:outline-none cursor-pointer pr-10 "
+                    className="w-full bg-white/5 border border-white/20 rounded-2xl p-3 text-sm text-white font-bold focus:outline-none cursor-pointer pr-10 "
                   >
                     <option value="ALL">جميع مناطق المملكة (تغطية شاملة)</option>
                     <option value="جدة">جدة (المنطقة الغربية - توريد فوري)</option>
@@ -426,7 +426,7 @@ export default function SupplierDiscoveryPage() {
                   <GlassSelect
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full glass border border-white/40 rounded-2xl p-3 text-sm text-white font-bold focus:outline-none cursor-pointer pr-10 "
+                    className="w-full bg-white/5 border border-white/20 rounded-2xl p-3 text-sm text-white font-bold focus:outline-none cursor-pointer pr-10 "
                   >
                     <option value="ALL">التعرف التلقائي بالذكاء الاصطناعي (Auto Detect)</option>
                     <option value="كرتون وورقيات">كرتون مموج وورقيات معتمدة للمطاعم</option>
@@ -466,9 +466,9 @@ export default function SupplierDiscoveryPage() {
       {/* 2. RESULTS GRID & EXPORT TOOLS */}
       <section className="space-y-5">
         {/* Export Toolbar & Grid Header */}
-        <div className="glass p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/8 border border-white/40 text-white rounded-2xl">
+            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-2xl">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
@@ -478,7 +478,7 @@ export default function SupplierDiscoveryPage() {
                   {toEnglishDigits(discoveredList.length)} موردين مطابقين
                 </span>
               </h3>
-              <p className="text-xs text-white/80 font-semibold">
+              <p className="text-xs text-slate-50 font-semibold drop-shadow-sm">
                 مرتبة حسب أعلى نسبة تطابق تقديرية مع صورة المنتج ومعايير التشغيل
               </p>
             </div>
@@ -492,7 +492,7 @@ export default function SupplierDiscoveryPage() {
             <button
               type="button"
               onClick={handleExportExcel}
-              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/40 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
+              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/20 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
               title="تصدير النتائج إلى جدول إكسل"
             >
               <FileSpreadsheet className="w-4 h-4 text-white" />
@@ -503,7 +503,7 @@ export default function SupplierDiscoveryPage() {
             <button
               type="button"
               onClick={handleExportPDF}
-              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/40 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
+              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/20 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
               title="توليد تقرير PDF رسمي"
             >
               <FileText className="w-4 h-4 text-white" />
@@ -514,7 +514,7 @@ export default function SupplierDiscoveryPage() {
             <button
               type="button"
               onClick={handleSendEmailReport}
-              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/40 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
+              className="bg-white/8 hover:bg-white/15 text-white font-bold px-3.5 py-2 rounded-xl border border-white/20 transition-all text-xs flex items-center gap-1.5 cursor-pointer "
               title="إرسال التقرير لإيميل الإدارة"
             >
               <Mail className="w-4 h-4 text-white" />
@@ -531,7 +531,7 @@ export default function SupplierDiscoveryPage() {
             return (
               <div
                 key={sup.id}
-                className="glass p-6 transition-all duration-200 flex flex-col justify-between group relative"
+                className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group relative"
               >
                 {/* Top Badge: AI Match Score */}
                 <div className="space-y-4">
@@ -560,13 +560,13 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* Supplier Key Specs Box */}
-                  <div className="glass p-4 rounded-xl border border-white/40 space-y-2 text-xs">
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-xl p-4 space-y-2 text-xs">
                     <div className="flex justify-between items-center">
                       <span className="text-white/80 flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-white" />
                         <span>تقييم المورد المعتمد:</span>
                       </span>
-                      <strong className="text-white bg-white/8 px-2 py-0.5 rounded-md border border-white/50 font-mono">
+                      <strong className="text-white bg-white/8 px-2 py-0.5 rounded-md border border-white/20 font-mono">
                         {toEnglishDigits(sup.rating)} من 5
                       </strong>
                     </div>
@@ -598,7 +598,7 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* AI Reasoning Analysis */}
-                  <div className="glass p-3.5 rounded-xl border border-white/40 text-xs text-white leading-relaxed">
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-xl p-3.5 text-xs text-white leading-relaxed">
                     <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
                       <Sparkles className="w-3 h-3 text-white" />
                       <span>تحليل مطابقة الذكاء الاصطناعي:</span>
@@ -611,7 +611,7 @@ export default function SupplierDiscoveryPage() {
                     {sup.specialties.map((spec) => (
                       <span
                         key={spec}
-                        className="text-[10px] bg-white/8 text-white px-2.5 py-0.5 rounded-lg border border-white/50 font-medium"
+                        className="text-[10px] bg-white/8 text-white px-2.5 py-0.5 rounded-lg border border-white/20 font-medium"
                       >
                         ✓ {spec}
                       </span>
@@ -620,7 +620,7 @@ export default function SupplierDiscoveryPage() {
                 </div>
 
                 {/* Card Actions & Contact Footer */}
-                <div className="pt-4 mt-4 border-t border-white/25 space-y-3">
+                <div className="pt-4 mt-4 border-t border-white/20 space-y-3">
                   <div className="flex justify-between items-center text-xs text-white/80 font-mono">
                     <span className="flex items-center gap-1">
                       <Phone className="w-3 h-3 text-white" />
@@ -634,7 +634,7 @@ export default function SupplierDiscoveryPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedSampleModal(sup)}
-                      className="bg-white/8 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-xl border border-white/40 text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer "
+                      className="bg-white/8 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-xl border border-white/20 text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer "
                     >
                       <Package className="w-3.5 h-3.5 text-white" />
                       <span>طلب عينة فحص 📦</span>
@@ -644,7 +644,7 @@ export default function SupplierDiscoveryPage() {
                     <button
                       type="button"
                       onClick={() => setRfqModalSupplier(sup)}
-                      className="bg-white/8 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-xl border border-white/40 text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer "
+                      className="bg-white/8 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-xl border border-white/20 text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer "
                     >
                       <Send className="w-3.5 h-3.5 text-white" />
                       <span>طلب تسعيرة (RFQ)</span>
@@ -682,9 +682,9 @@ export default function SupplierDiscoveryPage() {
       </section>
 
       {/* Operational Assistant Banner */}
-      <section className="glass p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-white/8 border border-white/40 flex items-center justify-center text-white shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-white/8 border border-white/20 flex items-center justify-center text-white shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -700,16 +700,16 @@ export default function SupplierDiscoveryPage() {
 
       {/* Modal: Request Sample */}
       {selectedSampleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in">
-          <div className="font-sans glass-popover border border-white/40 rounded-2xl w-full max-w-md p-6 space-y-4 text-white">
-            <div className="flex justify-between items-center border-b border-white/25 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="font-sans bg-zinc-950/90 border border-white/20 shadow-2xl rounded-2xl w-full max-w-md p-6 space-y-4 text-white">
+            <div className="flex justify-between items-center border-b border-white/20 pb-3">
               <div className="flex items-center gap-2">
                 <Package className="w-5 h-5 text-white" />
                 <h3 className="text-base font-bold text-white">طلب عينة فحص جودة</h3>
               </div>
               <button
                 onClick={() => setSelectedSampleModal(null)}
-                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/25 p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer"
+                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -719,7 +719,7 @@ export default function SupplierDiscoveryPage() {
               سيتم إرسال طلب عينة فحص رسمية إلى <strong className="text-white">{selectedSampleModal.name}</strong> لإرسال عينات مجانية إلى المختبر التشغيلي لزاهي في <strong className="text-white">{selectedSampleModal.city}</strong>.
             </p>
 
-            <div className="bg-white/8 p-4 rounded-xl border border-white/25 text-xs space-y-1.5 text-white/80">
+            <div className="bg-white/8 p-4 rounded-xl border border-white/20 text-xs space-y-1.5 text-white/80">
               <div><strong className="text-white">العنوان المعتمد:</strong> مركز زاهي اللوجستي، الرياض - حي العقيق</div>
               <div><strong className="text-white">مهلة التوصيل المقدرة للعينة:</strong> 24 ساعة عمل</div>
             </div>
@@ -738,7 +738,7 @@ export default function SupplierDiscoveryPage() {
               <button
                 type="button"
                 onClick={() => setSelectedSampleModal(null)}
-                className="px-4 bg-white/8 hover:bg-white/15 text-white/80 border border-white/25 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+                className="px-4 bg-white/8 hover:bg-white/15 text-white/80 border border-white/20 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
               >
                 إلغاء
               </button>
@@ -749,16 +749,16 @@ export default function SupplierDiscoveryPage() {
 
       {/* Modal: RFQ (Request for Quote) */}
       {rfqModalSupplier && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in">
-          <div className="font-sans glass-popover border border-white/40 rounded-2xl w-full max-w-md p-6 space-y-4 text-white">
-            <div className="flex justify-between items-center border-b border-white/25 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="font-sans bg-zinc-950/90 border border-white/20 shadow-2xl rounded-2xl w-full max-w-md p-6 space-y-4 text-white">
+            <div className="flex justify-between items-center border-b border-white/20 pb-3">
               <div className="flex items-center gap-2">
                 <Send className="w-5 h-5 text-white" />
                 <h3 className="text-base font-bold text-white">طلب استفسار أسعار (RFQ)</h3>
               </div>
               <button
                 onClick={() => setRfqModalSupplier(null)}
-                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/25 p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer"
+                className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -771,7 +771,7 @@ export default function SupplierDiscoveryPage() {
                   type="text"
                   disabled
                   value={rfqModalSupplier.name}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-white font-bold"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-white font-bold"
                 />
               </div>
 
@@ -783,11 +783,11 @@ export default function SupplierDiscoveryPage() {
                   step="500"
                   value={rfqQuantity}
                   onChange={(e) => setRfqQuantity(Number(e.target.value))}
-                  className="w-full bg-white/8 border border-white/25 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/25"
+                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/20"
                 />
               </div>
 
-              <div className="bg-white/8 p-3.5 rounded-xl border border-white/25 flex justify-between items-center">
+              <div className="bg-white/8 p-3.5 rounded-xl border border-white/20 flex justify-between items-center">
                 <span className="text-white/80 font-medium">التكلفة التقديرية المبدئية:</span>
                 <span className="font-extrabold text-white font-mono text-base">
                   {toEnglishDigits((rfqQuantity * rfqModalSupplier.estimatedUnitCost).toFixed(2))} ر.س
@@ -809,7 +809,7 @@ export default function SupplierDiscoveryPage() {
               <button
                 type="button"
                 onClick={() => setRfqModalSupplier(null)}
-                className="px-4 bg-white/8 hover:bg-white/15 text-white/80 border border-white/25 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+                className="px-4 bg-white/8 hover:bg-white/15 text-white/80 border border-white/20 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
               >
                 إلغاء
               </button>

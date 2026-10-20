@@ -2,8 +2,8 @@ import { TimelineEvent } from '@/domain/types/timeline';
 
 export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
   const actorColorMap: Record<string, string> = {
-    CUSTOMER: 'bg-white/8 text-white/80 border-white/25',
-    SYSTEM: 'bg-white/8 text-white/65 border-white/25',
+    CUSTOMER: 'bg-white/8 text-white/80 border-white/20',
+    SYSTEM: 'bg-white/8 text-white/65 border-white/20',
     KITCHEN: 'bg-amber-500/15 text-amber-200 border-amber-300/30',
     PACKING: 'bg-blue-500/15 text-blue-200 border-blue-300/30',
     DELIVERY: 'bg-purple-500/15 text-purple-200 border-purple-300/30',
@@ -11,7 +11,7 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
   };
 
   return (
-    <div className="relative border-r-2 border-white/25 pr-6 ml-4 my-8">
+    <div className="relative border-r-2 border-white/20 pr-6 ml-4 my-8">
       {events.map((event) => {
         const isAnomaly = event.isAnomaly;
         const isAi = event.actor === 'AI_AGENT';
@@ -23,8 +23,8 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
  ${isAnomaly ? 'bg-rose-500 animate-pulse ' : isAi ? 'bg-teal-500 ' : 'bg-white/8'}`}
             />
             
-            <div className={`glass p-5 border transition-all
- ${isAnomaly ? 'border-rose-300/30' : isAi ? 'border-white/25' : 'border-white/40'}
+            <div className={`bg-white/10 backdrop-blur-xl border shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-5 transition-all
+ ${isAnomaly ? 'border-rose-300/40' : 'border-white/20'}
             `}>
               <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -36,12 +36,12 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
                     {event.actor}
                   </span>
                 </div>
-                <span className="text-xs text-white/65 font-bold bg-white/8 px-2.5 py-1 rounded-lg border border-white/40 whitespace-nowrap font-mono">
+                <span className="text-xs text-white/65 font-bold bg-white/8 px-2.5 py-1 rounded-lg border border-white/20 whitespace-nowrap font-mono">
                   {new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               
-              <p className="text-sm text-white/80 font-semibold leading-relaxed bg-white/8 p-3 rounded-xl border border-white/40">
+              <p className="text-sm text-white/80 font-semibold leading-relaxed bg-white/8 p-3 rounded-xl border border-white/20">
                 {event.description}
               </p>
             </div>

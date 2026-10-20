@@ -12,10 +12,10 @@ export default function ProductionPage() {
   return (
     <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="glass page-header mb-8 flex justify-between items-end flex-wrap gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-8 flex justify-between items-end flex-wrap gap-4 p-6 sm:p-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">شاشة الإنتاج (KDS)</h1>
-          <p className="text-white/80 font-semibold text-sm mt-2">الطلبات الحالية في محطات التحضير والمطبخ</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">شاشة الإنتاج (KDS)</h1>
+          <p className="text-slate-50 font-semibold text-sm mt-2 drop-shadow-sm">الطلبات الحالية في محطات التحضير والمطبخ</p>
         </div>
         <div className="text-sm font-bold bg-teal-500/15 text-teal-100 border border-teal-300/30 px-3.5 py-1.5 rounded-full font-mono ">
           إجمالي الطلبات النشطة: {activeOrders.length}
@@ -29,7 +29,7 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`glass flex flex-col relative transition-all overflow-hidden ${
+              className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl flex flex-col relative transition-all overflow-hidden ${
                 isDelayed ? 'border-rose-400 ' : ''
               }`}
             >
@@ -39,10 +39,10 @@ export default function ProductionPage() {
                 </div>
               )}
               
-              <div className="p-4 border-b border-white/25 bg-white/8 flex justify-between items-center">
+              <div className="p-4 border-b border-white/20 bg-white/8 flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-extrabold text-white font-mono">{order.orderNumber}</h3>
-                  <span className="text-xs font-bold text-white bg-white/8 border border-white/50 px-2 py-0.5 rounded-md mt-1 inline-block">
+                  <span className="text-xs font-bold text-white bg-white/8 border border-white/20 px-2 py-0.5 rounded-md mt-1 inline-block">
                     زاهي
                   </span>
                 </div>
@@ -57,7 +57,7 @@ export default function ProductionPage() {
               <div className="p-4 flex-1">
                 <ul className="space-y-3">
                   {order.items.map(item => (
-                    <li key={item.id} className="border-b border-white/25 pb-2.5 last:border-0 last:pb-0">
+                    <li key={item.id} className="border-b border-white/20 pb-2.5 last:border-0 last:pb-0">
                       <div className="flex justify-between items-start">
                         <span className="font-extrabold text-white text-base">
                           <span className="text-white font-mono ml-1.5 font-bold">{item.quantity}x</span> 
@@ -66,7 +66,7 @@ export default function ProductionPage() {
                       </div>
                       
                       {item.customizations.length > 0 && (
-                        <div className="mt-1.5 text-xs text-white bg-white/8 border border-white/25 px-2.5 py-1 rounded-xl font-semibold">
+                        <div className="mt-1.5 text-xs text-white bg-white/8 border border-white/20 px-2.5 py-1 rounded-xl font-semibold">
                           <span className="font-bold text-white">تعديل:</span> {item.customizations.join('، ')}
                         </div>
                       )}
@@ -81,7 +81,7 @@ export default function ProductionPage() {
                 </ul>
               </div>
               
-              <div className="p-4 border-t border-white/25 bg-white/8 flex justify-between items-center mt-auto">
+              <div className="p-4 border-t border-white/20 bg-white/8 flex justify-between items-center mt-auto">
                 <span className="text-xs text-white/80 font-bold">
                   حالة المطبخ: {order.kitchenStatus.updated ? 'مُحدّث' : 'قيد الانتظار'}
                 </span>

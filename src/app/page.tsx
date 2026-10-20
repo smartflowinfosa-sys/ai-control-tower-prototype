@@ -11,22 +11,22 @@ export default function DashboardPage() {
   const kpis = mockOperationService.getDashboardKPIs();
 
   return (
-    <div className="page-shell dashboard-page">
+    <div className="max-w-[1560px] mx-auto space-y-6">
       <DemoAlertTrigger />
       
-      {/* Title Container with 28px radius */}
-      <header className="glass page-header">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
+      {/* Title Container */}
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 sm:p-8">
+        <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
           {t('dashboard.title')}
         </h1>
-        <p className="text-white/80 font-semibold text-sm mt-1.5">
+        <p className="text-white/80 font-semibold text-sm mt-1.5 drop-shadow-sm">
           {t('dashboard.subtitle')}
         </p>
       </header>
 
       <AIAutonomyControl />
 
-      <div className="dashboard-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPIWidget 
           title={t('dashboard.totalOrders')} 
           value={kpis.totalOrders} 

@@ -606,7 +606,7 @@ export default function SuppliersClient({
     <div className="page-shell w-full mx-auto space-y-8 font-sans">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 glass text-white px-6 py-3.5 rounded-[18px] flex items-center gap-3 border animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-zinc-900 border border-white/20 shadow-2xl text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
           <Sparkles className="w-5 h-5 text-white" />
           <span className="text-sm font-bold">{toastMessage}</span>
         </div>
@@ -614,7 +614,7 @@ export default function SuppliersClient({
 
       {/* Database Status Alert Banner */}
       {fetchError && (
-        <div className="p-4 rounded-2xl glass border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm flex items-center gap-3">
+        <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0" />
           <div>
             <div className="font-bold">
@@ -626,17 +626,17 @@ export default function SuppliersClient({
       )}
 
       {/* Header */}
-      <header className="glass page-header rounded-[24px] mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-2.5 rounded-[18px] glass glass-card text-white/65 border">
+            <span className="p-2.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
               <Truck className="w-6 h-6" />
             </span>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
               {t('suppliers.title')}
             </h1>
           </div>
-          <p className="text-white/65 text-sm mt-1.5">
+          <p className="text-slate-50 font-semibold text-sm mt-1.5 drop-shadow-sm">
             {t('suppliers.subtitle')}
           </p>
         </div>
@@ -645,7 +645,7 @@ export default function SuppliersClient({
           {/* Add Supplier Button */}
           <button
             onClick={handleOpenAddSupplier}
-            className="glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold px-5 py-2.5 rounded-[18px] transition-all text-sm flex items-center gap-2 cursor-pointer"
+            className="bg-white/10 hover:bg-white/20 border border-white/20 active:scale-95 text-white font-bold px-5 py-2.5 rounded-xl transition-all text-sm flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>{lang === 'en' ? 'Add New Supplier +' : 'إضافة مورد جديد +'}</span>
@@ -653,7 +653,7 @@ export default function SuppliersClient({
 
           <Link
             href="/inventory"
-            className="glass glass-card hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-[18px] border transition-all text-sm flex items-center gap-2 group cursor-pointer"
+            className="bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm flex items-center gap-2 group cursor-pointer"
           >
             <Package className="w-4 h-4 text-white/65 group-hover:scale-110 transition-transform" />
             <span>{lang === 'en' ? 'Back to Inventory' : 'العودة للمخزون'}</span>
@@ -664,7 +664,7 @@ export default function SuppliersClient({
 
       {/* Storage Bucket Setup Alert Notice */}
       {storageNotice && (
-        <div className="p-4 rounded-2xl glass border border-amber-400/50 bg-amber-500/10 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+        <div className="p-4 rounded-2xl border border-amber-400/50 bg-amber-500/10 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0" />
             <span className="font-bold">{storageNotice}</span>
@@ -681,29 +681,29 @@ export default function SuppliersClient({
 
       {/* Supplier Network Overview Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
-            <div className="text-xs font-semibold text-white/65">
+            <div className="text-xs font-semibold text-slate-50 drop-shadow-sm">
               {lang === 'en' ? 'Registered Suppliers' : 'إجمالي الموردين المعتمدين'}
             </div>
-            <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
+            <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1 drop-shadow-sm">
               {toEnglishDigits(suppliers.length)}
             </div>
             <div className="text-[11px] text-teal-200/90 mt-0.5">
               {lang === 'en' ? 'Active Network Partners' : 'شركاء سلاسل إمداد زاهي'}
             </div>
           </div>
-          <div className="p-3.5 rounded-[18px] glass glass-card text-white/65 border">
+          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
             <Building2 className="w-6 h-6 text-teal-200" />
           </div>
         </div>
 
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
-            <div className="text-xs font-semibold text-white/65">
+            <div className="text-xs font-semibold text-slate-50 drop-shadow-sm">
               {lang === 'en' ? 'Avg. Delivery Lead Time' : 'متوسط سرعة التوريد'}
             </div>
-            <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
+            <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1 drop-shadow-sm">
               {toEnglishDigits(
                 suppliers.length > 0
                   ? Math.round(suppliers.reduce((acc, s) => acc + (s.delivery_time_hours || 24), 0) / suppliers.length)
@@ -716,12 +716,12 @@ export default function SuppliersClient({
               <span>{lang === 'en' ? 'Standard Express Dispatch' : 'جاهزية توريد فورية'}</span>
             </div>
           </div>
-          <div className="p-3.5 rounded-[18px] glass glass-card text-white/65 border">
+          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
             <Clock className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">
               {lang === 'en' ? 'Network Quality Score' : 'متوسط تقييم الجودة'}
@@ -738,7 +738,7 @@ export default function SuppliersClient({
               {lang === 'en' ? 'Certified Quality Standards' : 'مطابقة لمعايير الجودة المعتمدة'}
             </div>
           </div>
-          <div className="p-3.5 rounded-[18px] glass glass-card text-emerald-300 border">
+          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-emerald-300">
             <ShieldCheck className="w-6 h-6" />
           </div>
         </div>
@@ -748,7 +748,7 @@ export default function SuppliersClient({
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
+            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-xl">
               <Layers className="w-5 h-5 text-teal-200" />
             </div>
             <div>
@@ -764,7 +764,7 @@ export default function SuppliersClient({
           </div>
 
           {/* Quick Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 glass border border-white/40 p-1.5 rounded-[18px] overflow-x-auto">
+          <div className="flex items-center gap-1.5 bg-white/5 border border-white/20 p-1.5 rounded-xl overflow-x-auto">
             {[
               { id: 'ALL', label: lang === 'en' ? 'All Active' : 'الكل النشط', count: activePOs.length },
               { id: 'PENDING_APPROVAL', label: lang === 'en' ? 'Pending' : 'بانتظار الموافقة', count: activePOs.filter(p => p.status === 'PENDING_APPROVAL').length },
@@ -777,13 +777,13 @@ export default function SuppliersClient({
                 onClick={() => setActiveStatusFilter(tab.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   activeStatusFilter === tab.id
-                    ? 'glass-active text-white bg-white/20'
+                    ? 'text-white bg-white/20 border border-white/20'
                     : 'text-white/80 hover:text-white hover:bg-white/15'
                 }`}
               >
                 <span>{tab.label}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
-                  activeStatusFilter === tab.id ? 'bg-teal-600/15 text-teal-100' : 'bg-white/8 text-white/80 border border-white/50'
+                  activeStatusFilter === tab.id ? 'bg-teal-600/15 text-teal-100' : 'bg-white/8 text-white/80 border border-white/20'
                 }`}>
                   {toEnglishDigits(tab.count)}
                 </span>
@@ -792,11 +792,11 @@ export default function SuppliersClient({
           </div>
         </div>
 
-        {/* PO Glass Table */}
-        <div className="glass rounded-[24px]">
+        {/* PO Table */}
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className={`w-full text-sm text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
-              <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/25">
+              <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/20">
                 <tr>
                   <th className="px-5 py-4">{lang === 'en' ? 'PO #' : 'رقم الأمر'}</th>
                   <th className="px-5 py-4">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</th>
@@ -880,7 +880,7 @@ export default function SuppliersClient({
                                 <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/40 text-white/80">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/20 text-white/80">
                                 <User className="w-3.5 h-3.5 text-white/65" />
                                 <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
                               </span>
@@ -936,7 +936,7 @@ export default function SuppliersClient({
                                 setSelectedPO(po);
                                 setIsEditingPO(false);
                               }}
-                              className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/40 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
+                              className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
                             >
                               {lang === 'en' ? 'Details' : 'التفاصيل'}
                             </button>
@@ -952,12 +952,12 @@ export default function SuppliersClient({
       </section>
 
       {/* 2. Smart Bidding Comparison */}
-      <section className="glass p-6 space-y-6">
-        <div className="border-b border-white/25 pb-5 space-y-4">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 space-y-6">
+        <div className="border-b border-white/20 pb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-[18px] bg-white/8 border border-white/40 text-white">
+                <span className="p-2 rounded-[18px] bg-white/8 border border-white/20 text-white">
                   <Bot className="w-5 h-5" />
                 </span>
                 <h2 className="text-xl font-bold text-white">
@@ -971,7 +971,7 @@ export default function SuppliersClient({
               </p>
             </div>
 
-            <div className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
+            <div className="text-xs font-semibold text-white bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
               <span>{lang === 'en' ? 'Available Items for Comparison:' : 'أصناف متاحة للمقارنة:'}</span>
               <span className="font-extrabold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2 py-0.5 rounded-md font-mono">
                 {toEnglishDigits(availableItems.length)}
@@ -980,7 +980,7 @@ export default function SuppliersClient({
           </div>
 
           {/* Item Selector Dropdown */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/8 border border-white/40 p-3 rounded-[18px]">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/8 border border-white/20 p-3 rounded-[18px]">
             <label htmlFor="compare-item-select" className="text-xs font-bold text-white/90 shrink-0 px-1 flex items-center gap-2">
               <Package className="w-4 h-4 text-white" />
               <span>{lang === 'en' ? 'Choose item to compare:' : 'اختر صنفاً للمقارنة:'}</span>
@@ -990,13 +990,13 @@ export default function SuppliersClient({
                 id="compare-item-select"
                 value={analyzingItemId || ''}
                 onChange={(e) => handleAnalyzeQuotes(e.target.value)}
-                className="w-full bg-white/10 backdrop-blur-md border border-white/40 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none cursor-pointer"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white outline-none cursor-pointer"
               >
                 {availableItems.map(item => {
                   const code = item.item_code;
                   const name = lang === 'en' ? (item.item_name_en || item.item_name_ar) : item.item_name_ar;
                   return (
-                    <option key={code} value={code} className="bg-white text-slate-800 py-1">
+                    <option key={code} value={code} className="bg-slate-900 text-white py-1">
                       {name} ({code})
                     </option>
                   );
@@ -1017,7 +1017,7 @@ export default function SuppliersClient({
                 <span className="text-teal-100 font-extrabold text-base bg-teal-600/15 border border-teal-300/30 px-3 py-1 rounded-[18px]">
                   {lang === 'en' ? (selectedItem.item_name_en || selectedItem.item_name_ar) : selectedItem.item_name_ar}
                 </span>
-                <span className="text-xs text-white/80 font-semibold bg-white/8 border border-white/40 px-2.5 py-1 rounded-[18px] font-mono">
+                <span className="text-xs text-white/80 font-semibold bg-white/8 border border-white/20 px-2.5 py-1 rounded-[18px] font-mono">
                   {lang === 'en' ? 'Current Stock:' : 'المخزون الحالي:'} {toEnglishDigits((selectedItem.current_stock ?? 0).toLocaleString('en-US'))} / {lang === 'en' ? 'Reorder Level:' : 'الحد الأدنى:'} {toEnglishDigits((selectedItem.reorder_level ?? 0).toLocaleString('en-US'))}
                 </span>
               </div>
@@ -1032,7 +1032,7 @@ export default function SuppliersClient({
                   </motion.div>
                   <span>{lang === 'en' ? 'AI Recommended Choice:' : 'التوصية الذكية المعتمدة:'}</span>
                   <span className="font-extrabold text-white">{bestQuote.supplierName}</span>
-                  <span className="text-[10px] bg-white/8 border border-white/50 px-1.5 py-0.5 rounded text-white/80 font-semibold">
+                  <span className="text-[10px] bg-white/8 border border-white/20 px-1.5 py-0.5 rounded text-white/80 font-semibold">
                     {lang === 'en' ? 'Match' : 'مطابقة'} {toEnglishDigits(bestQuote.aiRecommendationScore)}%
                   </span>
                 </div>
@@ -1047,7 +1047,7 @@ export default function SuppliersClient({
                   return (
                     <div
                       key={quote.supplierId}
-                      className={`glass border border-white/40 rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
+                      className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
                         isBest
                           ? 'ring-2 ring-white/25 '
                           : ''
@@ -1085,7 +1085,7 @@ export default function SuppliersClient({
                         </div>
 
                         {/* Specs Card */}
-                        <div className="bg-white/8 border border-white/40 p-4 rounded-[18px] space-y-2 text-xs">
+                        <div className="bg-white/8 border border-white/20 p-4 rounded-[18px] space-y-2 text-xs">
                           <div className="flex justify-between items-center">
                             <span className="text-white/80">{lang === 'en' ? 'Unit Price:' : 'سعر الوحدة:'}</span>
                             <span className="font-extrabold text-white text-lg font-mono">
@@ -1122,7 +1122,7 @@ export default function SuppliersClient({
                         </div>
 
                         {/* AI Reasoning */}
-                        <div className="text-xs text-white/80 leading-relaxed bg-white/8 border border-white/40 p-3.5 rounded-[18px]">
+                        <div className="text-xs text-white/80 leading-relaxed bg-white/8 border border-white/20 p-3.5 rounded-[18px]">
                           <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
                             <Bot className="w-3.5 h-3.5 text-white" />
                             <span>{lang === 'en' ? 'AI Agent Analysis:' : 'تحليل الوكيل الذكي:'}</span>
@@ -1137,7 +1137,7 @@ export default function SuppliersClient({
                         className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer mt-4 ${
                           isBest
                             ? 'bg-white/20 hover:bg-white/25 active:scale-95 text-white '
-                            : 'bg-white/8 hover:bg-white/15 text-white border border-white/40'
+                            : 'bg-white/8 hover:bg-white/15 text-white border border-white/20'
                         }`}
                       >
                         <Send className="w-3.5 h-3.5" />
@@ -1148,7 +1148,7 @@ export default function SuppliersClient({
                 })}
               </div>
             ) : (
-              <div className="p-8 text-center text-white/65 text-sm bg-white/8 border border-white/40 rounded-[18px]">
+              <div className="p-8 text-center text-white/65 text-sm bg-white/8 border border-white/20 rounded-[18px]">
                 {lang === 'en' ? 'No quotes registered for this item currently' : 'لا توجد عروض أسعار مسجلة لهذا الصنف حالياً'}
               </div>
             )}
@@ -1160,7 +1160,7 @@ export default function SuppliersClient({
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
+            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-xl">
               <Building2 className="w-5 h-5 text-teal-200" />
             </div>
             <div>
@@ -1175,7 +1175,7 @@ export default function SuppliersClient({
             </div>
           </div>
 
-          <span className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px] font-mono">
+          <span className="text-xs font-semibold text-white bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-[18px] font-mono">
             {toEnglishDigits(suppliers.length)} {lang === 'en' ? 'Suppliers Registered' : 'موردين مسجلين'}
           </span>
         </div>
@@ -1187,7 +1187,7 @@ export default function SuppliersClient({
             return (
               <div
                 key={sup.id}
-                className="glass border border-white/30 rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/60 hover:shadow-xl"
+                className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
               >
                 <div className="space-y-4">
                   {/* Top Header: Spacious, Prominent Supplier Name & Category */}
@@ -1248,11 +1248,11 @@ export default function SuppliersClient({
                   </div>
                 </div>
 
-                {/* Prominent Glassmorphism Button: Open Profile */}
+                {/* Action Button: Open Profile */}
                 <button
                   type="button"
                   onClick={() => handleOpenSupplierProfile(sup)}
-                  className="mt-5 w-full py-2.5 px-4 rounded-xl text-sm font-bold bg-white/10 hover:bg-white/20 active:scale-95 text-white border border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group-hover:border-white/50"
+                  className="mt-5 w-full py-2.5 px-4 rounded-xl text-sm font-bold bg-white/10 hover:bg-white/20 active:scale-95 text-white border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer group-hover:border-white/40"
                 >
                   <ExternalLink className="w-4 h-4 text-teal-200" />
                   <span>{lang === 'en' ? 'Open Profile' : 'فتح ملف المورد'}</span>
@@ -1326,8 +1326,8 @@ export default function SuppliersClient({
         });
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
-            <div className="font-sans glass glass-popover rounded-[28px] w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-6 text-white border border-white/30 shadow-2xl relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+            <div className="font-sans bg-zinc-950/90 rounded-[28px] w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-6 text-white border border-white/20 shadow-2xl relative">
               
               {/* Modal Header */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/20 pb-5">
@@ -1601,7 +1601,7 @@ export default function SuppliersClient({
                         type="date"
                         value={profileDateStart}
                         onChange={(e) => setProfileDateStart(e.target.value)}
-                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
                       />
                     </div>
 
@@ -1612,7 +1612,7 @@ export default function SuppliersClient({
                         type="date"
                         value={profileDateEnd}
                         onChange={(e) => setProfileDateEnd(e.target.value)}
-                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
                       />
                     </div>
 
@@ -1622,7 +1622,7 @@ export default function SuppliersClient({
                       <select
                         value={profileItemFilter}
                         onChange={(e) => setProfileItemFilter(e.target.value)}
-                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
                       >
                         <option value="ALL" className="bg-slate-800 text-white">
                           {lang === 'en' ? 'All Supplier Items' : 'جميع أصناف المورد'}
@@ -1836,7 +1836,7 @@ export default function SuppliersClient({
                 <button
                   type="button"
                   onClick={handleCloseSupplierProfile}
-                  className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/25 transition-all cursor-pointer"
+                  className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer"
                 >
                   {lang === 'en' ? 'Close Profile' : 'إغلاق ملف المورد'}
                 </button>
@@ -1845,8 +1845,8 @@ export default function SuppliersClient({
 
             {/* Modal / Popup: Add New Certified Item to Supplier */}
             {isAddItemModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
-                <div className="font-sans glass glass-popover rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border border-white/30 shadow-2xl relative">
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+                <div className="font-sans bg-zinc-950/90 rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border border-white/20 shadow-2xl relative">
                   <div className="flex justify-between items-center border-b border-white/20 pb-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-300/30 flex items-center justify-center text-teal-200">
@@ -1886,7 +1886,7 @@ export default function SuppliersClient({
                           }
                         }}
                         required
-                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2.5 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
                       >
                         <option value="" disabled className="bg-slate-800 text-white">
                           {lang === 'en' ? '-- Select Item --' : '-- اختر الصنف --'}
@@ -1910,7 +1910,7 @@ export default function SuppliersClient({
                         required
                         value={agreedUnitPrice}
                         onChange={(e) => setAgreedUnitPrice(Number(e.target.value))}
-                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
                       />
                     </div>
 
@@ -1950,14 +1950,14 @@ export default function SuppliersClient({
 
       {/* Modal: View & Edit Purchase Order Details (PO Modal) */}
       {selectedPO && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/[0.06] animate-in fade-in">
-          <div className="font-sans glass-popover rounded-[24px] w-full max-w-lg p-6 space-y-5 text-white border relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="font-sans bg-zinc-950/90 rounded-2xl w-full max-w-lg p-6 space-y-5 text-white border border-white/20 shadow-2xl relative">
             
             {/* Edit Button in Header (Far Left) */}
             <button
               type="button"
               onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
-              className="absolute left-6 top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-[18px] glass glass-card hover:bg-white/15 text-white border text-xs font-bold transition-all cursor-pointer z-10"
+              className="absolute left-6 top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all cursor-pointer z-10"
               title={lang === 'en' ? 'Edit purchase order details' : 'تعديل تفاصيل أمر الشراء'}
             >
               <Edit2 size={16} className="text-white/65" />
@@ -1967,7 +1967,7 @@ export default function SuppliersClient({
             {/* Header */}
             <div className="flex justify-between items-start border-b border-white/14 pb-3 pl-20">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[18px] glass glass-card border flex items-center justify-center text-white/65">
+                <div className="w-10 h-10 rounded-xl bg-white/8 border border-white/20 flex items-center justify-center text-white/65">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -1985,7 +1985,7 @@ export default function SuppliersClient({
                   setSelectedPO(null);
                   setIsEditingPO(false);
                 }}
-                className="text-white/65 hover:text-white glass glass-card hover:bg-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border"
+                className="text-white/65 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border border-white/20"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1993,7 +1993,7 @@ export default function SuppliersClient({
 
             {/* Edit Mode Form */}
             {isEditingPO ? (
-              <div className="glass glass-card rounded-[18px] p-4 border space-y-3.5 text-sm">
+              <div className="bg-white/5 rounded-2xl p-4 border border-white/20 space-y-3.5 text-sm">
                 <div className="text-center font-bold text-white border-b border-white/14 pb-2">
                   {lang === 'en' ? 'Edit Purchase Order Details' : 'تعديل بيانات أمر الشراء'}
                 </div>
@@ -2005,7 +2005,7 @@ export default function SuppliersClient({
                   <GlassSelect
                     value={editPOSupplier}
                     onChange={(e) => setEditPOSupplier(e.target.value)}
-                    className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:text-center"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:text-center"
                   >
                     {suppliers.map(s => {
                       const name = lang === 'en' ? (s.name_en || s.name_ar || s.name) : (s.name_ar || s.name);
@@ -2027,7 +2027,7 @@ export default function SuppliersClient({
                     step="100"
                     value={editPOQuantity}
                     onChange={(e) => setEditPOQuantity(Number(e.target.value))}
-                    className="w-full glass glass-card border rounded-[18px] p-2.5 text-sm text-white focus:outline-none focus:text-center font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:text-center font-mono"
                   />
                 </div>
 
@@ -2035,7 +2035,7 @@ export default function SuppliersClient({
                   <button
                     type="button"
                     onClick={handleSavePOEdit}
-                    className="flex-1 glass glass-card hover:bg-white/15 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    className="flex-1 bg-white/15 hover:bg-white/25 text-white font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 border border-white/20"
                   >
                     <Check className="w-4 h-4" />
                     <span>{lang === 'en' ? 'Save Changes' : 'حفظ التعديل'}</span>
@@ -2043,7 +2043,7 @@ export default function SuppliersClient({
                   <button
                     type="button"
                     onClick={() => setIsEditingPO(false)}
-                    className="px-4 glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                    className="px-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer"
                   >
                     {lang === 'en' ? 'Cancel' : 'إلغاء'}
                   </button>
@@ -2051,12 +2051,12 @@ export default function SuppliersClient({
               </div>
             ) : (
               /* Centered Details View */
-              <div className="glass glass-card rounded-[18px] p-4 border divide-y divide-white/20 text-sm">
+              <div className="bg-white/5 rounded-2xl p-4 border border-white/20 divide-y divide-white/20 text-sm">
                 
                 {/* 1. PO Number */}
                 <div className="flex flex-col items-center justify-center text-center py-2">
                   <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
-                  <span className="font-extrabold text-white font-mono text-base glass glass-active px-3 py-0.5 rounded-lg border mt-0.5">
+                  <span className="font-extrabold text-white font-mono text-base bg-white/15 px-3 py-0.5 rounded-lg border border-white/20 mt-0.5">
                     {toEnglishDigits(selectedPO.id)}
                   </span>
                 </div>
@@ -2105,7 +2105,7 @@ export default function SuppliersClient({
                 {/* 7. Creator */}
                 <div className="flex flex-col items-center justify-center text-center py-2">
                   <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Origin' : 'جهة الإصدار'}</span>
-                  <span className="text-xs font-bold text-white glass px-3 py-1 rounded-md border flex items-center justify-center gap-1.5 mt-1">
+                  <span className="text-xs font-bold text-white bg-white/10 px-3 py-1 rounded-md border border-white/20 flex items-center justify-center gap-1.5 mt-1">
                     {selectedPO.createdBy === 'AI_AGENT' ? (
                       <>
                         <Bot className="w-3.5 h-3.5 text-white/65" />
@@ -2123,7 +2123,7 @@ export default function SuppliersClient({
                 {/* 8. Status */}
                 <div className="flex flex-col items-center justify-center text-center py-2">
                   <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Current Status' : 'الحالة الحالية'}</span>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full border glass glass-active text-white mt-1">
+                  <span className="text-xs font-bold px-3 py-1 rounded-full border border-white/20 bg-white/15 text-white mt-1">
                     {selectedPO.status === 'PENDING_APPROVAL' && (lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة')}
                     {selectedPO.status === 'SENT' && (lang === 'en' ? 'Email Dispatched to Supplier' : 'تم إرسال الإيميل للمورد')}
                     {selectedPO.status === 'IN_TRANSIT' && (lang === 'en' ? 'In Transit to Branches' : 'جاري التوصيل الآن')}
@@ -2157,7 +2157,7 @@ export default function SuppliersClient({
               {selectedPO.status === 'PENDING_APPROVAL' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'SENT')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <Mail className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Confirm & Dispatch Email to Supplier' : 'تأكيد وإرسال الإيميل للمورد'}</span>
@@ -2167,7 +2167,7 @@ export default function SuppliersClient({
               {selectedPO.status === 'SENT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'IN_TRANSIT')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <Truck className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Update to: In Transit' : 'تحديث إلى: جاري التوصيل (In Transit)'}</span>
@@ -2177,7 +2177,7 @@ export default function SuppliersClient({
               {selectedPO.status === 'IN_TRANSIT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'DELIVERED')}
-                  className="w-full py-3 px-6 rounded-[18px] font-bold glass glass-card hover:bg-white/15 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Confirm Delivery & Add to Inventory' : 'تأكيد استلام الشحنة وإضافتها للمخزون'}</span>
@@ -2189,7 +2189,7 @@ export default function SuppliersClient({
                   setSelectedPO(null);
                   setIsEditingPO(false);
                 }}
-                className="w-full glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer"
               >
                 {lang === 'en' ? 'Close' : 'إغلاق'}
               </button>
@@ -2200,11 +2200,11 @@ export default function SuppliersClient({
 
       {/* Modal: Add or Edit Supplier (Supplier Form Modal) */}
       {isSupplierModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/[0.06] animate-in fade-in">
-          <div className="font-sans glass-popover rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
+          <div className="font-sans bg-zinc-950/90 rounded-2xl w-full max-w-md p-6 space-y-4 text-white border border-white/20 shadow-2xl relative">
             <div className="flex justify-between items-center border-b border-white/14 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-[18px] glass glass-card border flex items-center justify-center text-white/65">
+                <div className="w-9 h-9 rounded-xl bg-white/8 border border-white/20 flex items-center justify-center text-white/65">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <h3 className="text-base font-bold text-white">
@@ -2215,7 +2215,7 @@ export default function SuppliersClient({
               </div>
               <button
                 onClick={() => setIsSupplierModalOpen(false)}
-                className="text-white/65 hover:text-white glass glass-card hover:bg-white/15 border p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
+                className="text-white/65 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 p-1.5 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2233,7 +2233,7 @@ export default function SuppliersClient({
                     placeholder="مثال: الصندوق المناسب"
                     value={supplierForm.name}
                     onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -2245,7 +2245,7 @@ export default function SuppliersClient({
                     placeholder="e.g. Al Sandouq Al Monaseb"
                     value={supplierForm.name_en}
                     onChange={(e) => setSupplierForm({ ...supplierForm, name_en: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
                   />
                 </div>
               </div>
@@ -2261,7 +2261,7 @@ export default function SuppliersClient({
                     placeholder="مثال: جدة"
                     value={supplierForm.city}
                     onChange={(e) => setSupplierForm({ ...supplierForm, city: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none"
                   />
                 </div>
 
@@ -2280,7 +2280,7 @@ export default function SuppliersClient({
                       const val = e.target.value;
                       setSupplierForm({ ...supplierForm, rating: val === '' ? ('' as any) : parseFloat(val) });
                     }}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white focus:outline-none font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -2297,7 +2297,7 @@ export default function SuppliersClient({
                     placeholder="24"
                     value={supplierForm.delivery_time_hours}
                     onChange={(e) => setSupplierForm({ ...supplierForm, delivery_time_hours: Number(e.target.value) })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>
 
@@ -2310,7 +2310,7 @@ export default function SuppliersClient({
                     placeholder="+966 12 000 0000"
                     value={supplierForm.phone_number || supplierForm.phone}
                     onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value, phone_number: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -2325,7 +2325,7 @@ export default function SuppliersClient({
                     placeholder="4030123456"
                     value={supplierForm.cr_number}
                     onChange={(e) => setSupplierForm({ ...supplierForm, cr_number: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>
 
@@ -2338,7 +2338,7 @@ export default function SuppliersClient({
                     placeholder="300123456700003"
                     value={supplierForm.tax_number}
                     onChange={(e) => setSupplierForm({ ...supplierForm, tax_number: e.target.value })}
-                    className="w-full glass glass-card border rounded-[18px] px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -2347,7 +2347,7 @@ export default function SuppliersClient({
                 <button
                   type="submit"
                   disabled={isSavingSupplier}
-                  className="flex-1 glass glass-card hover:bg-white/15 active:scale-95 text-white font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="flex-1 bg-white/15 hover:bg-white/25 active:scale-95 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   {isSavingSupplier ? (
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
@@ -2365,7 +2365,7 @@ export default function SuppliersClient({
                 <button
                   type="button"
                   onClick={() => setIsSupplierModalOpen(false)}
-                  className="px-4 glass glass-card hover:bg-white/15 text-white border font-bold py-2.5 rounded-[18px] transition-all text-xs cursor-pointer"
+                  className="px-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer"
                 >
                   {lang === 'en' ? 'Cancel' : 'إلغاء'}
                 </button>

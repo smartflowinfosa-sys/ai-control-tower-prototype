@@ -51,7 +51,7 @@ export default function Sidebar() {
         onClick={() => setIsOpen(true)}
         aria-expanded={isOpen}
         aria-controls="mobile-navigation"
-        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 glass text-white cursor-pointer rounded-2xl shadow-lg`}
+        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl text-white cursor-pointer`}
         aria-label={t('sidebar.openNav')}
       >
         <Menu size={22} />
@@ -60,7 +60,7 @@ export default function Sidebar() {
       {/* Mobile Backdrop */}
       {isOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+          className="md:hidden fixed inset-0 bg-black/40 z-40"
           onClick={closeDrawer}
         />
       )}
@@ -90,7 +90,7 @@ export default function Sidebar() {
             }
           }
         }}
-        className={`mobile-drawer glass-popover md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
+        className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
           isRtl
             ? isOpen ? 'right-4' : '-right-96'
             : isOpen ? 'left-4' : '-left-96'
@@ -99,7 +99,7 @@ export default function Sidebar() {
         <div>
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/20 gap-2">
             <div className="flex items-center gap-3">
-              <div className="sidebar-brand shrink-0 flex items-center justify-center font-extrabold text-white">Z</div>
+              <div className="w-10 h-10 rounded-full bg-white/5 border border-white/20 shrink-0 flex items-center justify-center font-extrabold text-white">Z</div>
               <div>
                 <h3 className="font-extrabold text-sm text-white">Zahi Control System</h3>
                 <p className="text-[10px] text-white/65 font-semibold">{t('brand.subtitle')}</p>
@@ -126,7 +126,11 @@ export default function Sidebar() {
                   href={item.href}
                   onClick={closeDrawer}
                   aria-current={isActive ? 'page' : undefined}
-                  className="sidebar-link flex items-center gap-3 px-3 py-3 text-sm font-bold text-white hover:bg-white/10 rounded-2xl"
+                  className={`flex items-center gap-3 px-3 py-3 text-sm font-bold rounded-xl transition-colors cursor-pointer border ${
+                    isActive
+                      ? 'bg-white/15 border-white/30 text-white'
+                      : 'border-transparent text-white/80 hover:bg-white/10 hover:text-white'
+                  }`}
                 >
                   <Icon className="w-5 h-5 shrink-0" />
                   <span className="flex-1">{label}</span>
@@ -151,7 +155,7 @@ export default function Sidebar() {
             }}
             className="flex items-center gap-2.5 text-xs text-white hover:text-teal-200 transition-colors cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-full bg-white/10 border border-white/30 flex items-center justify-center font-bold text-xs">
+            <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
               {currentUser.avatar}
             </div>
             <div className={isRtl ? 'text-right' : 'text-left'}>
@@ -163,9 +167,11 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Desktop Main Glass Sidebar */}
+      {/* Desktop Main Transparent Sidebar */}
       <aside
-        className={`desktop-sidebar glass hidden md:flex flex-col select-none ${isCollapsed ? 'is-collapsed' : ''}`}
+        className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl hidden md:flex flex-col select-none sticky top-6 h-[calc(100vh-3rem)] my-6 ms-4 p-4 shrink-0 z-30 transition-all duration-200 ${
+          isCollapsed ? 'w-20 items-center' : 'w-72'
+        }`}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             setTooltip(null);
@@ -173,10 +179,10 @@ export default function Sidebar() {
           }
         }}
       >
-        <div className="sidebar-header">
+        <div className="w-full pb-4">
           <div className={`flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'justify-between gap-2'}`}>
             <div className="flex items-center gap-3">
-              <div className="sidebar-brand flex items-center justify-center shrink-0 font-extrabold text-lg text-white">
+              <div className="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center shrink-0 font-extrabold text-lg text-white">
                 Z
               </div>
               {!isCollapsed && (
@@ -209,7 +215,7 @@ export default function Sidebar() {
 
         <nav
           id="desktop-navigation"
-          className="sidebar-nav flex-1 w-full flex flex-col overflow-y-auto overflow-x-hidden"
+          className="flex-1 w-full flex flex-col gap-2 overflow-y-auto overflow-x-hidden p-1"
           aria-label={t('sidebar.mainMenu')}
           onScroll={() => setTooltip(null)}
         >
@@ -228,12 +234,16 @@ export default function Sidebar() {
                 onFocus={(event) => showTooltip(event, label)}
                 onBlur={() => setTooltip(null)}
                 onClick={() => setTooltip(null)}
-                className={`sidebar-link relative flex items-center w-full transition-colors cursor-pointer ${
-                  isCollapsed ? 'justify-center p-3' : 'gap-3 px-3 py-3 text-sm font-semibold'
+                className={`relative flex items-center rounded-xl transition-colors cursor-pointer border ${
+                  isActive
+                    ? 'bg-white/15 border-white/30 text-white font-bold'
+                    : 'bg-transparent border-transparent text-white/80 hover:bg-white/10 hover:text-white font-medium'
+                } ${
+                  isCollapsed ? 'justify-center p-3' : 'gap-3 px-3 py-3 text-sm'
                 }`}
               >
                 <div className="relative shrink-0 flex items-center justify-center">
-                  <Icon />
+                  <Icon size={20} />
                   {item.href === '/notifications' && pendingCount > 0 && (
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-white/80" />
                   )}
@@ -245,10 +255,10 @@ export default function Sidebar() {
         </nav>
 
         {/* User Profile Trigger Area with Drop-Up Menu */}
-        <div className="sidebar-profile">
+        <div className="mt-auto pt-4 w-full relative">
           {profileOpen && (
             <div
-              className={`glass-popover bg-slate-900/80 backdrop-blur-2xl border border-white/30 shadow-2xl absolute bottom-full mb-3 p-1.5 z-[100] ${
+              className={`bg-black/80 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl absolute bottom-full mb-3 p-2 z-[100] ${
                 isCollapsed
                   ? isRtl ? 'w-60 right-full mr-3' : 'w-60 left-full ml-3'
                   : 'w-full right-0 left-0'
@@ -297,14 +307,14 @@ export default function Sidebar() {
             type="button"
             onClick={() => setProfileOpen(!profileOpen)}
             aria-expanded={profileOpen}
-            className={`profile-button glass-inset w-full flex items-center rounded-[20px] hover:bg-white/15 transition-colors cursor-pointer ${
-              isCollapsed ? 'justify-center' : 'justify-between p-2'
+            className={`w-full flex items-center rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 transition-colors cursor-pointer ${
+              isCollapsed ? 'justify-center p-2' : 'justify-between p-2.5'
             }`}
             title={currentDisplayName}
             aria-label={currentDisplayName}
           >
             <div className="flex items-center gap-2.5">
-              <div className="profile-avatar rounded-full flex items-center justify-center font-bold text-sm shrink-0 text-white">
+              <div className="w-9 h-9 rounded-full border border-white/30 bg-white/10 flex items-center justify-center font-bold text-xs shrink-0 text-white">
                 {currentUser.avatar}
               </div>
               {!isCollapsed && (
@@ -324,7 +334,7 @@ export default function Sidebar() {
         createPortal(
           <div
             role="tooltip"
-            className="sidebar-tooltip glass-popover"
+            className="fixed -translate-y-1/2 p-2.5 px-4 text-xs font-bold text-white bg-black/80 border border-white/20 rounded-xl shadow-lg pointer-events-none z-[100]"
             style={{
               top: tooltip.top,
               right: tooltip.right !== undefined ? `${tooltip.right}px` : undefined,
