@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { SupabaseInventoryItem } from '@/lib/supabaseService';
+import { useState, useEffect, useRef } from 'react';
+import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, fetchInventoryItems } from '@/lib/supabaseService';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
-import { Building2, Check, X, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight } from 'lucide-react';
 
 // Helper to ensure all digits are English (0-9)
 const toEnglishDigits = (str: string | number): string => {
@@ -33,10 +33,19 @@ interface InventoryClientProps {
 }
 
 export default function InventoryClient({ initialItems, fetchError }: InventoryClientProps) {
-  const { lang, t, isRtl } = useLanguage();
-  const items = [...initialItems].sort((a, b) =>
-    a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+  const { lang, t, isRtl, currentUser } = useLanguage();
+  const [items, setItems] = useState<SupabaseInventoryItem[]>(() =>
+    [...initialItems].sort((a, b) =>
+      a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+    )
   );
+
+  useEffect(() => {
+    setItems([...initialItems].sort((a, b) =>
+      a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+    ));
+  }, [initialItems]);
+
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedItemForPO, setSelectedItemForPO] = useState<SupabaseInventoryItem | null>(null);
@@ -44,6 +53,37 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
   const [selectedSupplier, setSelectedSupplier] = useState<string>(initialSuppliers[0].name);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Role-Based Access Control (RBAC): Only Warehouse Managers, Operations Managers, or Admins can receive stock
+  const authorizedRoles = [
+    'warehouse manager',
+    'operations manager',
+    'operations & logistics control',
+    'admin',
+    'مدير العمليات',
+    'مدير المستودع',
+    'مسؤول المستودع',
+    'مشرف العمليات',
+  ];
+  const userRole = (currentUser?.role_en || currentUser?.role_ar || '').toLowerCase();
+  const isAuthorized = Boolean(
+    currentUser && (
+      authorizedRoles.some(r => userRole.includes(r)) ||
+      userRole.includes('manager') ||
+      userRole.includes('admin') ||
+      userRole.includes('ops')
+    )
+  );
+
+  // Receive Stock & Invoice Modal State
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
+  const [receivePoId, setReceivePoId] = useState<string>('');
+  const [receivedQty, setReceivedQty] = useState<number | ''>('');
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [receiverSignature, setReceiverSignature] = useState<string>('');
+  const [isSubmittingReceipt, setIsSubmittingReceipt] = useState<boolean>(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const handleNewAiPO: EventListener = (event) => {
@@ -56,11 +96,166 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
       }
     };
 
+    const handleUpdatePO: EventListener = (event) => {
+      const updated = (event as CustomEvent<PurchaseOrder>).detail;
+      if (updated) {
+        setPurchaseOrders(prev => prev.map(p => p.id === updated.id ? updated : p));
+      }
+    };
+
     window.addEventListener('ai_purchase_order_created', handleNewAiPO);
+    window.addEventListener('ai_purchase_order_updated', handleUpdatePO);
     return () => {
       window.removeEventListener('ai_purchase_order_created', handleNewAiPO);
+      window.removeEventListener('ai_purchase_order_updated', handleUpdatePO);
     };
   }, []);
+
+  const openReceiveModal = (defaultPoId?: string) => {
+    const targetId = defaultPoId || purchaseOrders.find(p => p.status !== 'تم الاستلام' && p.status !== 'RECEIVED')?.id || purchaseOrders[0]?.id || '';
+    setReceivePoId(targetId);
+    const po = purchaseOrders.find(p => p.id === targetId);
+    if (po) {
+      setReceivedQty(po.quantity);
+    } else {
+      setReceivedQty(1000);
+    }
+    setReceiverSignature('');
+    setInvoiceFile(null);
+    setReceiptError(null);
+    setIsReceiveModalOpen(true);
+  };
+
+  const handleSelectPO = (poId: string) => {
+    setReceivePoId(poId);
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (po) {
+      setReceivedQty(po.quantity);
+    }
+    setReceiptError(null);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setInvoiceFile(e.target.files[0]);
+      setReceiptError(null);
+    }
+  };
+
+  // Convert and enforce standard English numerals (0-9)
+  const handleQuantityChange = (valStr: string) => {
+    const converted = valStr
+      .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/[^0-9]/g, '');
+    if (converted === '') {
+      setReceivedQty('');
+    } else {
+      setReceivedQty(Number(converted));
+    }
+  };
+
+  const handleConfirmReceipt = async () => {
+    if (!receivePoId) {
+      setReceiptError(t('inventory.noPOSelected'));
+      return;
+    }
+
+    const po = purchaseOrders.find(p => p.id === receivePoId);
+    if (!po) {
+      setReceiptError(t('inventory.noPOSelected'));
+      return;
+    }
+
+    const finalQty = Number(receivedQty);
+    if (isNaN(finalQty) || finalQty <= 0) {
+      setReceiptError(t('inventory.invalidQuantity'));
+      return;
+    }
+
+    if (!invoiceFile) {
+      setReceiptError(t('inventory.noInvoiceFile'));
+      return;
+    }
+
+    if (!receiverSignature.trim()) {
+      setReceiptError(t('inventory.signatureRequired'));
+      return;
+    }
+
+    setIsSubmittingReceipt(true);
+    setReceiptError(null);
+
+    try {
+      // Step 1: Upload invoice to Supabase Storage 'invoices' bucket
+      const invoicePublicUrl = await uploadInvoice(invoiceFile, po.id);
+
+      // Step 2: Receive PO in Supabase, update inventory_items current_stock, and log receiver signature for audit
+      const result = await receivePurchaseOrder(
+        po.id,
+        finalQty,
+        invoicePublicUrl,
+        receiverSignature.trim(),
+        po.itemId
+      );
+
+      // Step 3: Refresh local inventory items immediately
+      if (result.itemCode) {
+        setItems(prevItems =>
+          prevItems.map(item =>
+            item.item_code === result.itemCode
+              ? { ...item, current_stock: result.newStock }
+              : item
+          )
+        );
+      }
+
+      // Step 4: Update purchase orders state locally
+      setPurchaseOrders(prev =>
+        prev.map(p =>
+          p.id === po.id
+            ? {
+                ...p,
+                status: 'تم الاستلام',
+                receivedQuantity: finalQty,
+                receiverSignature: receiverSignature.trim(),
+                invoiceUrl: invoicePublicUrl,
+                receivedAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
+              }
+            : p
+        )
+      );
+
+      // Background re-fetch to ensure complete sync with database
+      try {
+        const fresh = await fetchInventoryItems();
+        if (fresh && fresh.length > 0) {
+          setItems(fresh);
+        }
+      } catch (syncErr) {
+        console.warn('Background sync warning:', syncErr);
+      }
+
+      const successMsg = lang === 'ar'
+        ? `تم استلام ${toEnglishDigits(finalQty)} وحدة بنجاح وتحديث المخزون وتوثيق توقيع المستلم لأمر الشراء (${po.id}) ✨`
+        : `Received ${toEnglishDigits(finalQty)} units, updated stock & logged receiver signature for (${po.id}) successfully ✨`;
+
+      setSuccessToast(successMsg);
+      setIsReceiveModalOpen(false);
+      setInvoiceFile(null);
+      setReceivePoId('');
+      setReceivedQty('');
+      setReceiverSignature('');
+
+      setTimeout(() => {
+        setSuccessToast(null);
+      }, 5500);
+    } catch (err: unknown) {
+      console.error('Error during stock receiving:', err);
+      setReceiptError(err instanceof Error ? err.message : 'حدث خطأ أثناء تأكيد الاستلام');
+    } finally {
+      setIsSubmittingReceipt(false);
+    }
+  };
 
   // Bilingual Item Name Resolver
   const getItemDisplayName = (item: SupabaseInventoryItem): string => {
@@ -195,10 +390,21 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
             {t('inventory.subtitle')}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving */}
+          {isAuthorized && (
+            <button
+              onClick={() => openReceiveModal()}
+              className="px-4 py-2 text-sm bg-white/10 backdrop-blur-md border border-white/30 text-white hover:bg-white/20 transition-colors shadow-sm rounded-lg flex items-center gap-2 cursor-pointer"
+            >
+              <PackageCheck className="w-4 h-4 shrink-0 text-white" />
+              <span>استلام مخزون</span>
+            </button>
+          )}
+
           <Link
             href="/suppliers"
-            className="bg-white/8 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/40 transition-all text-sm flex items-center gap-2 group cursor-pointer"
+            className="bg-white/8 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/40 transition-all text-sm flex items-center gap-2 group cursor-pointer backdrop-blur-md"
           >
             <Building2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
             <span>{t('inventory.suppliersDirectoryBtn')}</span>
@@ -453,6 +659,263 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
         </div>
       )}
 
+      {/* Modal: Receive Stock & Upload Invoice */}
+      {isReceiveModalOpen && (() => {
+        const selectedReceivePO = purchaseOrders.find(p => p.id === receivePoId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in">
+            <div className="font-sans glass-popover bg-white/10 backdrop-blur-md rounded-3xl w-full max-w-lg p-6 sm:p-7 space-y-4 text-white border border-white/40 shadow-2xl relative">
+              {/* Modal Header */}
+              <div className="flex justify-between items-start border-b border-white/20 pb-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/20 border border-emerald-400/40 rounded-2xl text-emerald-300 shrink-0">
+                    <PackageCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                      <span>{t('inventory.modalReceiveTitle')}</span>
+                    </h3>
+                    <p className="text-xs text-white/70 mt-0.5 font-medium">
+                      {t('inventory.modalReceiveSubtitle')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
+                  }}
+                  disabled={isSubmittingReceipt}
+                  className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/25 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                  aria-label={t('common.close')}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Error Banner */}
+              {receiptError && (
+                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 flex items-center gap-2.5 text-xs text-rose-200">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-300" />
+                  <span>{receiptError}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* 1. Dropdown: Select Purchase Order */}
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1.5">
+                    {t('inventory.selectPO')}
+                  </label>
+                  <GlassSelect
+                    value={receivePoId}
+                    onChange={(e) => handleSelectPO(e.target.value)}
+                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  >
+                    <option value="" disabled>
+                      {t('inventory.selectPOPlaceholder')}
+                    </option>
+                    {purchaseOrders.map(po => (
+                      <option key={po.id} value={po.id}>
+                        {po.id} - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')}) {po.status === 'تم الاستلام' ? `[${t('inventory.poStatusReceived')}]` : ''}
+                      </option>
+                    ))}
+                  </GlassSelect>
+                </div>
+
+                {/* Selected PO Details Card */}
+                {selectedReceivePO && (
+                  <div className="bg-white/8 border border-white/20 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70">{t('inventory.selectedPODetails')}</span>
+                      <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-lg border border-white/20" dir="ltr">
+                        {selectedReceivePO.id}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-white/90">
+                      <span className="text-white/70">{t('inventory.supplierNameLabel')}</span>
+                      <span className="font-bold">{selectedReceivePO.supplierName}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-white/90">
+                      <span className="text-white/70">{t('inventory.orderedQuantity')}</span>
+                      <span className="font-mono font-bold">{toEnglishDigits(selectedReceivePO.quantity)} {t('common.unit')}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70">{t('inventory.modalCurrentStatus')}</span>
+                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                        selectedReceivePO.status === 'تم الاستلام'
+                          ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+                          : 'bg-amber-500/20 text-amber-200 border-amber-400/40'
+                      }`}>
+                        {selectedReceivePO.status === 'تم الاستلام' ? t('inventory.poStatusReceived') : selectedReceivePO.status}
+                      </span>
+                    </div>
+                    {selectedReceivePO.receiverSignature && (
+                      <div className="flex justify-between items-center text-white/90">
+                        <span className="text-white/70">{t('inventory.receiverSignatureLabel')}</span>
+                        <span className="font-bold text-emerald-300">{selectedReceivePO.receiverSignature}</span>
+                      </div>
+                    )}
+                    {selectedReceivePO.invoiceUrl && (
+                      <div className="flex justify-between items-center pt-1.5 border-t border-white/10">
+                        <span className="text-emerald-300 font-medium">{t('inventory.invoiceUploadedBadge')}</span>
+                        <a
+                          href={selectedReceivePO.invoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-300 hover:text-emerald-200 underline font-bold flex items-center gap-1"
+                        >
+                          <span>{t('inventory.viewInvoice')}</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 2. Input (Number): Actual Quantity Received */}
+                <div>
+                  <div className="flex justify-between items-baseline mb-1.5">
+                    <label className="text-xs font-bold text-white">
+                      {t('inventory.actualQuantityReceived')}
+                    </label>
+                    <span className="text-[10px] text-white/60">
+                      {t('inventory.actualQuantityHint')}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    dir="ltr"
+                    value={receivedQty}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                      setReceivedQty(val === '' ? '' : Number(val));
+                    }}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData('text');
+                      if (pasted) {
+                        e.preventDefault();
+                        const val = pasted.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
+                        setReceivedQty(val === '' ? '' : Number(val));
+                      }
+                    }}
+                    placeholder="0"
+                    style={{ direction: 'ltr', fontVariantNumeric: 'lining-nums tabular-nums' }}
+                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 font-mono text-left rtl:text-right [unicode-bidi:plaintext]"
+                  />
+                </div>
+
+                {/* 3. File Upload (Input type="file"): Upload Invoice Copy */}
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1.5">
+                    {t('inventory.uploadInvoiceLabel')}
+                  </label>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    id="invoice-file-input"
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
+                      invoiceFile
+                        ? 'border-emerald-400/60 bg-emerald-500/10'
+                        : 'border-white/25 bg-white/5 hover:bg-white/10 hover:border-white/40'
+                    }`}
+                  >
+                    {invoiceFile ? (
+                      <div className="flex items-center justify-between gap-3 text-left rtl:text-right">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-300 shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate max-w-[240px]">
+                              {invoiceFile.name}
+                            </p>
+                            <p className="text-[10px] text-emerald-300 font-mono mt-0.5">
+                              {(invoiceFile.size / 1024).toFixed(1)} KB • data
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInvoiceFile(null);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                          className="text-white/70 hover:text-white text-xs px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg shrink-0 cursor-pointer border border-white/20"
+                        >
+                          {t('common.edit')}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-2 text-white/80">
+                        <UploadCloud className="w-7 h-7 text-emerald-300/80 mb-2 animate-bounce" />
+                        <p className="text-xs font-bold text-white">انقر لاختيار ملف الفاتورة (صورة أو PDF)</p>
+                        <p className="text-[10px] text-white/50 mt-1">{t('inventory.uploadInvoiceHint')}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Receiver Signature / ID */}
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1.5">
+                    {t('inventory.receiverSignatureLabel')}
+                  </label>
+                  <input
+                    type="text"
+                    value={receiverSignature}
+                    onChange={(e) => {
+                      setReceiverSignature(e.target.value);
+                      if (receiptError) setReceiptError(null);
+                    }}
+                    placeholder={t('inventory.receiverSignaturePlaceholder')}
+                    required
+                    className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 placeholder:text-white/40"
+                  />
+                </div>
+              </div>
+
+              {/* 5. Action Buttons */}
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  onClick={handleConfirmReceipt}
+                  disabled={isSubmittingReceipt || !receivePoId || !invoiceFile || !receivedQty || !receiverSignature.trim()}
+                  className="flex-1 bg-emerald-600/85 hover:bg-emerald-600 active:scale-95 text-white font-extrabold py-3.5 rounded-xl transition-all text-sm cursor-pointer shadow-lg shadow-emerald-950/30 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                >
+                  {isSubmittingReceipt ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>{t('inventory.receivingInProgress')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>{t('inventory.confirmReceipt')}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
+                  }}
+                  disabled={isSubmittingReceipt}
+                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3.5 rounded-xl border border-white/25 transition-all text-sm cursor-pointer disabled:opacity-50"
+                >
+                  {t('inventory.modalCancelBtn')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

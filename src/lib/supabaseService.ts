@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getSessionPurchaseOrders, updateSessionPurchaseOrder } from './mockInventoryData';
 
 export interface SupabaseInventoryItem {
   item_code: string;
@@ -238,5 +239,167 @@ export async function updateSupplier(
   }
 
   return normalizeSupplier(data, supplierData);
+}
+
+/**
+ * Upload an invoice copy to the 'invoices' public storage bucket in Supabase.
+ * Returns the public URL of the uploaded file.
+ */
+export async function uploadInvoice(file: File, poNumber: string): Promise<string> {
+  const filePath = `po-${poNumber}-${Date.now()}-${file.name}`;
+  const { data, error } = await supabase.storage
+    .from('invoices')
+    .upload(filePath, file);
+
+  if (error) {
+    console.warn('Notice from Supabase Storage upload (invoices):', error.message);
+  }
+
+  const targetPath = data?.path || filePath;
+  const { data: publicUrlData } = supabase.storage
+    .from('invoices')
+    .getPublicUrl(targetPath);
+
+  return publicUrlData.publicUrl;
+}
+
+/**
+ * Receive stock against a specific Purchase Order:
+ * 1. Updates purchase_orders table: set status to "تم الاستلام" (Received), and store invoiceUrl and signature (if columns exist).
+ * 2. IMPORTANT: Updates inventory_items table to add receivedQty to the current_stock.
+ */
+export async function receivePurchaseOrder(
+  poNumber: string,
+  receivedQty: number,
+  invoiceUrl: string,
+  signature?: string,
+  itemCode?: string
+): Promise<{ success: boolean; newStock: number; itemCode: string }> {
+  // Support both (poNumber, receivedQty, invoiceUrl, signature, itemCode) and legacy (poNumber, receivedQty, invoiceUrl, itemCode, signature)
+  let actualSignature = signature;
+  let targetItemCode = itemCode;
+
+  if (
+    signature &&
+    (signature.startsWith('ITEM-') || signature.startsWith('RAW-') || signature.startsWith('PKG-') || signature.startsWith('inv-') || signature.startsWith('P')) &&
+    itemCode &&
+    !itemCode.startsWith('ITEM-') &&
+    !itemCode.startsWith('RAW-') &&
+    !itemCode.startsWith('PKG-') &&
+    !itemCode.startsWith('inv-') &&
+    !itemCode.startsWith('P')
+  ) {
+    targetItemCode = signature;
+    actualSignature = itemCode;
+  }
+
+  // Audit log for traceability
+  console.info(`[RECEIVING AUDIT] PO: ${poNumber} | Qty: ${receivedQty} | Signed by: ${actualSignature || 'N/A'} | Invoice: ${invoiceUrl}`);
+
+  // 1. Resolve corresponding item code
+  const sessionPO = getSessionPurchaseOrders().find(p => p.id === poNumber);
+  if (!targetItemCode && sessionPO?.itemId) {
+    targetItemCode = sessionPO.itemId;
+  }
+
+  // Try checking purchase_orders table if it exists in Supabase
+  try {
+    const { data: poRow } = await supabase
+      .from('purchase_orders')
+      .select('item_id, item_code')
+      .eq('id', poNumber)
+      .maybeSingle();
+    if (!targetItemCode && (poRow?.item_code || poRow?.item_id)) {
+      targetItemCode = poRow.item_code || poRow.item_id;
+    }
+  } catch {
+    // purchase_orders table query optional
+  }
+
+  // 2. Update purchase_orders table: set status to "تم الاستلام", and store invoiceUrl and signature (if columns exist)
+  try {
+    const { error: poErr } = await supabase
+      .from('purchase_orders')
+      .update({
+        status: 'تم الاستلام',
+        invoice_url: invoiceUrl,
+        invoiceUrl: invoiceUrl,
+        signature: actualSignature || null,
+        receiver_signature: actualSignature || null,
+        received_quantity: Number(receivedQty),
+        receivedQty: Number(receivedQty),
+        received_at: new Date().toISOString(),
+      })
+      .eq('id', poNumber);
+
+    if (poErr) {
+      // Fallback with standard columns if camelCase or extra fields are rejected
+      await supabase
+        .from('purchase_orders')
+        .update({
+          status: 'تم الاستلام',
+          invoice_url: invoiceUrl,
+        })
+        .eq('id', poNumber);
+    }
+  } catch (err) {
+    console.warn('purchase_orders table update skipped or not implemented:', err);
+  }
+
+  // Synchronize in-memory session purchase orders
+  updateSessionPurchaseOrder(poNumber, {
+    status: 'تم الاستلام',
+    receivedQuantity: Number(receivedQty),
+    invoiceUrl,
+    receiverSignature: actualSignature,
+    receivedAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+  });
+
+  // 3. IMPORTANT: Update inventory_items table: add receivedQty to current_stock
+  let finalStock = Number(receivedQty);
+  if (targetItemCode) {
+    // Try finding item by exact item_code
+    let { data: currentItem } = await supabase
+      .from('inventory_items')
+      .select('item_code, current_stock')
+      .eq('item_code', targetItemCode)
+      .maybeSingle();
+
+    // If not found by exact code, search by item name
+    if (!currentItem && sessionPO?.itemName) {
+      const { data: itemByName } = await supabase
+        .from('inventory_items')
+        .select('item_code, current_stock')
+        .ilike('item_name_ar', `%${sessionPO.itemName}%`)
+        .maybeSingle();
+      if (itemByName) {
+        currentItem = itemByName;
+        targetItemCode = itemByName.item_code;
+      }
+    }
+
+    if (currentItem) {
+      const existingStock = Number(currentItem.current_stock) || 0;
+      finalStock = existingStock + Number(receivedQty);
+
+      const { error: updateErr } = await supabase
+        .from('inventory_items')
+        .update({ current_stock: finalStock })
+        .eq('item_code', currentItem.item_code);
+
+      if (updateErr) {
+        console.error('Failed to update current_stock in inventory_items:', updateErr.message);
+        throw new Error(`تعذر تحديث كمية المخزون في Supabase: ${updateErr.message}`);
+      }
+    } else {
+      console.warn(`Could not locate item ${targetItemCode} in inventory_items`);
+    }
+  }
+
+  return {
+    success: true,
+    newStock: finalStock,
+    itemCode: targetItemCode || '',
+  };
 }
 

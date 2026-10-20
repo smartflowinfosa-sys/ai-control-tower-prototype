@@ -68,14 +68,52 @@ export interface PurchaseOrder {
   supplierName: string;
   quantity: number;
   totalCost: number;
-  status: 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'IN_TRANSIT' | 'DELIVERED';
+  status: 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'IN_TRANSIT' | 'DELIVERED' | 'تم الاستلام' | 'RECEIVED' | string;
   createdAt: string;
   createdBy: 'AI_AGENT' | 'HUMAN';
+  invoiceUrl?: string;
+  receivedQuantity?: number;
+  receiverSignature?: string;
+  receivedAt?: string;
 }
 
-export const initialPurchaseOrders: PurchaseOrder[] = [];
+export const initialPurchaseOrders: PurchaseOrder[] = [
+  {
+    id: 'PO-9041',
+    itemId: 'P7',
+    itemName: 'أدوات المائدة',
+    supplierName: 'الصندوق المناسب',
+    quantity: 2500,
+    totalCost: 1050,
+    status: 'IN_TRANSIT',
+    createdAt: '10:30 ص',
+    createdBy: 'AI_AGENT',
+  },
+  {
+    id: 'PO-8820',
+    itemId: 'P3',
+    itemName: 'علبة الصوص',
+    supplierName: 'أمجد كميت',
+    quantity: 5000,
+    totalCost: 900,
+    status: 'SENT',
+    createdAt: '09:15 ص',
+    createdBy: 'HUMAN',
+  },
+  {
+    id: 'PO-7640',
+    itemId: 'P1',
+    itemName: 'صحن مقسم',
+    supplierName: 'مزايا',
+    quantity: 3000,
+    totalCost: 1440,
+    status: 'APPROVED',
+    createdAt: 'أمس',
+    createdBy: 'HUMAN',
+  },
+];
 
-let sessionPurchaseOrders: PurchaseOrder[] = [];
+let sessionPurchaseOrders: PurchaseOrder[] = [...initialPurchaseOrders];
 
 export function getSessionPurchaseOrders(): PurchaseOrder[] {
   return sessionPurchaseOrders;
@@ -85,6 +123,19 @@ export function addPurchaseOrderToSession(po: PurchaseOrder): void {
   sessionPurchaseOrders = [po, ...sessionPurchaseOrders.filter(p => p.id !== po.id)];
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ai_purchase_order_created', { detail: po }));
+  }
+}
+
+export function updateSessionPurchaseOrder(poId: string, updates: Partial<PurchaseOrder>): void {
+  sessionPurchaseOrders = sessionPurchaseOrders.map(po => {
+    if (po.id === poId) {
+      return { ...po, ...updates };
+    }
+    return po;
+  });
+  if (typeof window !== 'undefined') {
+    const updated = sessionPurchaseOrders.find(p => p.id === poId);
+    window.dispatchEvent(new CustomEvent('ai_purchase_order_updated', { detail: updated }));
   }
 }
 
