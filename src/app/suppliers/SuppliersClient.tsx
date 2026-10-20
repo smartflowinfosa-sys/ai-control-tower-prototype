@@ -12,7 +12,18 @@ import {
   getSessionPurchaseOrders,
   addPurchaseOrderToSession
 } from '@/lib/mockInventoryData';
-import { SupabaseSupplier, SupabaseInventoryItem, addSupplier, updateSupplier, sortSuppliersByDefault } from '@/lib/supabaseService';
+import {
+  SupabaseSupplier,
+  SupabaseInventoryItem,
+  addSupplier,
+  updateSupplier,
+  sortSuppliersByDefault,
+  fetchSupplierItems,
+  addSupplierItem,
+  SupplierItemRecord,
+  fetchPurchaseOrders,
+  SupabasePurchaseOrder
+} from '@/lib/supabaseService';
 import {
   Clock,
   Mail,
@@ -40,7 +51,10 @@ import {
   Plus,
   Edit2,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Calendar,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 
 // Helper to ensure all digits are English (0-9)
@@ -55,29 +69,22 @@ const toEnglishDigits = (str: string | number): string => {
 interface SuppliersClientProps {
   initialSuppliers: SupabaseSupplier[];
   initialInventoryItems?: SupabaseInventoryItem[];
+  initialPurchaseOrders?: SupabasePurchaseOrder[];
   fetchError?: string | null;
 }
 
 export default function SuppliersClient({
   initialSuppliers,
   initialInventoryItems = [],
+  initialPurchaseOrders = [],
   fetchError
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
 
-  // Resolve inventory items from database or fallback to mock data, strictly sorted alphanumerically (P1, P2... P9, P10)
+  // Resolve inventory items from database, strictly sorted alphanumerically (P1, P2... P9, P10)
   const rawAvailableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
     ? initialInventoryItems
-    : mockInventoryItems.map(m => ({
-        item_code: m.id,
-        item_name_ar: m.name,
-        item_name_en: m.item_name_en || m.name,
-        current_stock: m.currentStock,
-        reorder_level: m.minThreshold,
-        cost_per_unit: m.unitCost,
-        category_ar: m.category,
-        category_en: m.category_en,
-      }));
+    : [];
 
   const availableItems = [...rawAvailableItems].sort((a, b) =>
     a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
@@ -91,7 +98,11 @@ export default function SuppliersClient({
     }
     return 'P1';
   });
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() =>
+    initialPurchaseOrders && initialPurchaseOrders.length > 0
+      ? (initialPurchaseOrders as unknown as PurchaseOrder[])
+      : getSessionPurchaseOrders()
+  );
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -133,7 +144,114 @@ export default function SuppliersClient({
     tax_number: '',
   });
 
-  // Sync with global purchase orders event from AI assistant or inventory
+  // Supplier Profile Modal State: Tabs, Archive & Certified Items
+  const [selectedProfileSupplier, setSelectedProfileSupplier] = useState<SupabaseSupplier | null>(null);
+  const [profileActiveTab, setProfileActiveTab] = useState<'products' | 'archive' | 'kpis' | 'all'>('products');
+  const [profileDateStart, setProfileDateStart] = useState<string>('');
+  const [profileDateEnd, setProfileDateEnd] = useState<string>('');
+  const [profileItemFilter, setProfileItemFilter] = useState<string>('ALL');
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+
+  // Supplier Products (supplier_items junction) state
+  const [supplierItems, setSupplierItems] = useState<SupplierItemRecord[]>([]);
+  const [isLoadingSupplierItems, setIsLoadingSupplierItems] = useState<boolean>(false);
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState<boolean>(false);
+  const [selectedItemToAdd, setSelectedItemToAdd] = useState<string>('');
+  const [agreedUnitPrice, setAgreedUnitPrice] = useState<number>(0.5);
+  const [isSavingNewItem, setIsSavingNewItem] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleStorageError = (e: any) => {
+      if (e.detail?.message) {
+        setStorageNotice(e.detail.message);
+      }
+    };
+    window.addEventListener('supabase_storage_bucket_error', handleStorageError);
+    return () => {
+      window.removeEventListener('supabase_storage_bucket_error', handleStorageError);
+    };
+  }, []);
+
+  const loadSupplierItems = async (supplierId: string) => {
+    setIsLoadingSupplierItems(true);
+    try {
+      const items = await fetchSupplierItems(supplierId);
+      setSupplierItems(items);
+    } catch (err) {
+      console.warn('Failed to fetch supplier items:', err);
+    } finally {
+      setIsLoadingSupplierItems(false);
+    }
+  };
+
+  const handleOpenSupplierProfile = (sup: SupabaseSupplier) => {
+    setSelectedProfileSupplier(sup);
+    setProfileActiveTab('products');
+    setProfileDateStart('');
+    setProfileDateEnd('');
+    setProfileItemFilter('ALL');
+    loadSupplierItems(sup.id);
+    fetchPurchaseOrders()
+      .then(pos => {
+        if (pos && pos.length > 0) {
+          setPurchaseOrders(pos as unknown as PurchaseOrder[]);
+        }
+      })
+      .catch(console.warn);
+  };
+
+  const handleCloseSupplierProfile = () => {
+    setSelectedProfileSupplier(null);
+    setIsAddItemModalOpen(false);
+  };
+
+  const handleAddCertifiedItem = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedProfileSupplier || !selectedItemToAdd) return;
+    setIsSavingNewItem(true);
+    try {
+      const record = await addSupplierItem(selectedProfileSupplier.id, selectedItemToAdd, agreedUnitPrice);
+      setSupplierItems(prev => {
+        if (prev.some(p => p.item_code === selectedItemToAdd)) return prev;
+        return [record, ...prev];
+      });
+      setIsAddItemModalOpen(false);
+      const matched = availableItems.find(i => i.item_code === selectedItemToAdd);
+      const name = matched?.item_name_ar || selectedItemToAdd;
+      showToast(
+        lang === 'en'
+          ? `Product (${name}) added to certified supplier items successfully`
+          : `تمت إضافة الصنف (${name}) لقائمة المنتجات المعتمدة للتوريد بنجاح`
+      );
+      setSelectedItemToAdd('');
+    } catch (err) {
+      console.error('Failed to add supplier item:', err);
+    } finally {
+      setIsSavingNewItem(false);
+    }
+  };
+
+  // AI auto-link suggestion based on supplier category and inventory items
+  const handleAutoLinkAiItems = async () => {
+    if (!selectedProfileSupplier) return;
+    const sCat = selectedProfileSupplier.category || '';
+    let candidates = availableItems.filter(i => i.category_ar === sCat);
+    if (candidates.length === 0) {
+      candidates = availableItems.slice(0, 2);
+    }
+
+    for (const item of candidates) {
+      await addSupplierItem(selectedProfileSupplier.id, item.item_code, item.cost_per_unit || 0.45);
+    }
+    loadSupplierItems(selectedProfileSupplier.id);
+    showToast(
+      lang === 'en'
+        ? 'AI Agent linked relevant products to supplier catalog successfully'
+        : 'قام الوكيل الذكي بربط وتحديث الأصناف المتوافقة مع المورد تلقائياً'
+    );
+  };
+
+  // Sync with global purchase orders events (creation, update, receiving)
   useEffect(() => {
     const handleNewAiPO = (event: CustomEvent<PurchaseOrder>) => {
       if (event.detail) {
@@ -144,11 +262,54 @@ export default function SuppliersClient({
       }
     };
 
+    const handleUpdatedPO = (event: CustomEvent<PurchaseOrder>) => {
+      if (event.detail && event.detail.id) {
+        setPurchaseOrders(prev =>
+          prev.map(p => (p.id === event.detail.id ? { ...p, ...event.detail } : p))
+        );
+      }
+    };
+
+    const handleReceivedPO = (event: CustomEvent<any>) => {
+      if (event.detail && event.detail.id) {
+        setPurchaseOrders(prev =>
+          prev.map(p =>
+            p.id === event.detail.id
+              ? {
+                  ...p,
+                  status: 'تم الاستلام',
+                  invoiceUrl: event.detail.invoiceUrl || p.invoiceUrl,
+                  supplier_id: event.detail.supplier_id || p.supplier_id,
+                  supplierId: event.detail.supplierId || p.supplierId,
+                  receivedQuantity: event.detail.receivedQuantity || p.receivedQuantity,
+                }
+              : p
+          )
+        );
+      }
+    };
+
+    const handleSupplierItemsUpdate = (event: CustomEvent<SupplierItemRecord>) => {
+      if (event.detail && selectedProfileSupplier && event.detail.supplier_id === selectedProfileSupplier.id) {
+        setSupplierItems(prev => {
+          if (prev.some(p => p.item_code === event.detail.item_code)) return prev;
+          return [event.detail, ...prev];
+        });
+      }
+    };
+
     window.addEventListener('ai_purchase_order_created' as any, handleNewAiPO);
+    window.addEventListener('ai_purchase_order_updated' as any, handleUpdatedPO);
+    window.addEventListener('purchase_order_received' as any, handleReceivedPO);
+    window.addEventListener('supplier_items_updated' as any, handleSupplierItemsUpdate);
+
     return () => {
       window.removeEventListener('ai_purchase_order_created' as any, handleNewAiPO);
+      window.removeEventListener('ai_purchase_order_updated' as any, handleUpdatedPO);
+      window.removeEventListener('purchase_order_received' as any, handleReceivedPO);
+      window.removeEventListener('supplier_items_updated' as any, handleSupplierItemsUpdate);
     };
-  }, []);
+  }, [selectedProfileSupplier]);
 
   const lowStockItems = availableItems.filter(item => (item.current_stock ?? 0) <= (item.reorder_level ?? 0));
 
@@ -158,6 +319,12 @@ export default function SuppliersClient({
 
   const handleQuickOrder = (supplierName: string, itemName: string) => {
     const matchedItem = availableItems.find(i => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === analyzingItemId);
+    const matchedSupplier = suppliers.find(s =>
+      s.name_ar === supplierName ||
+      s.name === supplierName ||
+      s.name_en === supplierName
+    );
+    const supplierId = matchedSupplier?.id;
     const unitCost = matchedItem?.cost_per_unit || 0.45;
     const quantity = 2500;
     const totalCost = Number((quantity * unitCost).toFixed(2));
@@ -167,6 +334,8 @@ export default function SuppliersClient({
       itemId: matchedItem ? matchedItem.item_code : (analyzingItemId || 'inv-quick'),
       itemName: matchedItem ? matchedItem.item_name_ar : itemName,
       supplierName: supplierName,
+      supplier_id: supplierId,
+      supplierId: supplierId,
       quantity: quantity,
       totalCost: totalCost,
       status: 'PENDING_APPROVAL',
@@ -398,17 +567,40 @@ export default function SuppliersClient({
     ? [...currentQuotes].sort((a, b) => b.aiRecommendationScore - a.aiRecommendationScore)[0]
     : null;
 
-  // Filter purchase orders
-  const filteredPOs = purchaseOrders.filter(po => {
+  // Filter out received orders from active PO tracker
+  // Only render orders where status is NOT "تم الاستلام" (Received) or status !== 'received'
+  // (Once received, orders immediately disappear from this tracker as they reside inside the Supplier's Profile archive)
+  const activePOs = purchaseOrders.filter(po => {
+    const status = (po.status || '').trim();
+    const lower = status.toLowerCase();
+    return (
+      status !== 'تم الاستلام' &&
+      status !== 'تم الاستلام بنجاح' &&
+      lower !== 'received' &&
+      lower !== 'delivered'
+    );
+  });
+
+  const filteredActivePOs = activePOs.filter(po => {
     if (activeStatusFilter === 'ALL') return true;
     return po.status === activeStatusFilter;
   });
 
-  // Calculate stats
-  const pendingCount = purchaseOrders.filter(p => p.status === 'PENDING_APPROVAL').length;
-  const inTransitCount = purchaseOrders.filter(p => p.status === 'IN_TRANSIT').length;
-  const sentCount = purchaseOrders.filter(p => p.status === 'SENT').length;
-  const deliveredCount = purchaseOrders.filter(p => p.status === 'DELIVERED').length;
+  const displayedActivePOs = filteredActivePOs.filter(po => {
+    const status = (po.status || '').trim();
+    const lower = status.toLowerCase();
+    return (
+      status !== 'تم الاستلام' &&
+      status !== 'تم الاستلام بنجاح' &&
+      lower !== 'received' &&
+      lower !== 'delivered'
+    );
+  });
+
+  // Calculate active stats
+  const pendingCount = activePOs.filter(p => p.status === 'PENDING_APPROVAL').length;
+  const inTransitCount = activePOs.filter(p => p.status === 'IN_TRANSIT').length;
+  const sentCount = activePOs.filter(p => p.status === 'SENT').length;
 
   return (
     <div className="page-shell w-full mx-auto space-y-8 font-sans">
@@ -470,67 +662,94 @@ export default function SuppliersClient({
         </div>
       </header>
 
-      {/* KPI Stats Strip */}
+      {/* Storage Bucket Setup Alert Notice */}
+      {storageNotice && (
+        <div className="p-4 rounded-2xl glass border border-amber-400/50 bg-amber-500/10 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0" />
+            <span className="font-bold">{storageNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStorageNotice(null)}
+            className="text-white/60 hover:text-white p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Supplier Network Overview Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">
-              {lang === 'en' ? 'Total Orders (POs)' : 'إجمالي الأوامر (POs)'}
+              {lang === 'en' ? 'Registered Suppliers' : 'إجمالي الموردين المعتمدين'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
-              {toEnglishDigits(purchaseOrders.length)}
+              {toEnglishDigits(suppliers.length)}
             </div>
-            <div className="text-[11px] text-white/65 mt-0.5">
-              {lang === 'en' ? 'Registered PO' : 'أمر شراء مسجل'}
+            <div className="text-[11px] text-teal-200/90 mt-0.5">
+              {lang === 'en' ? 'Active Network Partners' : 'شركاء سلاسل إمداد زاهي'}
             </div>
           </div>
           <div className="p-3.5 rounded-[18px] glass glass-card text-white/65 border">
-            <FileText className="w-6 h-6" />
+            <Building2 className="w-6 h-6 text-teal-200" />
           </div>
         </div>
 
         <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">
-              {lang === 'en' ? 'In Transit' : 'جاري التوصيل'}
+              {lang === 'en' ? 'Avg. Delivery Lead Time' : 'متوسط سرعة التوريد'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
-              {toEnglishDigits(inTransitCount)}
+              {toEnglishDigits(
+                suppliers.length > 0
+                  ? Math.round(suppliers.reduce((acc, s) => acc + (s.delivery_time_hours || 24), 0) / suppliers.length)
+                  : 24
+              )}{' '}
+              <span className="text-sm font-normal text-white/60">{lang === 'en' ? 'hrs' : 'ساعة'}</span>
             </div>
-            <div className="text-[11px] text-white font-medium mt-0.5 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full glass glass-card animate-ping" />
-              <span>{lang === 'en' ? 'En route to branches' : 'في طريقها للفروع'}</span>
+            <div className="text-[11px] text-white/70 font-medium mt-0.5 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>{lang === 'en' ? 'Standard Express Dispatch' : 'جاهزية توريد فورية'}</span>
             </div>
           </div>
           <div className="p-3.5 rounded-[18px] glass glass-card text-white/65 border">
-            <Truck className="w-6 h-6" />
+            <Clock className="w-6 h-6 text-white" />
           </div>
         </div>
 
         <div className="glass glass-hover rounded-[18px] p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-white/65">
-              {lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة'}
+              {lang === 'en' ? 'Network Quality Score' : 'متوسط تقييم الجودة'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
-              {toEnglishDigits(pendingCount)}
+              {toEnglishDigits(
+                suppliers.length > 0
+                  ? (suppliers.reduce((acc, s) => acc + (s.rating || 4.5), 0) / suppliers.length).toFixed(1)
+                  : '4.8'
+              )}{' '}
+              <span className="text-sm font-normal text-white/60">/ 5</span>
             </div>
-            <div className="text-[11px] text-rose-700/80 mt-0.5">
-              {lang === 'en' ? 'Requires Procurement Approval' : 'تتطلب اعتماد المشتريات'}
+            <div className="text-[11px] text-emerald-300 mt-0.5">
+              {lang === 'en' ? 'Certified Quality Standards' : 'مطابقة لمعايير الجودة المعتمدة'}
             </div>
           </div>
-          <div className="p-3.5 rounded-[18px] glass glass-card text-rose-200 border">
-            <Clock className="w-6 h-6 animate-pulse" />
+          <div className="p-3.5 rounded-[18px] glass glass-card text-emerald-300 border">
+            <ShieldCheck className="w-6 h-6" />
           </div>
         </div>
       </div>
 
-      {/* 1. Animated Purchase Orders Tracker */}
+      {/* 1. Active Purchase Orders Tracker */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
-              <Layers className="w-5 h-5" />
+              <Layers className="w-5 h-5 text-teal-200" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
@@ -538,8 +757,8 @@ export default function SuppliersClient({
               </h2>
               <p className="text-xs text-white/80">
                 {lang === 'en'
-                  ? 'Real-time tracking of AI-issued and procurement purchase orders'
-                  : 'متابعة آنية ودقيقة لحالة أوامر الشراء الصادرة من الـ AI والمشتريات'}
+                  ? 'Real-time tracking of active orders (received orders are automatically archived in Supplier Profiles)'
+                  : 'متابعة آنية للأوامر الجارية (تُنقل الأوامر المكتملة تلقائياً إلى أرشيف ملف المورد)'}
               </p>
             </div>
           </div>
@@ -547,18 +766,18 @@ export default function SuppliersClient({
           {/* Quick Status Filter Tabs */}
           <div className="flex items-center gap-1.5 glass border border-white/40 p-1.5 rounded-[18px] overflow-x-auto">
             {[
-              { id: 'ALL', label: lang === 'en' ? 'All' : 'الكل', count: purchaseOrders.length },
-              { id: 'PENDING_APPROVAL', label: lang === 'en' ? 'Pending' : 'بانتظار الموافقة', count: pendingCount },
-              { id: 'SENT', label: lang === 'en' ? 'Sent' : 'تم الإرسال', count: sentCount },
-              { id: 'IN_TRANSIT', label: lang === 'en' ? 'In Transit' : 'جاري التوصيل', count: inTransitCount },
-              { id: 'DELIVERED', label: lang === 'en' ? 'Delivered' : 'تم الاستلام', count: deliveredCount },
+              { id: 'ALL', label: lang === 'en' ? 'All Active' : 'الكل النشط', count: activePOs.length },
+              { id: 'PENDING_APPROVAL', label: lang === 'en' ? 'Pending' : 'بانتظار الموافقة', count: activePOs.filter(p => p.status === 'PENDING_APPROVAL').length },
+              { id: 'SENT', label: lang === 'en' ? 'Sent' : 'تم الإرسال', count: activePOs.filter(p => p.status === 'SENT').length },
+              { id: 'IN_TRANSIT', label: lang === 'en' ? 'In Transit' : 'جاري التوصيل', count: activePOs.filter(p => p.status === 'IN_TRANSIT').length },
             ].map(tab => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveStatusFilter(tab.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   activeStatusFilter === tab.id
-                    ? 'glass-active text-white'
+                    ? 'glass-active text-white bg-white/20'
                     : 'text-white/80 hover:text-white hover:bg-white/15'
                 }`}
               >
@@ -591,145 +810,140 @@ export default function SuppliersClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/15">
-                {filteredPOs.length === 0 ? (
+                {displayedActivePOs.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="text-center py-12 text-white/65 text-sm">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 text-white/35" />
+                        <FileText className="w-8 h-8 text-white/30" />
                         <span className="font-bold text-white/80">
-                          {lang === 'en' ? 'No active orders' : 'لا توجد طلبات نشطة'}
+                          {lang === 'en' ? 'No active orders pending receipt' : 'لا توجد أوامر شراء نشطة حالياً'}
                         </span>
                         <span className="text-xs text-white/50">
                           {lang === 'en'
-                            ? 'New purchase orders will appear here automatically when issued'
-                            : 'أوامر الشراء الصادرة ستظهر هنا تلقائياً في الوقت الفعلي'}
+                            ? 'Received orders are archived inside their respective Supplier Profiles'
+                            : 'الأوامر المستلمة تم أرشفتها تلقائياً داخل ملف المورد المعتمد'}
                         </span>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredPOs.map((po) => {
-                    return (
-                      <tr
-                        key={po.id}
-                        className="hover:bg-white/15 transition-colors group"
-                      >
-                        {/* ID */}
-                        <td className="px-5 py-4 font-mono font-bold text-white">
-                          <button
-                            onClick={() => {
-                              setSelectedPO(po);
-                              setIsEditingPO(false);
-                            }}
-                            className="hover:underline decoration-white/50 flex items-center gap-1 group/btn cursor-pointer"
-                            title={lang === 'en' ? 'View PO details' : 'عرض تفاصيل أمر الشراء'}
-                          >
-                            <span>{toEnglishDigits(po.id)}</span>
-                            <ExternalLink className="w-3 h-3 text-white/65 opacity-70 group-hover/btn:opacity-100 transition-opacity" />
-                          </button>
-                        </td>
+                  displayedActivePOs.map((po) => {
+                      return (
+                        <tr
+                          key={po.id}
+                          className="hover:bg-white/15 transition-colors group"
+                        >
+                          {/* ID */}
+                          <td className="px-5 py-4 font-mono font-bold text-white">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPO(po);
+                                setIsEditingPO(false);
+                              }}
+                              className="hover:underline decoration-white/50 flex items-center gap-1 group/btn cursor-pointer"
+                              title={lang === 'en' ? 'View PO details' : 'عرض تفاصيل أمر الشراء'}
+                            >
+                              <span>{toEnglishDigits(po.id)}</span>
+                              <ExternalLink className="w-3 h-3 text-white/65 opacity-70 group-hover/btn:opacity-100 transition-opacity" />
+                            </button>
+                          </td>
 
-                        {/* Item Name */}
-                        <td className="px-5 py-4 font-bold text-white">
-                          {po.itemName}
-                        </td>
+                          {/* Item Name */}
+                          <td className="px-5 py-4 font-bold text-white">
+                            {po.itemName}
+                          </td>
 
-                        {/* Supplier Name */}
-                        <td className="px-5 py-4 text-white/80 font-medium">
-                          <div className="flex items-center gap-1.5">
-                            <Building2 className="w-4 h-4 text-white/65 shrink-0" />
-                            <span>{po.supplierName}</span>
-                          </div>
-                        </td>
+                          {/* Supplier Name */}
+                          <td className="px-5 py-4 text-white/80 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-white/65 shrink-0" />
+                              <span>{po.supplierName}</span>
+                            </div>
+                          </td>
 
-                        {/* Quantity */}
-                        <td className="px-5 py-4 font-bold text-white font-mono">
-                          {toEnglishDigits(po.quantity.toLocaleString('en-US'))}
-                        </td>
+                          {/* Quantity */}
+                          <td className="px-5 py-4 font-bold text-white font-mono">
+                            {toEnglishDigits(po.quantity.toLocaleString('en-US'))}
+                          </td>
 
-                        {/* Total Cost */}
-                        <td className="px-5 py-4 font-bold text-white font-mono">
-                          {toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
-                        </td>
+                          {/* Total Cost */}
+                          <td className="px-5 py-4 font-bold text-white font-mono">
+                            {toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
+                          </td>
 
-                        {/* Created By */}
-                        <td className="px-5 py-4">
-                          {po.createdBy === 'AI_AGENT' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                              <Bot className="w-3.5 h-3.5 text-white" />
-                              <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/40 text-white/80">
-                              <User className="w-3.5 h-3.5 text-white/65" />
-                              <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
-                            </span>
-                          )}
-                        </td>
+                          {/* Created By */}
+                          <td className="px-5 py-4">
+                            {po.createdBy === 'AI_AGENT' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                <Bot className="w-3.5 h-3.5 text-white" />
+                                <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/40 text-white/80">
+                                <User className="w-3.5 h-3.5 text-white/65" />
+                                <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Created At */}
-                        <td className="px-5 py-4 text-xs text-white/80 font-medium font-mono">
-                          {toEnglishDigits(po.createdAt)}
-                        </td>
+                          {/* Created At */}
+                          <td className="px-5 py-4 text-xs text-white/80 font-medium font-mono">
+                            {toEnglishDigits(po.createdAt)}
+                          </td>
 
-                        {/* Status */}
-                        <td className="px-5 py-4">
-                          {po.status === 'PENDING_APPROVAL' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-200">
-                              <Clock className="w-3.5 h-3.5 text-rose-200 animate-pulse" />
-                              <span>{lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة'}</span>
-                            </span>
-                          )}
+                          {/* Status */}
+                          <td className="px-5 py-4">
+                            {po.status === 'PENDING_APPROVAL' && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-200">
+                                <Clock className="w-3.5 h-3.5 text-rose-200 animate-pulse" />
+                                <span>{lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة'}</span>
+                              </span>
+                            )}
 
-                          {po.status === 'SENT' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                              <motion.div
-                                animate={{ y: [0, -3, 0] }}
-                                transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                              >
-                                <Mail className="w-3.5 h-3.5 text-white" />
-                              </motion.div>
-                              <span>{lang === 'en' ? 'Email Dispatched' : 'تم إرسال الإيميل'}</span>
-                            </span>
-                          )}
+                            {po.status === 'SENT' && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                <motion.div
+                                  animate={{ y: [0, -3, 0] }}
+                                  transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                                >
+                                  <Mail className="w-3.5 h-3.5 text-white" />
+                                </motion.div>
+                                <span>{lang === 'en' ? 'Email Dispatched' : 'تم إرسال الإيميل'}</span>
+                              </span>
+                            )}
 
-                          {po.status === 'IN_TRANSIT' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-200">
-                              <Loader2 className="w-3.5 h-3.5 text-amber-200 animate-spin" />
-                              <span>{lang === 'en' ? 'In Transit' : 'جاري التوصيل'}</span>
-                            </span>
-                          )}
+                            {po.status === 'IN_TRANSIT' && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-200">
+                                <Loader2 className="w-3.5 h-3.5 text-amber-200 animate-spin" />
+                                <span>{lang === 'en' ? 'In Transit' : 'جاري التوصيل'}</span>
+                              </span>
+                            )}
 
-                          {po.status === 'DELIVERED' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-200">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                              <span>{lang === 'en' ? 'Delivered' : 'تم الاستلام'}</span>
-                            </span>
-                          )}
+                            {po.status === 'APPROVED' && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                                <span>{lang === 'en' ? 'Approved' : 'معتمد'}</span>
+                              </span>
+                            )}
+                          </td>
 
-                          {po.status === 'APPROVED' && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                              <BadgeCheck className="w-3.5 h-3.5 text-white" />
-                              <span>{lang === 'en' ? 'Approved' : 'معتمد'}</span>
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Action Quick Button */}
-                        <td className="px-5 py-4 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedPO(po);
-                              setIsEditingPO(false);
-                            }}
-                            className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/40 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
-                          >
-                            {lang === 'en' ? 'Details' : 'التفاصيل'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
+                          {/* Action Quick Button */}
+                          <td className="px-5 py-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPO(po);
+                                setIsEditingPO(false);
+                              }}
+                              className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/40 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
+                            >
+                              {lang === 'en' ? 'Details' : 'التفاصيل'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                 )}
               </tbody>
             </table>
@@ -942,161 +1156,797 @@ export default function SuppliersClient({
         )}
       </section>
 
-      {/* 3. Supplier Scorecards (Real Supabase Data) */}
+      {/* 2. Minimal Supplier Cards */}
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
             <div className="p-2 glass border border-white/40 text-white rounded-[18px]">
-              <Building2 className="w-5 h-5" />
+              <Building2 className="w-5 h-5 text-teal-200" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {lang === 'en' ? 'Supplier Evaluation' : 'تقييم الموردين'}
+                {lang === 'en' ? 'Supplier Directory' : 'دليل الموردين المعتمدين'}
               </h2>
               <p className="text-xs text-white/80">
                 {lang === 'en'
-                  ? 'Live evaluation of real active suppliers based on delivery speed, quality, and pricing stability'
-                  : 'تقييم حي ومتحرك للموردين الفعليين المعتمدين وفق سرعة التوصيل وجودة البضاعة واستقرار السعر'}
+                  ? 'Official accredited suppliers for Zahi operations with direct profile access'
+                  : 'قائمة الموردين المعتمدين لمطاعم زاهي مع إمكانية فتح ملف المورد والاطلاع على الأرشيف'}
               </p>
             </div>
           </div>
 
-          <span className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px]">
+          <span className="text-xs font-semibold text-white bg-white/8 border border-white/40 px-3.5 py-1.5 rounded-[18px] font-mono">
             {toEnglishDigits(suppliers.length)} {lang === 'en' ? 'Suppliers Registered' : 'موردين مسجلين'}
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {suppliers.map((sup, idx) => {
-            const metrics = sup.metrics || {
-              deliverySpeed: Math.round(Math.min(99, Math.max(80, 100 - ((sup.delivery_time_hours || 24) - 20) * 0.5))),
-              qualityScore: Math.round((sup.rating || 4.5) * 20),
-              priceStability: 96,
-            };
-
+          {suppliers.map((sup) => {
             const displayName = lang === 'en' ? (sup.name_en || sup.name_ar || sup.name) : (sup.name_ar || sup.name);
 
             return (
               <div
                 key={sup.id}
-                className="glass border border-white/40 rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/60"
+                className="glass border border-white/30 rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/60 hover:shadow-xl"
               >
                 <div className="space-y-4">
-                  {/* Supplier Header */}
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-extrabold text-base text-white flex items-center gap-1.5">
-                        <Building2 className="w-4 h-4 text-white" />
-                        <span>{displayName}</span>
-                      </h3>
+                  {/* Top Header: Spacious, Prominent Supplier Name & Category */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="p-2.5 rounded-xl bg-white/10 border border-white/20 text-teal-200 shrink-0 mt-0.5">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-extrabold text-lg text-white leading-tight break-words" title={displayName}>
+                          {displayName}
+                        </h3>
+                        <p className="text-xs text-white/60 mt-1 truncate">
+                          {sup.category || (lang === 'en' ? 'Packaging & Operational Supplies' : 'تغليف ومستلزمات تشغيل')}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {/* Edit Supplier Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditSupplier(sup)}
-                        className="p-1.5 rounded-[18px] bg-white/8 hover:bg-white/15 border border-white/40 text-white/80 transition-colors cursor-pointer"
-                        title={lang === 'en' ? 'Edit supplier data' : 'تعديل بيانات المورد'}
-                      >
-                        <Edit2 size={14} className="text-white/80" />
-                      </button>
-
-                      <span className="text-xs font-bold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2.5 py-1 rounded-[18px] flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-white" />
-                        <span>{toEnglishDigits(sup.rating)} / 5</span>
-                      </span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditSupplier(sup)}
+                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/20 text-white/70 hover:text-white transition-colors cursor-pointer shrink-0 mt-0.5"
+                      title={lang === 'en' ? 'Edit supplier data' : 'تعديل بيانات المورد'}
+                    >
+                      <Edit2 size={14} />
+                    </button>
                   </div>
 
-                  {/* Dynamic Animated Progress Bars */}
-                  <div className="bg-white/8 border border-white/40 p-4 rounded-[18px] space-y-3">
-                    <div className="text-xs font-bold text-white flex items-center justify-between border-b border-white/25 pb-2">
-                      <span>{lang === 'en' ? 'Performance KPIs' : 'مؤشرات أداء التوريد (KPIs)'}</span>
-                      <span className="text-[10px] text-white/65 font-semibold">{lang === 'en' ? 'Live' : 'تحديث مستمر'}</span>
-                    </div>
+                  {/* Rating Badge Row: Sits neatly and symmetrically below the supplier name/category */}
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/15">
+                    <span className="text-xs text-white/70 flex items-center gap-1.5 font-medium">
+                      <MapPin className="w-3.5 h-3.5 text-teal-300/80 shrink-0" />
+                      <span className="truncate">{sup.location_ar || sup.city || 'جدة'}</span>
+                    </span>
 
-                    {/* 1. Delivery Speed */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/80 flex items-center gap-1">
-                          <Zap className="w-3.5 h-3.5 text-white" />
-                          <span>{lang === 'en' ? 'Delivery Speed' : 'سرعة التوصيل'}</span>
-                        </span>
-                        <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.deliverySpeed)}%</span>
-                      </div>
-                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${metrics.deliverySpeed}%` }}
-                          transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 }}
-                          className="h-full bg-teal-500/60 rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 2. Product Quality */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/80 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-white" />
-                          <span>{lang === 'en' ? 'Product Quality' : 'جودة البضاعة'}</span>
-                        </span>
-                        <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.qualityScore)}%</span>
-                      </div>
-                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${metrics.qualityScore}%` }}
-                          transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 + 0.1 }}
-                          className="h-full bg-emerald-500/60 rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 3. Price Stability */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-white/80 flex items-center gap-1">
-                          <Scale className="w-3.5 h-3.5 text-white" />
-                          <span>{lang === 'en' ? 'Price Stability' : 'استقرار السعر'}</span>
-                        </span>
-                        <span className="font-extrabold text-white font-mono">{toEnglishDigits(metrics.priceStability)}%</span>
-                      </div>
-                      <div className="w-full bg-white/8 border border-white/40 rounded-full h-2">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${metrics.priceStability}%` }}
-                          transition={{ duration: 0.9, ease: 'easeOut', delay: idx * 0.1 + 0.2 }}
-                          className="h-full bg-amber-500/60 rounded-full"
-                        />
-                      </div>
-                    </div>
+                    <span className="text-xs font-bold text-teal-100 bg-teal-500/20 border border-teal-300/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-mono shrink-0 shadow-sm">
+                      <ShieldCheck className="w-3.5 h-3.5 text-teal-300" />
+                      <span>{toEnglishDigits(sup.rating)} / 5</span>
+                    </span>
                   </div>
 
-                  {/* Commercial Registry & Tax Number */}
-                  <div className="bg-white/8 border border-white/40 p-3.5 rounded-[18px] space-y-2 text-xs text-white/80">
+                  {/* Commercial Registry & Tax Number ONLY */}
+                  <div className="bg-white/5 border border-white/20 p-3.5 rounded-xl space-y-2 text-xs text-white/80">
                     <div className="flex justify-between items-center">
-                      <span className="flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-white" />
+                      <span className="flex items-center gap-1.5 text-white/70">
+                        <FileText className="w-3.5 h-3.5 text-white/60" />
                         <span>{lang === 'en' ? 'Commercial Registry:' : 'رقم السجل التجاري:'}</span>
                       </span>
                       <strong className="text-white font-mono">{toEnglishDigits(sup.cr_number || '—')}</strong>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="flex items-center gap-1.5">
-                        <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                      <span className="flex items-center gap-1.5 text-white/70">
+                        <BadgeCheck className="w-3.5 h-3.5 text-white/60" />
                         <span>{lang === 'en' ? 'Tax Number:' : 'الرقم الضريبي:'}</span>
                       </span>
                       <strong className="text-white font-mono">{toEnglishDigits(sup.tax_number || '—')}</strong>
                     </div>
                   </div>
                 </div>
+
+                {/* Prominent Glassmorphism Button: Open Profile */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenSupplierProfile(sup)}
+                  className="mt-5 w-full py-2.5 px-4 rounded-xl text-sm font-bold bg-white/10 hover:bg-white/20 active:scale-95 text-white border border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm group-hover:border-white/50"
+                >
+                  <ExternalLink className="w-4 h-4 text-teal-200" />
+                  <span>{lang === 'en' ? 'Open Profile' : 'فتح ملف المورد'}</span>
+                </button>
               </div>
             );
           })}
         </div>
       </section>
+
+      {/* Detailed Supplier Profile Modal */}
+      {selectedProfileSupplier && (() => {
+        const sup = selectedProfileSupplier;
+        const displayName = lang === 'en' ? (sup.name_en || sup.name_ar || sup.name) : (sup.name_ar || sup.name);
+        const metrics = sup.metrics || {
+          deliverySpeed: Math.round(Math.min(99, Math.max(80, 100 - ((sup.delivery_time_hours || 24) - 20) * 0.5))),
+          qualityScore: Math.round((sup.rating || 4.5) * 20),
+          priceStability: 96,
+        };
+
+        const currentSupplierId = sup.id;
+        const sNameAr = (sup.name_ar || sup.name || '').trim().toLowerCase();
+        const sNameEn = (sup.name_en || '').trim().toLowerCase();
+
+        // 1. Certified Supply Products (from supplier_items joined with availableItems)
+        const certifiedItems = supplierItems.map(si => {
+          const matched = availableItems.find(i => i.item_code === si.item_code);
+          return {
+            ...si,
+            name_ar: matched?.item_name_ar || si.item_name_ar || si.item_code,
+            name_en: matched?.item_name_en || si.item_name_en || '',
+            category: matched?.category_ar || si.category_ar || (lang === 'en' ? 'Supply Item' : 'مواد تشغيل وتعبئة'),
+            current_stock: matched?.current_stock ?? 0,
+            cost_per_unit: si.unit_price ?? matched?.cost_per_unit ?? 0.5,
+          };
+        });
+
+        // 2. Fetch and display ONLY completed POs where po.supplier_id === currentSupplier.id AND po.status === 'تم الاستلام'
+        const archivedPOs = purchaseOrders.filter(po => {
+          // Status must be received / delivered
+          const status = (po.status || '').trim().toLowerCase();
+          const orig = (po.status || '').trim();
+          const isReceived = orig === 'تم الاستلام' || orig === 'تم الاستلام بنجاح' || status === 'received' || status === 'delivered';
+          if (!isReceived) return false;
+
+          // Supplier ID match strictly
+          const poSupId = po.supplier_id || po.supplierId;
+          return poSupId === currentSupplierId;
+        });
+
+        // Apply filters: Date (Start/End) and Item
+        const filteredArchivedPOs = archivedPOs.filter(po => {
+          if (profileItemFilter && profileItemFilter !== 'ALL') {
+            if (po.itemId !== profileItemFilter && po.itemName !== profileItemFilter) {
+              return false;
+            }
+          }
+          if (profileDateStart) {
+            const dateStr = po.receivedAt || po.createdAt || '';
+            if (dateStr.length >= 10 && dateStr.includes('-') && dateStr.substring(0, 10) < profileDateStart) {
+              return false;
+            }
+          }
+          if (profileDateEnd) {
+            const dateStr = po.receivedAt || po.createdAt || '';
+            if (dateStr.length >= 10 && dateStr.includes('-') && dateStr.substring(0, 10) > profileDateEnd) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
+            <div className="font-sans glass glass-popover rounded-[28px] w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-6 text-white border border-white/30 shadow-2xl relative">
+              
+              {/* Modal Header */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/20 pb-5">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-300/30 flex items-center justify-center text-teal-200 shrink-0">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-xl md:text-2xl font-black text-white">
+                        {displayName}
+                      </h2>
+                      <span className="text-xs font-bold text-teal-100 bg-teal-500/20 border border-teal-300/30 px-3 py-1 rounded-xl flex items-center gap-1 font-mono">
+                        <ShieldCheck className="w-3.5 h-3.5 text-teal-200" />
+                        <span>{toEnglishDigits(sup.rating)} / 5</span>
+                      </span>
+                      <span className="text-xs bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-xl flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-white/60" />
+                        <span>{sup.location_ar || sup.city || 'جدة'}</span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/70 mt-1 flex items-center gap-3 flex-wrap">
+                      <span>{lang === 'en' ? 'Category:' : 'التصنيف:'} {sup.category || 'تغليف ومستلزمات تشغيل'}</span>
+                      <span>•</span>
+                      <span>{lang === 'en' ? 'CR:' : 'سجل تجاري:'} <strong className="font-mono text-white">{toEnglishDigits(sup.cr_number || '—')}</strong></span>
+                      <span>•</span>
+                      <span>{lang === 'en' ? 'Tax ID:' : 'الرقم الضريبي:'} <strong className="font-mono text-white">{toEnglishDigits(sup.tax_number || '—')}</strong></span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end md:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCloseSupplierProfile();
+                      handleOpenEditSupplier(sup);
+                    }}
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Edit2 size={14} />
+                    <span>{lang === 'en' ? 'Edit' : 'تعديل البيانات'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCloseSupplierProfile}
+                    className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 p-2 rounded-xl w-9 h-9 flex items-center justify-center cursor-pointer transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex items-center gap-2 border-b border-white/20 pb-3 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setProfileActiveTab('products')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    profileActiveTab === 'products'
+                      ? 'bg-teal-500/25 text-white border border-teal-300/40 shadow-sm'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Package className="w-4 h-4 text-teal-300" />
+                  <span>{lang === 'en' ? 'Certified Products' : 'المنتجات المعتمدة للتوريد'}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 font-mono">
+                    {toEnglishDigits(certifiedItems.length)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileActiveTab('archive')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    profileActiveTab === 'archive'
+                      ? 'bg-teal-500/25 text-white border border-teal-300/40 shadow-sm'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-teal-300" />
+                  <span>{lang === 'en' ? 'PO & Invoices Archive' : 'أرشيف أوامر الشراء والفواتير'}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-300/30 font-mono font-bold">
+                    {toEnglishDigits(archivedPOs.length)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileActiveTab('kpis')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    profileActiveTab === 'kpis'
+                      ? 'bg-teal-500/25 text-white border border-teal-300/40 shadow-sm'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>{lang === 'en' ? 'Performance KPIs' : 'مؤشرات الأداء (KPIs)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileActiveTab('all')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    profileActiveTab === 'all'
+                      ? 'bg-teal-500/25 text-white border border-teal-300/40 shadow-sm'
+                      : 'text-white/50 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>{lang === 'en' ? 'View All' : 'عرض الكل'}</span>
+                </button>
+              </div>
+
+              {/* Section 1: Certified Supply Products (supplier_items) */}
+              {(profileActiveTab === 'products' || profileActiveTab === 'all') && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Package className="w-4 h-4 text-teal-300" />
+                        <span>{lang === 'en' ? 'Certified Supply Products' : 'المنتجات المعتمدة للتوريد'}</span>
+                      </h3>
+                      <p className="text-xs text-white/65 mt-0.5">
+                        {lang === 'en'
+                          ? 'Official catalog of approved items mapped via supplier_items junction'
+                          : 'الأصناف ومواد التشغيل المعتمد توريدها رسمياً من هذا المورد (مرتبطة بجدول supplier_items)'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleAutoLinkAiItems}
+                        className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                        title={lang === 'en' ? 'Auto-link items via AI Agent' : 'ربط واقتراح الأصناف المتوافقة تلقائياً عبر الـ AI'}
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-teal-300" />
+                        <span>{lang === 'en' ? 'AI Auto-Link' : 'اقتراح ذكي (AI)'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedItemToAdd(availableItems[0]?.item_code || '');
+                          setAgreedUnitPrice(availableItems[0]?.cost_per_unit || 0.5);
+                          setIsAddItemModalOpen(true);
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 text-white text-xs font-bold border border-teal-300/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-teal-200" />
+                        <span>{lang === 'en' ? 'Add Item to Supplier +' : 'إضافة صنف جديد للمورد +'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Certified Items Table */}
+                  <div className="bg-white/5 border border-white/20 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className={`w-full text-xs text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+                        <thead className="bg-white/10 text-white/80 font-bold border-b border-white/20">
+                          <tr>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Item Code' : 'كود الصنف'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Item Name' : 'اسم الصنف'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Category' : 'التصنيف'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Agreed Unit Cost' : 'سعر التوريد المعتمد'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Warehouse Stock' : 'المخزون بالمستودع'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Status' : 'الحالة'}</th>
+                            <th className="px-4 py-3.5 text-center">{lang === 'en' ? 'Action' : 'إجراء'}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {certifiedItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="py-10 text-center text-white/60">
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  <Package className="w-8 h-8 text-white/30" />
+                                  <span className="font-bold text-white/80">
+                                    {lang === 'en' ? 'No items registered for this supplier yet' : 'لا توجد أصناف مسجلة لهذا المورد حتى الآن'}
+                                  </span>
+                                  <span className="text-[11px] text-white/50">
+                                    {lang === 'en' ? 'Click "Add Item to Supplier" or use "AI Auto-Link" to map catalog items' : 'اضغط على "إضافة صنف جديد للمورد" أو استخدم الاقتراح الذكي لربط المواد التموينية'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            certifiedItems.map(item => (
+                              <tr key={item.item_code} className="hover:bg-white/10 transition-colors">
+                                <td className="px-4 py-3.5 font-mono font-bold text-teal-200">
+                                  {toEnglishDigits(item.item_code)}
+                                </td>
+                                <td className="px-4 py-3.5 font-bold text-white">
+                                  <div>{item.name_ar}</div>
+                                  {item.name_en && (
+                                    <div className="text-[10px] text-white/50 font-normal">{item.name_en}</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 text-white/70">
+                                  {item.category}
+                                </td>
+                                <td className="px-4 py-3.5 font-mono font-bold text-emerald-300">
+                                  {toEnglishDigits(item.cost_per_unit)} {lang === 'en' ? 'SAR' : 'ر.س'}
+                                </td>
+                                <td className="px-4 py-3.5 font-mono text-white">
+                                  {toEnglishDigits(item.current_stock.toLocaleString('en-US'))}
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/20 text-teal-200 border border-teal-300/30">
+                                    <BadgeCheck className="w-3 h-3 text-teal-300" />
+                                    <span>{lang === 'en' ? 'Certified' : 'معتمد للتوريد'}</span>
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickOrder(sup.name_ar || sup.name || '', item.name_ar || item.item_code)}
+                                    className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                                    title={lang === 'en' ? 'Issue new PO for this item' : 'إصدار أمر شراء سريع لهذا الصنف'}
+                                  >
+                                    <Send className="w-3 h-3 text-teal-300" />
+                                    <span>{lang === 'en' ? 'Order' : 'طلب توريد'}</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 2: Invoices & PO Archive (Strictly Completed POs with po.status === 'تم الاستلام') */}
+              {(profileActiveTab === 'archive' || profileActiveTab === 'all') && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-white/20 pt-5">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-teal-300" />
+                        <span>{lang === 'en' ? 'PO & Invoices Archive' : 'أرشيف أوامر الشراء والفواتير'}</span>
+                      </h3>
+                      <p className="text-xs text-white/65 mt-0.5">
+                        {lang === 'en'
+                          ? 'Archive of completed and received purchase orders with attached invoice files'
+                          : 'سجل أوامر الشراء المستلمة والمكتملة رسمياً في المستودع والمقترنة بنسخ الفواتير (data)'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-emerald-500/20 border border-emerald-300/30 text-emerald-200 px-3 py-1 rounded-xl font-mono font-bold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>{toEnglishDigits(archivedPOs.length)} {lang === 'en' ? 'Received & Archived' : 'أمر مستلم ومؤرشف'}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Filters Bar: Date (Start/End) and Item */}
+                  <div className="bg-white/5 border border-white/20 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5 text-white/80 font-bold shrink-0">
+                      <Filter className="w-4 h-4 text-teal-200" />
+                      <span>{lang === 'en' ? 'Filters:' : 'الفلاتر:'}</span>
+                    </div>
+
+                    {/* Date Start */}
+                    <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+                      <span className="text-white/60 shrink-0">{lang === 'en' ? 'From:' : 'من تاريخ:'}</span>
+                      <input
+                        type="date"
+                        value={profileDateStart}
+                        onChange={(e) => setProfileDateStart(e.target.value)}
+                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
+                      />
+                    </div>
+
+                    {/* Date End */}
+                    <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+                      <span className="text-white/60 shrink-0">{lang === 'en' ? 'To:' : 'إلى تاريخ:'}</span>
+                      <input
+                        type="date"
+                        value={profileDateEnd}
+                        onChange={(e) => setProfileDateEnd(e.target.value)}
+                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
+                      />
+                    </div>
+
+                    {/* Filter by Item - Strictly maps only this supplier's certified items */}
+                    <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                      <span className="text-white/60 shrink-0">{lang === 'en' ? 'Item:' : 'الصنف:'}</span>
+                      <select
+                        value={profileItemFilter}
+                        onChange={(e) => setProfileItemFilter(e.target.value)}
+                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
+                      >
+                        <option value="ALL" className="bg-slate-800 text-white">
+                          {lang === 'en' ? 'All Supplier Items' : 'جميع أصناف المورد'}
+                        </option>
+                        {certifiedItems.map(item => (
+                          <option key={item.item_code} value={item.item_code} className="bg-slate-800 text-white">
+                            {item.name_ar || item.item_code} ({item.item_code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Reset Filters */}
+                    {(profileDateStart || profileDateEnd || profileItemFilter !== 'ALL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileDateStart('');
+                          setProfileDateEnd('');
+                          setProfileItemFilter('ALL');
+                        }}
+                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>{lang === 'en' ? 'Reset' : 'إعادة ضبط'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Table of Archived POs */}
+                  <div className="bg-white/5 border border-white/20 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className={`w-full text-xs text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+                        <thead className="bg-white/10 text-white/80 font-bold border-b border-white/20">
+                          <tr>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'PO #' : 'رقم الأمر'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Quantity' : 'الكمية المستلمة'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Cost' : 'التكلفة'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Received Date' : 'تاريخ الاستلام'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Status' : 'الحالة'}</th>
+                            <th className="px-4 py-3.5">{lang === 'en' ? 'Invoice Copy' : 'نسخة الفاتورة'}</th>
+                            <th className="px-4 py-3.5 text-center">{lang === 'en' ? 'Action' : 'إجراء'}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {filteredArchivedPOs.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="py-12 text-center text-white/60">
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  <FileText className="w-8 h-8 text-white/30" />
+                                  <span className="font-bold text-white/80">
+                                    {lang === 'en' ? 'No completed orders or archived invoices for this supplier' : 'لا توجد أوامر شراء مستلمة أو فواتير مؤرشفة لهذا المورد'}
+                                  </span>
+                                  <span className="text-[11px] text-white/50">
+                                    {lang === 'en' ? 'Once an order is received from the inventory board, it automatically moves here' : 'عند استلام المخزون لأي أمر شراء، سينتقل تلقائياً من لوحة التتبع إلى هذا الأرشيف'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredArchivedPOs.map(po => (
+                              <tr key={po.id} className="hover:bg-white/10 transition-colors">
+                                <td className="px-4 py-3.5 font-mono font-bold text-white">
+                                  {toEnglishDigits(po.id)}
+                                </td>
+                                <td className="px-4 py-3.5 font-bold text-white">
+                                  {po.itemName}
+                                </td>
+                                <td className="px-4 py-3.5 font-mono text-white">
+                                  {toEnglishDigits((po.receivedQuantity || po.quantity).toLocaleString('en-US'))}
+                                </td>
+                                <td className="px-4 py-3.5 font-mono font-bold text-teal-200">
+                                  {toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
+                                </td>
+                                <td className="px-4 py-3.5 text-white/70 font-mono text-[11px]">
+                                  {toEnglishDigits(po.receivedAt || po.createdAt)}
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-300/30">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-300" />
+                                    <span>{lang === 'en' ? 'Received' : 'تم الاستلام'}</span>
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  {(po.invoiceUrl || (po as any).invoice_url) ? (
+                                    <a
+                                      href={po.invoiceUrl || (po as any).invoice_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      download
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 border border-teal-300/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-teal-300" />
+                                      <span>data</span>
+                                      <ExternalLink className="w-3 h-3 text-teal-300/70" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-[11px] text-white/40 italic">
+                                      {lang === 'en' ? 'No invoice' : 'لا توجد فاتورة'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPO(po);
+                                      setIsEditingPO(false);
+                                    }}
+                                    className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                  >
+                                    {lang === 'en' ? 'Details' : 'التفاصيل'}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 3: Performance KPIs */}
+              {(profileActiveTab === 'kpis' || profileActiveTab === 'all') && (
+                <div className="space-y-3 border-t border-white/20 pt-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-teal-300" />
+                      <span>{lang === 'en' ? 'Performance KPIs' : 'مؤشرات أداء التوريد (KPIs)'}</span>
+                    </h3>
+                    <span className="text-xs text-white/60">
+                      {lang === 'en' ? 'Live Operational Quality Analysis' : 'تحليل تشغيلي مستمر لمعايير الأداء'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* KPI 1: Delivery Speed */}
+                    <div className="bg-white/5 border border-white/20 p-4 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/80 flex items-center gap-1.5 font-bold">
+                          <Zap className="w-4 h-4 text-teal-300" />
+                          <span>{lang === 'en' ? 'Delivery Speed' : 'سرعة التوصيل'}</span>
+                        </span>
+                        <span className="font-extrabold text-white text-base font-mono">{toEnglishDigits(metrics.deliverySpeed)}%</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${metrics.deliverySpeed}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          className="h-full bg-gradient-to-r from-teal-400 to-emerald-400 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[11px] text-white/60">
+                        {lang === 'en' ? 'Lead time:' : 'متوسط وقت التوريد:'} <strong className="text-white font-mono">{toEnglishDigits(sup.delivery_time_hours || 24)} {lang === 'en' ? 'hours' : 'ساعة'}</strong>
+                      </p>
+                    </div>
+
+                    {/* KPI 2: Product Quality */}
+                    <div className="bg-white/5 border border-white/20 p-4 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/80 flex items-center gap-1.5 font-bold">
+                          <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                          <span>{lang === 'en' ? 'Product Quality' : 'جودة البضاعة'}</span>
+                        </span>
+                        <span className="font-extrabold text-white text-base font-mono">{toEnglishDigits(metrics.qualityScore)}%</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${metrics.qualityScore}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+                          className="h-full bg-gradient-to-r from-emerald-400 to-teal-300 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[11px] text-white/60">
+                        {lang === 'en' ? 'Supplier Rating:' : 'تقييم الجودة:'} <strong className="text-white font-mono">{toEnglishDigits(sup.rating)} / 5</strong>
+                      </p>
+                    </div>
+
+                    {/* KPI 3: Price Stability */}
+                    <div className="bg-white/5 border border-white/20 p-4 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/80 flex items-center gap-1.5 font-bold">
+                          <Scale className="w-4 h-4 text-amber-300" />
+                          <span>{lang === 'en' ? 'Price Stability' : 'استقرار السعر'}</span>
+                        </span>
+                        <span className="font-extrabold text-white text-base font-mono">{toEnglishDigits(metrics.priceStability)}%</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${metrics.priceStability}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+                          className="h-full bg-gradient-to-r from-amber-400 to-amber-300 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[11px] text-white/60">
+                        {lang === 'en' ? 'Pricing Tier:' : 'فئة التسعير:'} <strong className="text-white">{sup.pricingTier || 'أسعار جملة معتمدة'}</strong>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div className="flex justify-end pt-2 border-t border-white/20">
+                <button
+                  type="button"
+                  onClick={handleCloseSupplierProfile}
+                  className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/25 transition-all cursor-pointer"
+                >
+                  {lang === 'en' ? 'Close Profile' : 'إغلاق ملف المورد'}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal / Popup: Add New Certified Item to Supplier */}
+            {isAddItemModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
+                <div className="font-sans glass glass-popover rounded-[24px] w-full max-w-md p-6 space-y-4 text-white border border-white/30 shadow-2xl relative">
+                  <div className="flex justify-between items-center border-b border-white/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-300/30 flex items-center justify-center text-teal-200">
+                        <Package className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white">
+                          {lang === 'en' ? 'Add Item to Supplier' : 'إضافة صنف جديد للمورد'}
+                        </h4>
+                        <p className="text-[11px] text-white/60">
+                          {lang === 'en' ? 'Link inventory item to supplier_items' : 'ربط صنف من المستودع بجدول supplier_items'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAddItemModalOpen(false)}
+                      className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleAddCertifiedItem} className="space-y-4 text-xs">
+                    <div>
+                      <label className="block font-bold text-white mb-1.5">
+                        {lang === 'en' ? 'Select Inventory Item:' : 'اختر صنف المخزون المطلوب ربطه:'}
+                      </label>
+                      <select
+                        value={selectedItemToAdd}
+                        onChange={(e) => {
+                          setSelectedItemToAdd(e.target.value);
+                          const matched = availableItems.find(i => i.item_code === e.target.value);
+                          if (matched?.cost_per_unit) {
+                            setAgreedUnitPrice(matched.cost_per_unit);
+                          }
+                        }}
+                        required
+                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2.5 text-white text-xs outline-none focus:border-teal-300 cursor-pointer"
+                      >
+                        <option value="" disabled className="bg-slate-800 text-white">
+                          {lang === 'en' ? '-- Select Item --' : '-- اختر الصنف --'}
+                        </option>
+                        {availableItems.map(item => (
+                          <option key={item.item_code} value={item.item_code} className="bg-slate-800 text-white">
+                            {item.item_name_ar} ({item.item_code}) - {toEnglishDigits(item.cost_per_unit || 0)} ر.س
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-white mb-1.5">
+                        {lang === 'en' ? 'Agreed Unit Supply Price (SAR):' : 'سعر التوريد المتفق عليه (ر.س):'}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        value={agreedUnitPrice}
+                        onChange={(e) => setAgreedUnitPrice(Number(e.target.value))}
+                        className="w-full bg-white/10 border border-white/25 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={isSavingNewItem || !selectedItemToAdd}
+                        className="flex-1 py-2.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 active:scale-95 text-white font-bold text-xs border border-teal-300/40 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingNewItem ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        <span>
+                          {isSavingNewItem
+                            ? (lang === 'en' ? 'Saving to supplier_items...' : 'جاري الحفظ في supplier_items...')
+                            : (lang === 'en' ? 'Certify & Add Item' : 'اعتماد وإضافة الصنف')}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAddItemModalOpen(false)}
+                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer"
+                      >
+                        {lang === 'en' ? 'Cancel' : 'إلغاء'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Modal: View & Edit Purchase Order Details (PO Modal) */}
       {selectedPO && (
@@ -1277,10 +2127,28 @@ export default function SuppliersClient({
                     {selectedPO.status === 'PENDING_APPROVAL' && (lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة')}
                     {selectedPO.status === 'SENT' && (lang === 'en' ? 'Email Dispatched to Supplier' : 'تم إرسال الإيميل للمورد')}
                     {selectedPO.status === 'IN_TRANSIT' && (lang === 'en' ? 'In Transit to Branches' : 'جاري التوصيل الآن')}
-                    {selectedPO.status === 'DELIVERED' && (lang === 'en' ? 'Delivered & Received' : 'تم الاستلام بنجاح')}
+                    {(selectedPO.status === 'DELIVERED' || selectedPO.status === 'تم الاستلام') && (lang === 'en' ? 'Delivered & Received' : 'تم الاستلام بنجاح')}
                     {selectedPO.status === 'APPROVED' && (lang === 'en' ? 'Approved' : 'معتمد')}
                   </span>
                 </div>
+
+                {/* 9. Attached Invoice Copy if available */}
+                {selectedPO.invoiceUrl && (
+                  <div className="flex flex-col items-center justify-center text-center py-2 col-span-full">
+                    <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Invoice Copy' : 'نسخة الفاتورة'}</span>
+                    <a
+                      href={selectedPO.invoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 mt-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 border border-teal-300/40 text-xs font-bold transition-all shadow-sm"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-teal-300" />
+                      <span>data</span>
+                      <ExternalLink className="w-3 h-3 text-teal-300/70" />
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 

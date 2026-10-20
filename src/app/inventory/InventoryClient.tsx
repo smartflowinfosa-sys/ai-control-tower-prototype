@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, fetchInventoryItems } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, fetchInventoryItems, fetchPurchaseOrders, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
@@ -29,10 +29,11 @@ const getItemCategory = (name: string): string => {
 
 interface InventoryClientProps {
   initialItems: SupabaseInventoryItem[];
+  initialPurchaseOrders?: SupabasePurchaseOrder[];
   fetchError?: string | null;
 }
 
-export default function InventoryClient({ initialItems, fetchError }: InventoryClientProps) {
+export default function InventoryClient({ initialItems, initialPurchaseOrders = [], fetchError }: InventoryClientProps) {
   const { lang, t, isRtl, currentUser } = useLanguage();
   const [items, setItems] = useState<SupabaseInventoryItem[]>(() =>
     [...initialItems].sort((a, b) =>
@@ -51,8 +52,19 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
   const [selectedItemForPO, setSelectedItemForPO] = useState<SupabaseInventoryItem | null>(null);
   const [poQuantity, setPoQuantity] = useState<number>(1000);
   const [selectedSupplier, setSelectedSupplier] = useState<string>(initialSuppliers[0].name);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => getSessionPurchaseOrders());
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() =>
+    initialPurchaseOrders && initialPurchaseOrders.length > 0
+      ? (initialPurchaseOrders as unknown as PurchaseOrder[])
+      : getSessionPurchaseOrders()
+  );
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Active Purchase Orders (dynamically filtered: received orders disappear immediately)
+  const activePOs = purchaseOrders.filter(po => {
+    const orig = (po.status || '').trim();
+    const lower = orig.toLowerCase();
+    return orig !== 'تم الاستلام' && orig !== 'تم الاستلام بنجاح' && lower !== 'received' && lower !== 'delivered';
+  });
 
   // Role-Based Access Control (RBAC): Only Warehouse Managers, Operations Managers, or Admins can receive stock
   const authorizedRoles = [
@@ -83,7 +95,20 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
   const [receiverSignature, setReceiverSignature] = useState<string>('');
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState<boolean>(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const handleStorageError = (e: any) => {
+      if (e.detail?.message) {
+        setStorageNotice(e.detail.message);
+      }
+    };
+    window.addEventListener('supabase_storage_bucket_error', handleStorageError);
+    return () => {
+      window.removeEventListener('supabase_storage_bucket_error', handleStorageError);
+    };
+  }, []);
 
   useEffect(() => {
     const handleNewAiPO: EventListener = (event) => {
@@ -103,16 +128,49 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
       }
     };
 
+    const handlePOReceived: EventListener = (event) => {
+      const detail = (event as CustomEvent<any>).detail;
+      if (detail?.id || detail?.poNumber) {
+        const targetId = detail.id || detail.poNumber;
+        setPurchaseOrders(prev =>
+          prev.map(p =>
+            p.id === targetId
+              ? {
+                  ...p,
+                  status: 'تم الاستلام',
+                  invoiceUrl: detail.invoiceUrl || p.invoiceUrl,
+                  receivedQuantity: detail.receivedQuantity || p.receivedQuantity,
+                }
+              : p
+          )
+        );
+      }
+    };
+
     window.addEventListener('ai_purchase_order_created', handleNewAiPO);
     window.addEventListener('ai_purchase_order_updated', handleUpdatePO);
+    window.addEventListener('purchase_order_received', handlePOReceived);
+
+    // Fetch latest purchase orders directly from Supabase
+    fetchPurchaseOrders()
+      .then(pos => {
+        if (pos && pos.length > 0) {
+          setPurchaseOrders(pos as unknown as PurchaseOrder[]);
+        }
+      })
+      .catch(err => {
+        console.warn('Background PO refresh warning:', err);
+      });
+
     return () => {
       window.removeEventListener('ai_purchase_order_created', handleNewAiPO);
       window.removeEventListener('ai_purchase_order_updated', handleUpdatePO);
+      window.removeEventListener('purchase_order_received', handlePOReceived);
     };
   }, []);
 
   const openReceiveModal = (defaultPoId?: string) => {
-    const targetId = defaultPoId || purchaseOrders.find(p => p.status !== 'تم الاستلام' && p.status !== 'RECEIVED')?.id || purchaseOrders[0]?.id || '';
+    const targetId = defaultPoId || activePOs[0]?.id || '';
     setReceivePoId(targetId);
     const po = purchaseOrders.find(p => p.id === targetId);
     if (po) {
@@ -227,9 +285,15 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
 
       // Background re-fetch to ensure complete sync with database
       try {
-        const fresh = await fetchInventoryItems();
+        const [fresh, freshPOs] = await Promise.all([
+          fetchInventoryItems(),
+          fetchPurchaseOrders().catch(() => []),
+        ]);
         if (fresh && fresh.length > 0) {
           setItems(fresh);
+        }
+        if (freshPOs && freshPOs.length > 0) {
+          setPurchaseOrders(freshPOs as unknown as PurchaseOrder[]);
         }
       } catch (syncErr) {
         console.warn('Background sync warning:', syncErr);
@@ -430,7 +494,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
 
         <div className="glass p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-white/80">{t('inventory.kpiActivePO')}</div>
-          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2">{toEnglishDigits(purchaseOrders.length)}</div>
+          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2">{toEnglishDigits(activePOs.length)}</div>
           <div className="text-xs text-white/65 font-semibold mt-1">{t('inventory.kpiActivePODesc')}</div>
         </div>
 
@@ -712,11 +776,13 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                     className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
                   >
                     <option value="" disabled>
-                      {t('inventory.selectPOPlaceholder')}
+                      {activePOs.length === 0
+                        ? (lang === 'en' ? 'No pending active orders' : 'لا توجد أوامر شراء نشطة بانتظار الاستلام')
+                        : t('inventory.selectPOPlaceholder')}
                     </option>
-                    {purchaseOrders.map(po => (
+                    {activePOs.map(po => (
                       <option key={po.id} value={po.id}>
-                        {po.id} - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')}) {po.status === 'تم الاستلام' ? `[${t('inventory.poStatusReceived')}]` : ''}
+                        {po.id} - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')})
                       </option>
                     ))}
                   </GlassSelect>
@@ -762,6 +828,7 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                           href={selectedReceivePO.invoiceUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          download
                           className="text-emerald-300 hover:text-emerald-200 underline font-bold flex items-center gap-1"
                         >
                           <span>{t('inventory.viewInvoice')}</span>
@@ -805,6 +872,23 @@ export default function InventoryClient({ initialItems, fetchError }: InventoryC
                     className="w-full bg-white/8 border border-white/25 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 font-mono text-left rtl:text-right [unicode-bidi:plaintext]"
                   />
                 </div>
+
+                {/* Storage Bucket Setup Alert Notice */}
+                {storageNotice && (
+                  <div className="p-3 bg-amber-500/20 border border-amber-400/50 rounded-xl text-amber-200 text-xs flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span className="font-bold">{storageNotice}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStorageNotice(null)}
+                      className="text-white/60 hover:text-white p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
 
                 {/* 3. File Upload (Input type="file"): Upload Invoice Copy */}
                 <div>
