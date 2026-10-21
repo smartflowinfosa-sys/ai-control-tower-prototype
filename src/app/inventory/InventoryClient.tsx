@@ -244,8 +244,42 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
     setReceiptError(null);
 
     try {
+      // Step 1: Sanitize File Name (Strip Arabic/special characters and generate safe ASCII filename)
+      const rawExt = invoiceFile.name && invoiceFile.name.includes('.')
+        ? invoiceFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'pdf'
+        : 'pdf';
+      const safeRandom = Math.random().toString(36).substring(7);
+      const safeFileName = `invoice-${Date.now()}-${safeRandom}.${rawExt}`;
+      const sanitizedInvoiceFile = new File([invoiceFile], safeFileName, {
+        type: invoiceFile.type || 'application/pdf',
+      });
+
       // Step 1: Upload invoice to Supabase Storage 'invoices' bucket
-      const invoicePublicUrl = await uploadInvoice(invoiceFile, po.id);
+      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, po.id);
+
+      // Step 1.5: Trigger n8n Webhook for automated Google Drive archiving (STRICTLY inside success block)
+      if (invoicePublicUrl) {
+        try {
+          const supplierName = po.supplierName || (po as any).supplier_name || 'المورد المعتمد';
+          const invoiceDate = new Date().toISOString().split('T')[0];
+
+          fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook-test/zahi-invoice-upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              supplier_name: supplierName,
+              invoice_date: invoiceDate,
+              file_url: invoicePublicUrl,
+            }),
+          }).catch((webhookErr) => {
+            console.warn('n8n webhook notification error (silent):', webhookErr);
+          });
+        } catch (triggerErr) {
+          console.warn('n8n webhook trigger error (silent):', triggerErr);
+        }
+      }
 
       // Step 2: Receive PO in Supabase, update inventory_items current_stock, and log receiver signature for audit
       const result = await receivePurchaseOrder(

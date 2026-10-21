@@ -244,20 +244,37 @@ export async function updateSupplier(
 /**
  * Upload an invoice copy to the 'invoices' public storage bucket in Supabase.
  * Returns the public URL of the uploaded file.
+ * Sanitizes all file names and paths to safe ASCII characters to prevent Supabase 400 'Invalid key' errors.
  */
 export async function uploadInvoice(file: File, poNumber: string): Promise<string> {
-  const filePath = `po-${poNumber}-${Date.now()}-${file.name}`;
+  // Sanitize PO number and file extension to pure ASCII characters
+  const cleanPo = String(poNumber || 'po').replace(/[^a-zA-Z0-9_-]/g, '');
+  const rawExt = file.name && file.name.includes('.')
+    ? file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'pdf'
+    : 'pdf';
+  const safeRandom = Math.random().toString(36).substring(7);
+  const filePath = `invoice-${cleanPo ? cleanPo + '-' : ''}${Date.now()}-${safeRandom}.${rawExt}`;
+
+  // Ensure file object itself has a safe ASCII filename
+  const safeFile = file.name && /^[a-zA-Z0-9._-]+$/.test(file.name)
+    ? file
+    : new File([file], `invoice-${Date.now()}-${safeRandom}.${rawExt}`, {
+        type: file.type || 'application/pdf',
+      });
+
   try {
     const { data, error } = await supabase.storage
       .from('invoices')
-      .upload(filePath, file);
+      .upload(filePath, safeFile, {
+        contentType: safeFile.type || 'application/pdf',
+        upsert: false,
+      });
 
     if (error) {
       console.error(
-        `[Storage Bucket Notice] Please ensure you click 'New Bucket' in Supabase Storage and name it 'invoices' (public)`
+        `[Storage Bucket Notice] Supabase Storage upload error:`,
+        error.message
       );
-      console.log("Please ensure you click 'New Bucket' in Supabase Storage and name it 'invoices' (public)");
-      console.warn('Supabase storage upload error details:', error.message);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -270,6 +287,7 @@ export async function uploadInvoice(file: File, poNumber: string): Promise<strin
           })
         );
       }
+      throw new Error(`فشل رفع الفاتورة إلى التخزين: ${error.message}`);
     }
 
     const targetPath = data?.path || filePath;
@@ -279,11 +297,7 @@ export async function uploadInvoice(file: File, poNumber: string): Promise<strin
 
     return publicUrlData.publicUrl;
   } catch (err: any) {
-    console.error(
-      `[Storage Bucket Exception] Please ensure you click 'New Bucket' in Supabase Storage and name it 'invoices' (public)`
-    );
-    console.log("Please ensure you click 'New Bucket' in Supabase Storage and name it 'invoices' (public)");
-
+    console.error(`[Storage Bucket Exception]`, err);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('supabase_storage_bucket_error', {
@@ -295,7 +309,7 @@ export async function uploadInvoice(file: File, poNumber: string): Promise<strin
         })
       );
     }
-    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/invoices/${filePath}`;
+    throw err;
   }
 }
 
@@ -561,8 +575,141 @@ export async function fetchPurchaseOrders(): Promise<SupabasePurchaseOrder[]> {
 }
 
 /**
+ * Create and insert a new Purchase Order into Supabase `purchase_orders` table
+ */
+export async function createPurchaseOrder(poData: {
+  po_number?: string;
+  supplier_id?: string;
+  inventory_item_code: string;
+  quantity: number;
+  total_cost: number;
+  status?: string;
+  created_by?: 'AI_AGENT' | 'HUMAN';
+}): Promise<SupabasePurchaseOrder> {
+  const poNumber = poData.po_number || `PO-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const payload = {
+    po_number: poNumber,
+    supplier_id: poData.supplier_id || null,
+    inventory_item_code: poData.inventory_item_code,
+    quantity: poData.quantity,
+    total_cost: poData.total_cost,
+    status: poData.status || 'PENDING_APPROVAL',
+    created_by: poData.created_by || 'AI_AGENT',
+  };
+
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .insert([payload])
+    .select(`
+      po_number,
+      supplier_id,
+      inventory_item_code,
+      quantity,
+      total_cost,
+      status,
+      created_at,
+      created_by,
+      invoice_url,
+      receiver_signature,
+      suppliers (
+        id,
+        name_ar,
+        name_en
+      ),
+      inventory_items (
+        item_code,
+        item_name_ar,
+        category_ar
+      )
+    `)
+    .single();
+
+  if (error) {
+    console.error('Failed to insert purchase order into Supabase:', error);
+    throw new Error(`تعذر حفظ أمر الشراء في Supabase: ${error.message}`);
+  }
+
+  const sup = Array.isArray(data.suppliers) ? data.suppliers[0] : data.suppliers;
+  const inv = Array.isArray(data.inventory_items) ? data.inventory_items[0] : data.inventory_items;
+
+  return {
+    id: data.po_number,
+    po_number: data.po_number,
+    itemId: data.inventory_item_code || '',
+    itemName: inv?.item_name_ar || data.inventory_item_code || 'صنف توريد',
+    supplierName: sup?.name_ar || sup?.name_en || 'المورد المعتمد',
+    supplier_id: data.supplier_id,
+    supplierId: data.supplier_id,
+    quantity: Number(data.quantity) || 0,
+    totalCost: Number(data.total_cost) || 0,
+    status: data.status,
+    createdAt: data.created_at ? new Date(data.created_at).toLocaleDateString('ar-SA') : '',
+    createdBy: data.created_by,
+  };
+}
+
+/**
  * Supplier Items Junction Model
  */
+export interface SupabaseSupplierItem {
+  id: string;
+  supplier_id: string;
+  inventory_item_code: string;
+  price: number;
+  is_available: boolean;
+  suppliers?: {
+    id: string;
+    name_ar?: string;
+    name_en?: string;
+    delivery_time_hours?: number;
+    rating?: number;
+    location_ar?: string;
+  };
+  inventory_items?: {
+    item_code: string;
+    item_name_ar?: string;
+    item_name_en?: string;
+    cost_per_unit?: number;
+  };
+}
+
+/**
+ * Fetch all supplier-item relationships from `supplier_items` in Supabase
+ */
+export async function fetchAllSupplierItems(): Promise<SupabaseSupplierItem[]> {
+  const { data, error } = await supabase
+    .from('supplier_items')
+    .select(`
+      id,
+      supplier_id,
+      inventory_item_code,
+      price,
+      is_available,
+      suppliers (
+        id,
+        name_ar,
+        name_en,
+        delivery_time_hours,
+        rating,
+        location_ar
+      ),
+      inventory_items (
+        item_code,
+        item_name_ar,
+        item_name_en,
+        cost_per_unit
+      )
+    `);
+
+  if (error) {
+    console.error('Failed to fetch supplier_items from Supabase:', error);
+    return [];
+  }
+
+  return (data || []) as unknown as SupabaseSupplierItem[];
+}
+
 export interface SupplierItemRecord {
   id?: string;
   supplier_id: string;

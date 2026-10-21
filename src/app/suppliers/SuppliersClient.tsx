@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
@@ -8,6 +8,7 @@ import { useLanguage } from '@/components/common/LanguageContext';
 import {
   initialInventoryItems as mockInventoryItems,
   supplierQuotesMatrix,
+  SupplierQuote,
   PurchaseOrder,
   getSessionPurchaseOrders,
   addPurchaseOrderToSession
@@ -22,7 +23,10 @@ import {
   addSupplierItem,
   SupplierItemRecord,
   fetchPurchaseOrders,
-  SupabasePurchaseOrder
+  createPurchaseOrder,
+  fetchAllSupplierItems,
+  SupabasePurchaseOrder,
+  SupabaseSupplierItem
 } from '@/lib/supabaseService';
 import {
   Clock,
@@ -70,6 +74,7 @@ interface SuppliersClientProps {
   initialSuppliers: SupabaseSupplier[];
   initialInventoryItems?: SupabaseInventoryItem[];
   initialPurchaseOrders?: SupabasePurchaseOrder[];
+  initialSupplierItems?: SupabaseSupplierItem[];
   fetchError?: string | null;
 }
 
@@ -77,6 +82,7 @@ export default function SuppliersClient({
   initialSuppliers,
   initialInventoryItems = [],
   initialPurchaseOrders = [],
+  initialSupplierItems = [],
   fetchError
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
@@ -103,10 +109,12 @@ export default function SuppliersClient({
       ? (initialPurchaseOrders as unknown as PurchaseOrder[])
       : getSessionPurchaseOrders()
   );
+  const [allSupplierItems, setAllSupplierItems] = useState<SupabaseSupplierItem[]>(() => initialSupplierItems || []);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSavingSupplier, setIsSavingSupplier] = useState<boolean>(false);
+  const [isSubmittingQuickOrder, setIsSubmittingQuickOrder] = useState<boolean>(false);
 
   // Sync state if server props update
   useEffect(() => {
@@ -114,6 +122,37 @@ export default function SuppliersClient({
       setSuppliers(sortSuppliersByDefault(initialSuppliers));
     }
   }, [initialSuppliers]);
+
+  useEffect(() => {
+    if (initialPurchaseOrders && initialPurchaseOrders.length > 0) {
+      setPurchaseOrders(initialPurchaseOrders as unknown as PurchaseOrder[]);
+    }
+  }, [initialPurchaseOrders]);
+
+  useEffect(() => {
+    if (initialSupplierItems && initialSupplierItems.length > 0) {
+      setAllSupplierItems(initialSupplierItems);
+    }
+  }, [initialSupplierItems]);
+
+  // Ensure single true state of the database with unique IDs on mount
+  useEffect(() => {
+    fetchPurchaseOrders()
+      .then(pos => {
+        if (pos && pos.length > 0) {
+          setPurchaseOrders(pos as unknown as PurchaseOrder[]);
+        }
+      })
+      .catch(console.warn);
+
+    fetchAllSupplierItems()
+      .then(items => {
+        if (items && items.length > 0) {
+          setAllSupplierItems(items);
+        }
+      })
+      .catch(console.warn);
+  }, []);
 
   useEffect(() => {
     if (availableItems && availableItems.length > 0 && !analyzingItemId) {
@@ -216,6 +255,7 @@ export default function SuppliersClient({
         return [record, ...prev];
       });
       setIsAddItemModalOpen(false);
+      fetchAllSupplierItems().then(items => { if (items?.length) setAllSupplierItems(items); }).catch(console.warn);
       const matched = availableItems.find(i => i.item_code === selectedItemToAdd);
       const name = matched?.item_name_ar || selectedItemToAdd;
       showToast(
@@ -244,6 +284,7 @@ export default function SuppliersClient({
       await addSupplierItem(selectedProfileSupplier.id, item.item_code, item.cost_per_unit || 0.45);
     }
     loadSupplierItems(selectedProfileSupplier.id);
+    fetchAllSupplierItems().then(items => { if (items?.length) setAllSupplierItems(items); }).catch(console.warn);
     showToast(
       lang === 'en'
         ? 'AI Agent linked relevant products to supplier catalog successfully'
@@ -317,39 +358,58 @@ export default function SuppliersClient({
     setAnalyzingItemId(itemId);
   };
 
-  const handleQuickOrder = (supplierName: string, itemName: string) => {
-    const matchedItem = availableItems.find(i => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === analyzingItemId);
-    const matchedSupplier = suppliers.find(s =>
-      s.name_ar === supplierName ||
-      s.name === supplierName ||
-      s.name_en === supplierName
-    );
-    const supplierId = matchedSupplier?.id;
-    const unitCost = matchedItem?.cost_per_unit || 0.45;
-    const quantity = 2500;
-    const totalCost = Number((quantity * unitCost).toFixed(2));
+  const handleQuickOrder = async (supplierName: string, itemName: string, unitPrice?: number) => {
+    if (isSubmittingQuickOrder) return;
+    setIsSubmittingQuickOrder(true);
 
-    const newPO: PurchaseOrder = {
-      id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
-      itemId: matchedItem ? matchedItem.item_code : (analyzingItemId || 'inv-quick'),
-      itemName: matchedItem ? matchedItem.item_name_ar : itemName,
-      supplierName: supplierName,
-      supplier_id: supplierId,
-      supplierId: supplierId,
-      quantity: quantity,
-      totalCost: totalCost,
-      status: 'PENDING_APPROVAL',
-      createdAt: new Date().toLocaleTimeString(lang === 'en' ? 'en-US' : 'ar-SA', { hour: '2-digit', minute: '2-digit' }),
-      createdBy: 'AI_AGENT',
-    };
+    try {
+      const matchedItem = availableItems.find(i => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === analyzingItemId);
+      const matchedSupplier = suppliers.find(s =>
+        s.name_ar === supplierName ||
+        s.name === supplierName ||
+        s.name_en === supplierName
+      );
+      const supplierId = matchedSupplier?.id;
+      const unitCost = unitPrice ?? matchedItem?.cost_per_unit ?? 0.45;
+      const quantity = 2500;
+      const totalCost = Number((quantity * unitCost).toFixed(2));
+      const itemCode = matchedItem?.item_code || analyzingItemId || 'P1';
 
-    addPurchaseOrderToSession(newPO);
-    setPurchaseOrders(prev => [newPO, ...prev]);
-    showToast(
-      lang === 'en'
-        ? `New purchase order (${newPO.id}) issued via AI for supplier (${supplierName}) successfully!`
-        : `تم إصدار أمر شراء جديد (${newPO.id}) عبر الـ AI للمورد (${supplierName}) بنجاح!`
-    );
+      // 1. Generate unique PO Number
+      const poNum = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      // 2. Insert into Supabase purchase_orders table
+      await createPurchaseOrder({
+        po_number: poNum,
+        supplier_id: supplierId,
+        inventory_item_code: itemCode,
+        quantity,
+        total_cost: totalCost,
+        status: 'PENDING_APPROVAL',
+        created_by: 'AI_AGENT',
+      });
+
+      // 3. RE-FETCH the entire PO list from Supabase (strictly ensuring tracking table reflects single true state)
+      const freshPOs = await fetchPurchaseOrders();
+      if (freshPOs && freshPOs.length > 0) {
+        setPurchaseOrders(freshPOs as unknown as PurchaseOrder[]);
+      }
+
+      showToast(
+        lang === 'en'
+          ? `New purchase order (${poNum}) issued via AI for supplier (${supplierName}) successfully!`
+          : `تم إصدار أمر شراء جديد (${poNum}) عبر الـ AI للمورد (${supplierName}) بنجاح!`
+      );
+    } catch (err: any) {
+      console.error('Failed to create purchase order in Supabase:', err);
+      showToast(
+        lang === 'en'
+          ? `Failed to issue purchase order: ${err?.message || 'Database error'}`
+          : `تعذر إصدار أمر الشراء: ${err?.message || 'خطأ في قاعدة البيانات'}`
+      );
+    } finally {
+      setIsSubmittingQuickOrder(false);
+    }
   };
 
   const handleUpdatePOStatus = (poId: string, nextStatus: PurchaseOrder['status']) => {
@@ -561,41 +621,85 @@ export default function SuppliersClient({
     }, 4500);
   };
 
-  const currentQuotes = analyzingItemId ? (supplierQuotesMatrix[analyzingItemId] || []) : [];
   const selectedItem = availableItems.find(i => i.item_code === analyzingItemId) || availableItems[0];
+
+  // BUG 2 FIX: Dynamic Price Comparison strictly filtered from Supabase database relations
+  // Removes hardcoded supplier cards; ONLY renders suppliers who actually have a relation to the selected item in Supabase
+  const currentQuotes: SupplierQuote[] = useMemo(() => {
+    if (!analyzingItemId) return [];
+
+    // Filter relations from Supabase supplier_items strictly matching analyzingItemId
+    const matchingRelations = allSupplierItems.filter(
+      si => si.inventory_item_code === analyzingItemId && si.is_available !== false
+    );
+
+    return matchingRelations.map(rel => {
+      const sup = (suppliers.find(s => s.id === rel.supplier_id) || rel.suppliers) as any;
+      const supName = sup?.name_ar || sup?.name || rel.suppliers?.name_ar || 'المورد المعتمد';
+      const unitPrice = Number(rel.price ?? sup?.cost_per_unit ?? 0.45);
+      const leadTimeHours = Number(sup?.delivery_time_hours || (sup?.lead_time_days ? sup.lead_time_days * 24 : 24));
+      const qualityRating = Number(sup?.rating || 4.8);
+
+      // Check if curated analysis text exists for this supplier in mock data
+      const mockQuote = (supplierQuotesMatrix[analyzingItemId] || []).find(
+        q => q.supplierId === rel.supplier_id || q.supplierName === supName
+      );
+
+      const aiRecommendationScore = mockQuote?.aiRecommendationScore ??
+        Math.min(99, Math.max(82, Math.round(92 - (unitPrice * 5) + (qualityRating * 2))));
+
+      const aiReasoning = mockQuote?.aiReasoning ?? (
+        lang === 'en'
+          ? `Officially certified supplier in database for (${selectedItem?.item_name_en || selectedItem?.item_name_ar || analyzingItemId}) with verified delivery within ${leadTimeHours}h.`
+          : `المورد المعتمد رسمياً في قاعدة البيانات لتوريد (${selectedItem?.item_name_ar || analyzingItemId}) بجودة موثوقة (${qualityRating}/5) وتسليم خلال ${leadTimeHours} ساعة.`
+      );
+
+      return {
+        supplierId: rel.supplier_id,
+        supplierName: supName,
+        unitPrice,
+        leadTimeHours,
+        minOrderQuantity: mockQuote?.minOrderQuantity || 1000,
+        qualityRating,
+        aiRecommendationScore,
+        aiReasoning,
+      };
+    });
+  }, [analyzingItemId, allSupplierItems, suppliers, selectedItem, lang]);
+
   const bestQuote = currentQuotes.length > 0
     ? [...currentQuotes].sort((a, b) => b.aiRecommendationScore - a.aiRecommendationScore)[0]
     : null;
 
-  // Filter out received orders from active PO tracker
-  // Only render orders where status is NOT "تم الاستلام" (Received) or status !== 'received'
-  // (Once received, orders immediately disappear from this tracker as they reside inside the Supplier's Profile archive)
-  const activePOs = purchaseOrders.filter(po => {
-    const status = (po.status || '').trim();
-    const lower = status.toLowerCase();
-    return (
-      status !== 'تم الاستلام' &&
-      status !== 'تم الاستلام بنجاح' &&
-      lower !== 'received' &&
-      lower !== 'delivered'
-    );
-  });
+  // BUG 1 FIX: Filter out received orders and strictly deduplicate by ID
+  // Guarantees no duplicate React keys and that displayedActivePOs reflects the single true state from Supabase
+  const activePOs = useMemo(() => {
+    const seen = new Set<string>();
+    return purchaseOrders.filter(po => {
+      if (!po || !po.id) return false;
+      const status = (po.status || '').trim();
+      const lower = status.toLowerCase();
+      const isNotReceived = (
+        status !== 'تم الاستلام' &&
+        status !== 'تم الاستلام بنجاح' &&
+        lower !== 'received' &&
+        lower !== 'delivered'
+      );
+      if (!isNotReceived) return false;
+      if (seen.has(po.id)) return false;
+      seen.add(po.id);
+      return true;
+    });
+  }, [purchaseOrders]);
 
-  const filteredActivePOs = activePOs.filter(po => {
-    if (activeStatusFilter === 'ALL') return true;
-    return po.status === activeStatusFilter;
-  });
+  const filteredActivePOs = useMemo(() => {
+    return activePOs.filter(po => {
+      if (activeStatusFilter === 'ALL') return true;
+      return po.status === activeStatusFilter;
+    });
+  }, [activePOs, activeStatusFilter]);
 
-  const displayedActivePOs = filteredActivePOs.filter(po => {
-    const status = (po.status || '').trim();
-    const lower = status.toLowerCase();
-    return (
-      status !== 'تم الاستلام' &&
-      status !== 'تم الاستلام بنجاح' &&
-      lower !== 'received' &&
-      lower !== 'delivered'
-    );
-  });
+  const displayedActivePOs = filteredActivePOs;
 
   // Calculate active stats
   const pendingCount = activePOs.filter(p => p.status === 'PENDING_APPROVAL').length;
@@ -1133,14 +1237,21 @@ export default function SuppliersClient({
 
                       {/* Action Button */}
                       <button
-                        onClick={() => handleQuickOrder(quote.supplierName, selectedItem.item_name_ar)}
+                        onClick={() => handleQuickOrder(quote.supplierName, selectedItem.item_name_ar, quote.unitPrice)}
+                        disabled={isSubmittingQuickOrder}
                         className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer mt-4 ${
+                          isSubmittingQuickOrder ? 'opacity-50 cursor-not-allowed' : ''
+                        } ${
                           isBest
                             ? 'bg-white/20 hover:bg-white/25 active:scale-95 text-white '
                             : 'bg-white/8 hover:bg-white/15 text-white border border-white/20'
                         }`}
                       >
-                        <Send className="w-3.5 h-3.5" />
+                        {isSubmittingQuickOrder ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
                         <span>{lang === 'en' ? 'Approve & Issue PO' : 'اعتماد وإصدار أمر شراء'}</span>
                       </button>
                     </div>
@@ -1545,11 +1656,18 @@ export default function SuppliersClient({
                                 <td className="px-4 py-3.5 text-center">
                                   <button
                                     type="button"
-                                    onClick={() => handleQuickOrder(sup.name_ar || sup.name || '', item.name_ar || item.item_code)}
-                                    className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                                    disabled={isSubmittingQuickOrder}
+                                    onClick={() => handleQuickOrder(sup.name_ar || sup.name || '', item.name_ar || item.item_code, item.cost_per_unit)}
+                                    className={`text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                                      isSubmittingQuickOrder ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
                                     title={lang === 'en' ? 'Issue new PO for this item' : 'إصدار أمر شراء سريع لهذا الصنف'}
                                   >
-                                    <Send className="w-3 h-3 text-teal-300" />
+                                    {isSubmittingQuickOrder ? (
+                                      <Loader2 className="w-3 h-3 animate-spin text-teal-300" />
+                                    ) : (
+                                      <Send className="w-3 h-3 text-teal-300" />
+                                    )}
                                     <span>{lang === 'en' ? 'Order' : 'طلب توريد'}</span>
                                   </button>
                                 </td>
