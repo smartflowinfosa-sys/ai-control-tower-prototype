@@ -5,6 +5,8 @@ import { mockOperationService } from '@/application/services/mockOperationServic
 import DemoAlertTrigger from '@/components/common/DemoAlertTrigger';
 import AIAutonomyControl from '@/components/dashboard/AIAutonomyControl';
 import { useLanguage } from '@/components/common/LanguageContext';
+import { signOut } from 'next-auth/react';
+import { LogOut } from 'lucide-react';
 
 export default function DashboardPage() {
   const { t } = useLanguage();
@@ -15,13 +17,25 @@ export default function DashboardPage() {
       <DemoAlertTrigger />
       
       {/* Title Container */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
-          {t('dashboard.title')}
-        </h1>
-        <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
-          {t('dashboard.subtitle')}
-        </p>
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
+            {t('dashboard.title')}
+          </h1>
+          <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
+            {t('dashboard.subtitle')}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="self-start sm:self-center flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-rose-200 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-md active:scale-95"
+          title={t('sidebar.logout') || "تسجيل الخروج"}
+        >
+          <LogOut size={16} />
+          <span>{t('sidebar.logout') || "تسجيل الخروج"}</span>
+        </button>
       </header>
 
       <AIAutonomyControl />

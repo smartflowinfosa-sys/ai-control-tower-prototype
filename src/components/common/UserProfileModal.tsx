@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage, Language } from '@/components/common/LanguageContext';
-import { X, Globe, User, ShieldCheck, Mail, Check, Sparkles, KeyRound } from 'lucide-react';
+import { X, Globe, User, ShieldCheck, Mail, Check, Sparkles, KeyRound, LogOut } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -242,14 +243,25 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
             </form>
           ) : (
             <div className="flex justify-between items-center pt-2 border-t border-white/10 text-xs">
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="text-white/70 hover:text-white transition-colors underline decoration-white/30 cursor-pointer flex items-center gap-1.5"
-              >
-                <span>✏️</span>
-                <span>{t('common.edit')} ({t('profile.name')})</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="text-white/70 hover:text-white transition-colors underline decoration-white/30 cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>✏️</span>
+                  <span>{t('common.edit')} ({t('profile.name')})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="text-rose-300 hover:text-rose-100 transition-colors flex items-center gap-1 font-bold cursor-pointer"
+                >
+                  <LogOut size={13} />
+                  <span>{t('sidebar.logout') || "تسجيل الخروج"}</span>
+                </button>
+              </div>
 
               <button
                 type="button"

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Bot, Mic, MicOff, X } from 'lucide-react';
 import { mockOperationService } from '@/application/services/mockOperationService';
@@ -16,6 +17,8 @@ interface Message {
 }
 
 export default function AIAssistantWidget() {
+  const pathname = usePathname();
+  if (pathname === '/login') return null;
   const { lang, t, isRtl } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');

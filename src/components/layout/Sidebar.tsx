@@ -7,10 +7,12 @@ import { usePathname } from 'next/navigation';
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage } from '@/components/common/LanguageContext';
 import UserProfileModal from '@/components/common/UserProfileModal';
-import { Menu, X, PanelLeft, LayoutDashboard, ShoppingBag, ChefHat, Package, Truck } from 'lucide-react';
+import { Menu, X, PanelLeft, LayoutDashboard, ShoppingBag, ChefHat, Package, Truck, LogOut } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  if (pathname === '/login') return null;
   const { notifications } = useNotification();
   const { lang, currentUser, t, isRtl } = useLanguage();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -145,25 +147,39 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        {/* Mobile Profile Trigger */}
-        <div className="pt-4 mt-4 border-t border-white/20 flex items-center justify-between">
+        {/* Mobile Profile Trigger & Logout */}
+        <div className="pt-4 mt-4 border-t border-white/20">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                setIsProfileModalOpen(true);
+              }}
+              className="flex items-center gap-2.5 text-xs text-white hover:text-teal-200 transition-colors cursor-pointer"
+            >
+              <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
+                {currentUser.avatar}
+              </div>
+              <div className={isRtl ? 'text-right' : 'text-left'}>
+                <div className="font-bold">{currentDisplayName}</div>
+                <div className="text-[10px] text-white/60">{t('sidebar.userProfile')}</div>
+              </div>
+            </button>
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
+          </div>
+
           <button
             type="button"
             onClick={() => {
               closeDrawer();
-              setIsProfileModalOpen(true);
+              signOut({ callbackUrl: "/login" });
             }}
-            className="flex items-center gap-2.5 text-xs text-white hover:text-teal-200 transition-colors cursor-pointer"
+            className="w-full mt-3 px-3 py-2 text-xs text-rose-200 font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
-              {currentUser.avatar}
-            </div>
-            <div className={isRtl ? 'text-right' : 'text-left'}>
-              <div className="font-bold">{currentDisplayName}</div>
-              <div className="text-[10px] text-white/60">{t('sidebar.userProfile')}</div>
-            </div>
+            <LogOut size={14} className="shrink-0 text-rose-300" />
+            <span>{t('sidebar.logout')}</span>
           </button>
-          <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
         </div>
       </div>
 
@@ -293,10 +309,13 @@ export default function Sidebar() {
 
               <button
                 type="button"
-                onClick={() => setProfileOpen(false)}
+                onClick={() => {
+                  setProfileOpen(false);
+                  signOut({ callbackUrl: "/login" });
+                }}
                 className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2 text-xs text-rose-200 font-bold hover:bg-rose-500/15 rounded-xl transition-colors flex items-center gap-2 cursor-pointer`}
               >
-                <span>🚪</span>
+                <LogOut size={15} className="shrink-0 text-rose-300" />
                 <span>{t('sidebar.logout')}</span>
               </button>
             </div>
