@@ -263,7 +263,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           const supplierName = po.supplierName || (po as any).supplier_name || 'المورد المعتمد';
           const invoiceDate = new Date().toISOString().split('T')[0];
 
-          fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook-test/zahi-invoice-upload', {
+          fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook/zahi-invoice-upload', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
