@@ -15,11 +15,11 @@ export default function DashboardPage() {
       <DemoAlertTrigger />
       
       {/* Title Container */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 sm:p-8">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
         <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
           {t('dashboard.title')}
         </h1>
-        <p className="text-white/80 font-semibold text-sm mt-1.5 drop-shadow-sm">
+        <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
           {t('dashboard.subtitle')}
         </p>
       </header>

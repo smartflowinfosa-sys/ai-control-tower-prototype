@@ -77,12 +77,12 @@ export default function ExceptionsPage() {
   return (
     <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mb-6 p-6 sm:p-8">
         <h1 className="text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight drop-shadow-sm">
           <span className="w-3 h-3 rounded-full bg-teal-600 animate-pulse" />
           {t('exceptions.title')}
         </h1>
-        <p className="text-slate-50 font-semibold text-sm mt-1.5 drop-shadow-sm">
+        <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
           {t('exceptions.subtitle')}
         </p>
       </header>
@@ -98,7 +98,7 @@ export default function ExceptionsPage() {
       />
 
       {eligibleForBulk.length > 0 && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
           <div className="flex items-center gap-3">
             <span className="text-3xl">✨</span>
             <div>
@@ -123,7 +123,7 @@ export default function ExceptionsPage() {
             <ExceptionCard key={exc.id} exception={exc} />
           ))
         ) : (
-          <div className="col-span-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl text-center py-16 text-white font-bold drop-shadow-sm">
+          <div className="col-span-full !bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl text-center py-16 text-white font-bold drop-shadow-sm">
             <div className="text-4xl mb-4">👍</div>
             {t('exceptions.noExceptions')}
           </div>

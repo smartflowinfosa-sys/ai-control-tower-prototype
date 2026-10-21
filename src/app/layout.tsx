@@ -46,7 +46,7 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} ${inter.variable} antialiased h-full`}
     >
-      <body className="min-h-screen flex bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white">
+      <body className="min-h-screen flex bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative">
         <LanguageProvider>
           <NotificationProvider>
             <Suspense fallback={<aside className="w-20 hidden md:flex" />}>

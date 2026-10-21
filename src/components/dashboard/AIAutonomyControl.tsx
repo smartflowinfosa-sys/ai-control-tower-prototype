@@ -32,13 +32,13 @@ export default function AIAutonomyControl() {
   const currentConfig = autonomyConfig[level];
 
   return (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 md:p-8">
+    <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 md:p-8">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2 drop-shadow-sm">
             <span className="text-xl">🧠</span> {t('dashboard.autonomyHeading')}
           </h2>
-          <p className="mt-1 font-semibold text-slate-50 text-sm drop-shadow-sm">
+          <p className="mt-1 font-semibold text-slate-100 text-sm drop-shadow-sm">
             {t('dashboard.currentMode')} {currentConfig.desc}
           </p>
         </div>

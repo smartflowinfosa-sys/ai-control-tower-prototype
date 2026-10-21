@@ -13,12 +13,12 @@ export default function NotificationsPage() {
 
   return (
     <div className="max-w-4xl w-full mx-auto space-y-6">
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mb-6 p-6 sm:p-8">
         <h1 className="text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight drop-shadow-sm">
           <Bell className="w-8 h-8 text-white" />
           <span>{t('notifications.title')}</span>
         </h1>
-        <p className="text-slate-50 font-semibold text-sm mt-2 drop-shadow-sm">{t('notifications.subtitle')}</p>
+        <p className="text-slate-100 font-semibold text-sm mt-2 drop-shadow-sm">{t('notifications.subtitle')}</p>
       </header>
 
       <div className="mb-8">
@@ -30,7 +30,7 @@ export default function NotificationsPage() {
         </h2>
         
         {pendingList.length === 0 ? (
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl text-white/80 text-center py-12 font-medium">
+          <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl text-slate-100 text-center py-12 font-medium drop-shadow-sm">
             <div className="text-4xl mb-3 opacity-60">✨</div>
             {t('notifications.allClear')}
           </div>
@@ -39,7 +39,7 @@ export default function NotificationsPage() {
             {pendingList.map(alert => (
               <div 
                 key={alert.id} 
-                className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] border-r-4 border-r-rose-500 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all"
+                className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl border-r-4 border-r-rose-500 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -77,13 +77,13 @@ export default function NotificationsPage() {
         <h2 className="text-xl font-bold text-white mb-4">{lang === 'ar' ? 'أرشيف الإجراءات (History)' : 'Action History'}</h2>
         
         {resolvedList.length === 0 ? (
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl text-white/65 text-sm text-center py-6">{lang === 'ar' ? 'لا يوجد سجل سابق' : 'No history records'}</div>
+          <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl text-slate-100 text-sm text-center py-6 drop-shadow-sm">{lang === 'ar' ? 'لا يوجد سجل سابق' : 'No history records'}</div>
         ) : (
           <div className="space-y-3">
             {resolvedList.map(alert => (
               <div 
                 key={alert.id} 
-                className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] p-4 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all"
+                className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all"
               >
                 <div>
                   <h3 className="font-bold text-white/65 line-through">{alert.title}</h3>

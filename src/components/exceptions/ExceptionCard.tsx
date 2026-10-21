@@ -15,7 +15,7 @@ export default function ExceptionCard({ exception }: Props) {
   const badgeClass = riskColorMap[exception.riskLevel];
 
   return (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl flex flex-col transition-all duration-200 overflow-hidden">
+    <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl flex flex-col transition-all duration-200 overflow-hidden">
       {/* Header */}
       <div className="p-5 border-b border-white/20 flex justify-between items-start">
         <div>

@@ -626,7 +626,7 @@ export default function SuppliersClient({
       )}
 
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
@@ -636,7 +636,7 @@ export default function SuppliersClient({
               {t('suppliers.title')}
             </h1>
           </div>
-          <p className="text-slate-50 font-semibold text-sm mt-1.5 drop-shadow-sm">
+          <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
             {t('suppliers.subtitle')}
           </p>
         </div>
@@ -681,9 +681,9 @@ export default function SuppliersClient({
 
       {/* Supplier Network Overview Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
-            <div className="text-xs font-semibold text-slate-50 drop-shadow-sm">
+            <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Registered Suppliers' : 'إجمالي الموردين المعتمدين'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1 drop-shadow-sm">
@@ -698,9 +698,9 @@ export default function SuppliersClient({
           </div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
-            <div className="text-xs font-semibold text-slate-50 drop-shadow-sm">
+            <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Avg. Delivery Lead Time' : 'متوسط سرعة التوريد'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1 drop-shadow-sm">
@@ -721,9 +721,9 @@ export default function SuppliersClient({
           </div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
-            <div className="text-xs font-semibold text-white/65">
+            <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Network Quality Score' : 'متوسط تقييم الجودة'}
             </div>
             <div className="text-3xl font-bold text-white tracking-wider font-mono mt-1">
@@ -793,7 +793,7 @@ export default function SuppliersClient({
         </div>
 
         {/* PO Table */}
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className={`w-full text-sm text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
               <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/20">
@@ -952,7 +952,7 @@ export default function SuppliersClient({
       </section>
 
       {/* 2. Smart Bidding Comparison */}
-      <section className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 space-y-6">
+      <section className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 space-y-6">
         <div className="border-b border-white/20 pb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -1047,7 +1047,7 @@ export default function SuppliersClient({
                   return (
                     <div
                       key={quote.supplierId}
-                      className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
+                      className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
                         isBest
                           ? 'ring-2 ring-white/25 '
                           : ''
@@ -1187,7 +1187,7 @@ export default function SuppliersClient({
             return (
               <div
                 key={sup.id}
-                className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
+                className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
               >
                 <div className="space-y-4">
                   {/* Top Header: Spacious, Prominent Supplier Name & Category */}

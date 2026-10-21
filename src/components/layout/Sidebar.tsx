@@ -51,7 +51,7 @@ export default function Sidebar() {
         onClick={() => setIsOpen(true)}
         aria-expanded={isOpen}
         aria-controls="mobile-navigation"
-        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl text-white cursor-pointer`}
+        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 !bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl text-white cursor-pointer`}
         aria-label={t('sidebar.openNav')}
       >
         <Menu size={22} />
@@ -90,7 +90,7 @@ export default function Sidebar() {
             }
           }
         }}
-        className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
+        className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
           isRtl
             ? isOpen ? 'right-4' : '-right-96'
             : isOpen ? 'left-4' : '-left-96'
@@ -169,7 +169,7 @@ export default function Sidebar() {
 
       {/* Desktop Main Transparent Sidebar */}
       <aside
-        className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl hidden md:flex flex-col select-none sticky top-6 h-[calc(100vh-3rem)] my-6 ms-4 p-4 shrink-0 z-30 transition-all duration-200 ${
+        className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl hidden md:flex flex-col select-none sticky top-6 h-[calc(100vh-3rem)] my-6 ms-4 p-4 shrink-0 z-30 transition-all duration-200 ${
           isCollapsed ? 'w-20 items-center' : 'w-72'
         }`}
         onKeyDown={(event) => {
@@ -258,7 +258,7 @@ export default function Sidebar() {
         <div className="mt-auto pt-4 w-full relative">
           {profileOpen && (
             <div
-              className={`bg-black/80 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl absolute bottom-full mb-3 p-2 z-[100] ${
+              className={`bg-black/80 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-2xl absolute bottom-full mb-3 p-2 z-[100] ${
                 isCollapsed
                   ? isRtl ? 'w-60 right-full mr-3' : 'w-60 left-full ml-3'
                   : 'w-full right-0 left-0'

@@ -447,10 +447,10 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       )}
 
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">{t('inventory.title')}</h1>
-          <p className="text-slate-50 font-semibold text-sm mt-1.5 drop-shadow-sm">
+          <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
             {t('inventory.subtitle')}
           </p>
         </div>
@@ -459,7 +459,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           {isAuthorized && (
             <button
               onClick={() => openReceiveModal()}
-              className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
             >
               <PackageCheck className="w-4 h-4 shrink-0 text-white" />
               <span>استلام مخزون</span>
@@ -468,7 +468,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
 
           <Link
             href="/suppliers"
-            className="bg-white/5 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer"
+            className="bg-white/5 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] transition-all text-sm flex items-center gap-2 group cursor-pointer"
           >
             <Building2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
             <span>{t('inventory.suppliersDirectoryBtn')}</span>
@@ -478,28 +478,28 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
 
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiTotalItems')}</div>
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiTotalItems')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(items.length)}</div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiTotalItemsDesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiLowStock')}</div>
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiLowStock')}</div>
           <div className={`text-3xl font-extrabold font-mono tracking-wider mt-2 drop-shadow-sm ${lowStockCount > 0 ? 'text-rose-200' : 'text-white'}`}>
             {toEnglishDigits(lowStockCount)}
           </div>
           <div className="text-xs text-rose-200 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiLowStockDesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiActivePO')}</div>
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiActivePO')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(activePOs.length)}</div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiActivePODesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
-          <div className="text-xs font-bold text-slate-50 drop-shadow-sm">{t('inventory.kpiCoverage')}</div>
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+          <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiCoverage')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">
             {items.length > 0 ? `${Math.round(((items.length - lowStockCount) / items.length) * 100)}%` : '0%'}
           </div>
@@ -508,7 +508,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-2 w-full md:w-auto">
           <span className="text-sm font-bold text-white whitespace-nowrap drop-shadow-sm">{t('inventory.categoryLabel')}</span>
           <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto">
@@ -556,7 +556,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
           return (
             <div
               key={item.item_code}
-              className={`bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 ${
+              className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 ${
                 isLowStock ? 'border-rose-400/60' : ''
               }`}
             >
@@ -638,7 +638,7 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
       </div>
 
       {filteredItems.length === 0 && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-12 text-center text-white">
+        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-12 text-center text-white">
           <p className="text-lg font-bold drop-shadow-sm">{t('inventory.noItemsFound')}</p>
           <p className="text-xs text-white/80 mt-1 drop-shadow-sm">{t('inventory.noItemsFoundHint')}</p>
         </div>

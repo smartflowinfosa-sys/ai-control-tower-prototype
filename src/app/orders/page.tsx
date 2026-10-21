@@ -39,9 +39,9 @@ export default function OrdersPage() {
   return (
     <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mb-6 p-6 sm:p-8">
+      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mb-6 p-6 sm:p-8">
         <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">سجل الطلبات</h1>
-        <p className="text-slate-50 font-semibold text-sm mt-2 drop-shadow-sm">عرض شامل لجميع الطلبات في النظام</p>
+        <p className="text-slate-100 font-semibold text-sm mt-2 drop-shadow-sm">عرض شامل لجميع الطلبات في النظام</p>
       </header>
 
       <SmartFilterBar 
@@ -50,7 +50,7 @@ export default function OrdersPage() {
         showDepartment={false}
       />
 
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl mt-6 overflow-x-auto">
+      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mt-6 overflow-x-auto">
         <table className="w-full text-right text-sm text-white">
           <thead className="bg-white/8 text-white/80 text-xs uppercase font-extrabold border-b border-white/20">
             <tr>

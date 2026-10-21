@@ -23,8 +23,8 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
  ${isAnomaly ? 'bg-rose-500 animate-pulse ' : isAi ? 'bg-teal-500 ' : 'bg-white/8'}`}
             />
             
-            <div className={`bg-white/10 backdrop-blur-xl border shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-5 transition-all
- ${isAnomaly ? 'border-rose-300/40' : 'border-white/20'}
+            <div className={`!bg-white/5 !backdrop-blur-[8px] !border shadow-lg rounded-2xl p-5 transition-all
+ ${isAnomaly ? '!border-rose-300/40' : '!border-white/20'}
             `}>
               <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                 <div className="flex items-center gap-2 flex-wrap">

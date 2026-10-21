@@ -16,14 +16,14 @@ const toEnglishDigits = (str: string | number): string => {
 
 export default function KPIWidget({ title, value, subtitle }: KPIWidgetProps) {
   return (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.15)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group cursor-default min-h-[140px]">
-      <h3 className="text-slate-50 font-bold text-sm drop-shadow-sm">{title}</h3>
+    <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group cursor-default min-h-[140px]">
+      <h3 className="text-slate-100 font-bold text-sm drop-shadow-sm">{title}</h3>
       <div className="mt-3 flex items-baseline gap-2">
         <span className="text-4xl md:text-5xl font-extrabold text-white font-mono tracking-tight drop-shadow-sm">
           {toEnglishDigits(value)}
         </span>
         {subtitle && (
-          <span className="text-xs text-white/80 font-semibold drop-shadow-sm">
+          <span className="text-xs text-slate-100 font-semibold drop-shadow-sm">
             {subtitle}
           </span>
         )}
