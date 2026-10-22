@@ -7,6 +7,7 @@ import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/co
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
 import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 // Helper to ensure all digits are English (0-9)
 const toEnglishDigits = (str: string | number): string => {
@@ -77,14 +78,19 @@ export default function InventoryClient({ initialItems, initialPurchaseOrders = 
     'مسؤول المستودع',
     'مشرف العمليات',
   ];
+  const { data: session } = useSession();
+  const sessionRole = ((session?.user?.role || (session?.user as any)?.role || '') as string).toLowerCase();
+  const isSessionAdmin = sessionRole === 'admin' || sessionRole === 'superadmin';
   const userRole = (currentUser?.role_en || currentUser?.role_ar || '').toLowerCase();
+
   const isAuthorized = Boolean(
-    currentUser && (
+    isSessionAdmin ||
+    (currentUser && (
       authorizedRoles.some(r => userRole.includes(r)) ||
       userRole.includes('manager') ||
       userRole.includes('admin') ||
       userRole.includes('ops')
-    )
+    ))
   );
 
   // Receive Stock & Invoice Modal State

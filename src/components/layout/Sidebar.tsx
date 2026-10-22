@@ -1,38 +1,106 @@
 "use client";
 
-import { useState, useRef, type FocusEvent, type MouseEvent } from 'react';
+import { useState, useRef, useEffect, type FocusEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage } from '@/components/common/LanguageContext';
 import UserProfileModal from '@/components/common/UserProfileModal';
-import { Menu, X, PanelLeft, LayoutDashboard, ShoppingBag, ChefHat, Package, Truck, LogOut } from 'lucide-react';
-import { signOut } from 'next-auth/react';
+import {
+  Menu,
+  X,
+  PanelLeft,
+  LayoutDashboard,
+  ChefHat,
+  Package,
+  Truck,
+  LogOut,
+  ClipboardList,
+  FileText,
+  PackageCheck,
+  ChevronDown
+} from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
+
+interface NavSubItem {
+  href: string;
+  labelKey: string;
+  icon: any;
+}
+
+interface NavItem {
+  href?: string;
+  labelKey: string;
+  icon: any;
+  adminOnly: boolean;
+  children?: NavSubItem[];
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
   if (pathname === '/login') return null;
+  const { data: session } = useSession();
   const { notifications } = useNotification();
   const { lang, currentUser, t, isRtl } = useLanguage();
   const [profileOpen, setProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [operationsOpen, setOperationsOpen] = useState(true);
   const [tooltip, setTooltip] = useState<{ label: string; top: number; right?: number; left?: number } | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const pendingCount = notifications.filter(n => n.status === 'pending').length;
 
-  const navItems = [
-    { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard },
-    { href: '/orders', labelKey: 'nav.orders', icon: ShoppingBag },
-    { href: '/production', labelKey: 'nav.production', icon: ChefHat },
-    { href: '/inventory', labelKey: 'nav.inventory', icon: Package },
-    { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck },
+  // Auto-expand operations submenu when user is on any operations page
+  useEffect(() => {
+    if (pathname.startsWith('/operations')) {
+      setOperationsOpen(true);
+    }
+  }, [pathname]);
+
+  // Check if current user has admin privileges or is staff
+  const userRole = (session?.user?.role || (session?.user as any)?.role || '').toUpperCase();
+  const isStaff = userRole === 'STAFF';
+  const isSuperAdminOrAdmin = userRole === 'SUPERADMIN' || userRole === 'ADMIN';
+
+  // Simplified role display: strictly Admin or Staff
+  const userRoleDisplay = session?.user?.role
+    ? (isSuperAdminOrAdmin ? 'Admin' : 'Staff')
+    : null;
+
+  const allNavItems: NavItem[] = [
+    // Admin-only: Executive Dashboard (الرئيسية)
+    { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, adminOnly: true },
+    // Operations Reports (تقارير العمليات) - accessible to STAFF and ADMIN
+    {
+      labelKey: 'nav.operations',
+      icon: ClipboardList,
+      adminOnly: false,
+      children: [
+        { href: '/operations/quantity', labelKey: 'nav.operationsQuantity', icon: FileText },
+        { href: '/operations/packaging', labelKey: 'nav.operationsPackaging', icon: PackageCheck },
+      ],
+    },
+    // Admin-only: Production (الإنتاج)
+    { href: '/production', labelKey: 'nav.production', icon: ChefHat, adminOnly: true },
+    // Inventory (إدارة المخزون) - accessible to STAFF and ADMIN
+    { href: '/inventory', labelKey: 'nav.inventory', icon: Package, adminOnly: false },
+    // Admin-only: Suppliers (الموردين)
+    { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck, adminOnly: true },
   ];
 
-  const showTooltip = (event: MouseEvent<HTMLAnchorElement> | FocusEvent<HTMLAnchorElement>, label: string) => {
+  // Role-Based Navigation:
+  // - If SUPERADMIN or ADMIN: Render ALL navigation links
+  // - If STAFF: Render ONLY "تقارير العمليات" (with children) and "إدارة المخزون"
+  const navItems = allNavItems.filter((item) => {
+    if (isSuperAdminOrAdmin) return true;
+    if (isStaff) return !item.adminOnly;
+    return !item.adminOnly;
+  });
+
+  const showTooltip = (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>, label: string) => {
     if (!isCollapsed) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (lang === 'en') {
@@ -121,11 +189,70 @@ export default function Sidebar() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const label = t(item.labelKey);
-              const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
+
+              // Parent with children (e.g., Operations Reports)
+              if (item.children) {
+                const isParentActive = item.children.some(
+                  (child) => pathname === child.href || pathname.startsWith(child.href + '/')
+                );
+
+                return (
+                  <div key={item.labelKey} className="flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => setOperationsOpen(!operationsOpen)}
+                      className={`w-full flex items-center justify-between gap-3 px-3 py-3 text-sm font-bold rounded-xl transition-colors cursor-pointer border ${
+                        isParentActive
+                          ? 'bg-white/15 border-white/30 text-white'
+                          : 'border-transparent text-white/80 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-5 h-5 shrink-0" />
+                        <span>{label}</span>
+                      </div>
+                      <ChevronDown
+                        size={16}
+                        className={`text-white/60 transition-transform duration-200 shrink-0 ${
+                          operationsOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {operationsOpen && (
+                      <div className="flex flex-col gap-1 ms-6 ps-2.5 border-s border-white/20 mt-1 mb-1">
+                        {item.children.map((child) => {
+                          const isChildActive = pathname === child.href || pathname.startsWith(child.href + '/');
+                          const ChildIcon = child.icon;
+                          return (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              onClick={closeDrawer}
+                              aria-current={isChildActive ? 'page' : undefined}
+                              className={`flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors border ${
+                                isChildActive
+                                  ? 'bg-teal-500/25 border-teal-400/40 text-teal-100 shadow-sm'
+                                  : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                              }`}
+                            >
+                              <ChildIcon size={14} className="shrink-0 text-teal-300" />
+                              <span>{t(child.labelKey)}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Normal single link
+              const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith((item.href || '') + "/"));
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={item.href || '#'}
                   onClick={closeDrawer}
                   aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center gap-3 px-3 py-3 text-sm font-bold rounded-xl transition-colors cursor-pointer border ${
@@ -159,11 +286,15 @@ export default function Sidebar() {
               className="flex items-center gap-2.5 text-xs text-white hover:text-teal-200 transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
-                {currentUser.avatar}
+                {session?.user?.name
+                  ? session.user.name.slice(0, 2).toUpperCase()
+                  : currentUser.avatar}
               </div>
               <div className={isRtl ? 'text-right' : 'text-left'}>
-                <div className="font-bold">{currentDisplayName}</div>
-                <div className="text-[10px] text-white/60">{t('sidebar.userProfile')}</div>
+                <div className="font-bold">{session?.user?.name || currentDisplayName}</div>
+                <div className="text-[10px] text-teal-300 font-semibold">
+                  {userRoleDisplay ? `الدور: ${userRoleDisplay}` : t('sidebar.userProfile')}
+                </div>
               </div>
             </button>
             <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
@@ -238,11 +369,97 @@ export default function Sidebar() {
           {navItems.map((item) => {
             const Icon = item.icon;
             const label = t(item.labelKey);
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
+
+            // Item with children (e.g., Operations Reports)
+            if (item.children) {
+              const isParentActive = item.children.some(
+                (child) => pathname === child.href || pathname.startsWith(child.href + '/')
+              );
+
+              // Collapsed view: icon button that expands sidebar on click
+              if (isCollapsed) {
+                return (
+                  <button
+                    key={item.labelKey}
+                    type="button"
+                    onClick={() => {
+                      setIsCollapsed(false);
+                      setOperationsOpen(true);
+                    }}
+                    onMouseEnter={(event) => showTooltip(event, label)}
+                    onMouseLeave={() => setTooltip(null)}
+                    onFocus={(event) => showTooltip(event, label)}
+                    onBlur={() => setTooltip(null)}
+                    aria-label={label}
+                    className={`relative flex items-center justify-center p-3 rounded-xl transition-colors cursor-pointer border ${
+                      isParentActive
+                        ? 'bg-white/15 border-white/30 text-white font-bold'
+                        : 'bg-transparent border-transparent text-white/80 hover:bg-white/10 hover:text-white font-medium'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-teal-400" />
+                  </button>
+                );
+              }
+
+              // Expanded view: accordion button + child links
+              return (
+                <div key={item.labelKey} className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setOperationsOpen(!operationsOpen)}
+                    className={`w-full relative flex items-center justify-between rounded-xl transition-colors cursor-pointer border px-3 py-3 text-sm ${
+                      isParentActive
+                        ? 'bg-white/15 border-white/30 text-white font-bold'
+                        : 'bg-transparent border-transparent text-white/80 hover:bg-white/10 hover:text-white font-medium'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon size={20} />
+                      <span className="leading-relaxed">{label}</span>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      className={`text-white/60 transition-transform duration-200 shrink-0 ${
+                        operationsOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {operationsOpen && (
+                    <div className="flex flex-col gap-1 ms-6 ps-2.5 border-s border-white/20 mt-1 mb-1">
+                      {item.children.map((child) => {
+                        const isChildActive = pathname === child.href || pathname.startsWith(child.href + '/');
+                        const ChildIcon = child.icon;
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            aria-current={isChildActive ? 'page' : undefined}
+                            className={`flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors border ${
+                              isChildActive
+                                ? 'bg-teal-500/25 border-teal-400/40 text-teal-100 shadow-sm'
+                                : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            <ChildIcon size={14} className="shrink-0 text-teal-300" />
+                            <span>{t(child.labelKey)}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Normal single link
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith((item.href || '') + "/"));
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href || '#'}
                 aria-label={label}
                 aria-current={isActive ? 'page' : undefined}
                 onMouseEnter={(event) => showTooltip(event, label)}
@@ -296,14 +513,17 @@ export default function Sidebar() {
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setProfileOpen(false)}
-                className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2 text-xs font-bold hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 cursor-pointer text-white/80`}
-              >
-                <span>⚙️</span>
-                <span>{t('sidebar.agentSettings')}</span>
-              </button>
+              {/* Settings button: Admin-only */}
+              {isSuperAdminOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2 text-xs font-bold hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 cursor-pointer text-white/80`}
+                >
+                  <span>⚙️</span>
+                  <span>{t('sidebar.agentSettings')}</span>
+                </button>
+              )}
 
               <div className="border-t border-white/20 my-1" />
 
@@ -334,12 +554,21 @@ export default function Sidebar() {
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-full border border-white/30 bg-white/10 flex items-center justify-center font-bold text-xs shrink-0 text-white">
-                {currentUser.avatar}
+                {session?.user?.name
+                  ? session.user.name.slice(0, 2).toUpperCase()
+                  : currentUser.avatar}
               </div>
               {!isCollapsed && (
                 <div className={isRtl ? 'text-right' : 'text-left'}>
-                  <div className="text-xs font-extrabold text-white">{currentDisplayName}</div>
-                  <div className="text-[10px] font-semibold text-white/65">{t('status.online')}</div>
+                  <div className="text-xs font-extrabold text-white truncate max-w-[130px]">
+                    {session?.user?.name || currentDisplayName}
+                  </div>
+                  <div className="text-[10px] font-semibold text-teal-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                    <span>
+                      {userRoleDisplay || t('status.online')}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>

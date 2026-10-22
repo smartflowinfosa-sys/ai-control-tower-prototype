@@ -36,7 +36,7 @@ export default function OrderTimeline({ events }: { events: TimelineEvent[] }) {
                     {event.actor}
                   </span>
                 </div>
-                <span className="text-xs text-white/65 font-bold bg-white/8 px-2.5 py-1 rounded-lg border border-white/20 whitespace-nowrap font-mono">
+                <span suppressHydrationWarning={true} className="text-xs text-white/65 font-bold bg-white/8 px-2.5 py-1 rounded-lg border border-white/20 whitespace-nowrap font-mono">
                   {new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>

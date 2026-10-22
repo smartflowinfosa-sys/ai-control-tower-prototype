@@ -39,9 +39,9 @@ export default function AIAssistantWidget() {
         <>
           <p className="mb-3 leading-relaxed">
             {lang === 'en' ? (
-              <>We have a <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">critical issue (High Risk)</strong> in <strong className="text-white">Zahi</strong> regarding packaging data conflict for order <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> due to customer removing &quot;Rice&quot;.</>
+              <>We have a <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">critical issue (High Risk)</strong> in <strong className="text-white">Zahi</strong> regarding packaging data conflict for order <Link href="/operations/packaging" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> due to customer removing &quot;Rice&quot;.</>
             ) : (
-              <>لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/orders/o-zh-2481" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ &quot;الأرز&quot;.</>
+              <>لدينا <strong className="text-amber-200 bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">مشكلة حرجة (High Risk)</strong> في <strong className="text-white">زاهي</strong> تتمثل في تعارض بيانات التغليف للطلب <Link href="/operations/packaging" className="text-white font-extrabold hover:underline bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ZH-2481</Link> بسبب حذف العميل لـ &quot;الأرز&quot;.</>
             )}
           </p>
           <p className="mb-3 leading-relaxed">

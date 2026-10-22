@@ -48,7 +48,7 @@ export default function ProductionPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-white/65 font-bold">وقت الطلب</div>
-                  <div className="text-sm font-bold text-white font-mono">
+                  <div suppressHydrationWarning className="text-sm font-bold text-white font-mono">
                     {new Date(order.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>

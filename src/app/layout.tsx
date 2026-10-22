@@ -6,6 +6,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
 import { NotificationProvider } from "@/components/common/NotificationContext";
 import { LanguageProvider } from "@/components/common/LanguageContext";
+import AuthProvider from "@/components/common/AuthProvider";
 import { Suspense } from "react";
 
 const tajawal = Tajawal({
@@ -47,17 +48,19 @@ export default function RootLayout({
       className={`${tajawal.variable} ${inter.variable} antialiased h-full`}
     >
       <body className="min-h-screen flex bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative">
-        <LanguageProvider>
-          <NotificationProvider>
-            <Suspense fallback={<aside className="w-20 hidden md:flex" />}>
-              <Sidebar />
-            </Suspense>
-            <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
-              {children}
-            </main>
-            <AIAssistantWidget />
-          </NotificationProvider>
-        </LanguageProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <NotificationProvider>
+              <Suspense fallback={<aside className="w-20 hidden md:flex" />}>
+                <Sidebar />
+              </Suspense>
+              <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
+                {children}
+              </main>
+              <AIAssistantWidget />
+            </NotificationProvider>
+          </LanguageProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -70,39 +70,23 @@ function LoginForm() {
   };
 
   return (
-    <div className="relative w-full max-w-md mx-auto">
-      {/* Ambient background glows */}
-      <div className="absolute -top-16 -right-16 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
+    <div className="relative w-full max-w-md mx-auto my-auto z-10">
+      {/* Ambient decorative glowing orbs */}
+      <div className="absolute -top-20 -right-20 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Main Clear Glass Card */}
+      {/* Main Dark Glassmorphism Login Container */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative z-10 p-8 sm:p-10"
-        style={{
-          background: "rgba(255, 255, 255, 0.08)",
-          backdropFilter: "blur(4px) saturate(120%)",
-          WebkitBackdropFilter: "blur(4px) saturate(120%)",
-          border: "1px solid rgba(255, 255, 255, 0.25)",
-          boxShadow:
-            "0 8px 32px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.3)",
-          borderRadius: "24px",
-          textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-        }}
+        initial={{ opacity: 0, scale: 0.96, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="relative z-10 p-8 sm:p-10 rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] text-white overflow-hidden"
       >
         {/* Header & Logo */}
         <div className="flex flex-col items-center text-center mb-8">
-          {/* Logo container with green glow and cover fit */}
+          {/* Logo container with emerald glow and glass border */}
           <div className="relative mb-5 group">
-            <div
-              className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border border-white/30 flex items-center justify-center"
-              style={{
-                boxShadow: "0 0 32px rgba(16, 185, 129, 0.55)",
-                background: "rgba(255, 255, 255, 0.12)",
-              }}
-            >
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border border-white/30 bg-white/10 backdrop-blur-md shadow-[0_0_35px_rgba(16,185,129,0.45)] flex items-center justify-center">
               <Image
                 src="/zahi_logo.png"
                 alt="Zahi Logo"
@@ -111,47 +95,23 @@ function LoginForm() {
                 className="w-full h-full object-cover rounded-2xl"
                 priority
               />
-              {/* Subtle green overlay on top of the logo */}
               <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none rounded-2xl" />
             </div>
           </div>
 
-          {/* Badge: Zahi Project (Transparent background, white text and star, 700 weight) */}
-          <div
-            className="inline-flex items-center gap-1.5 px-3.5 py-1 mb-2.5 rounded-full text-xs tracking-wide shadow-sm"
-            style={{
-              background: "transparent",
-              border: "1px solid rgba(255, 255, 255, 0.35)",
-              color: "#ffffff",
-              fontWeight: 700,
-              textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-            }}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-white" />
+          {/* Badge: Zahi Project */}
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 mb-2.5 rounded-full text-xs font-bold tracking-wide bg-white/10 border border-white/20 text-teal-200 shadow-sm backdrop-blur-md">
+            <Sparkles className="w-3.5 h-3.5 text-teal-300" />
             <span>Zahi Project</span>
           </div>
 
-          {/* Title: 800 weight, pure white #fff */}
-          <h1
-            className="text-2xl sm:text-3xl tracking-tight"
-            style={{
-              fontWeight: 800,
-              color: "#ffffff",
-              textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-            }}
-          >
+          {/* Title */}
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
             بوابة تسجيل الدخول
           </h1>
 
-          {/* Subtitle: 600 weight, rgba(255,255,255,0.92) */}
-          <p
-            className="text-sm mt-1.5"
-            style={{
-              fontWeight: 600,
-              color: "rgba(255, 255, 255, 0.92)",
-              textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-            }}
-          >
+          {/* Subtitle */}
+          <p className="text-sm font-medium text-white/80 mt-1.5 drop-shadow-sm">
             أدخل بيانات الاعتماد للوصول إلى لوحة العمليات
           </p>
         </div>
@@ -166,17 +126,8 @@ function LoginForm() {
               transition={{ duration: 0.25 }}
               className="mb-6 overflow-hidden"
             >
-              <div
-                className="p-3.5 rounded-2xl border border-red-400/40 text-red-100 flex items-start gap-3 text-sm shadow-lg"
-                style={{
-                  background: "rgba(239, 68, 68, 0.18)",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                  textShadow: "0 1px 6px rgba(0, 0, 0, 0.5)",
-                  fontWeight: 600,
-                }}
-              >
-                <AlertCircle className="w-5 h-5 text-red-300 shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-2xl border border-rose-400/40 bg-rose-500/20 text-rose-100 flex items-start gap-3 text-sm font-semibold shadow-lg backdrop-blur-md">
+                <AlertCircle className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
                 <div className="flex-1 text-right leading-relaxed">
                   {error}
                 </div>
@@ -191,12 +142,7 @@ function LoginForm() {
           <div>
             <label
               htmlFor="username"
-              className="block text-xs mb-2 text-right"
-              style={{
-                fontWeight: 700,
-                color: "#ffffff",
-                textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-              }}
+              className="block text-xs font-bold text-white/90 mb-2 text-right"
             >
               اسم المستخدم
             </label>
@@ -213,18 +159,9 @@ function LoginForm() {
                   if (error) setError("");
                 }}
                 placeholder="أدخل اسم المستخدم"
-                style={{
-                  background: "rgba(255, 255, 255, 0.08)",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                  border: "1px solid rgba(255, 255, 255, 0.25)",
-                  color: "#ffffff",
-                  fontWeight: 600,
-                  textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-                }}
-                className="w-full pr-11 pl-4 py-3.5 rounded-2xl placeholder:text-white/80 placeholder:font-medium text-sm focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200"
+                className="w-full pr-11 pl-4 py-3.5 rounded-2xl bg-white/10 border border-white/20 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/30 text-white placeholder:text-white/45 text-sm font-medium backdrop-blur-md transition-all duration-200 outline-none"
               />
-              <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70 pointer-events-none" />
+              <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60 pointer-events-none" />
             </div>
           </div>
 
@@ -232,12 +169,7 @@ function LoginForm() {
           <div>
             <label
               htmlFor="password"
-              className="block text-xs mb-2 text-right"
-              style={{
-                fontWeight: 700,
-                color: "#ffffff",
-                textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-              }}
+              className="block text-xs font-bold text-white/90 mb-2 text-right"
             >
               كلمة المرور
             </label>
@@ -254,23 +186,14 @@ function LoginForm() {
                   if (error) setError("");
                 }}
                 placeholder="أدخل كلمة المرور"
-                style={{
-                  background: "rgba(255, 255, 255, 0.08)",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                  border: "1px solid rgba(255, 255, 255, 0.25)",
-                  color: "#ffffff",
-                  fontWeight: 600,
-                  textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-                }}
-                className="w-full pr-11 pl-11 py-3.5 rounded-2xl placeholder:text-white/80 placeholder:font-medium text-sm focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200"
+                className="w-full pr-11 pl-11 py-3.5 rounded-2xl bg-white/10 border border-white/20 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/30 text-white placeholder:text-white/45 text-sm font-medium backdrop-blur-md transition-all duration-200 outline-none"
               />
-              <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70 pointer-events-none" />
+              <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60 pointer-events-none" />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 tabIndex={-1}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/70 hover:text-white transition-colors cursor-pointer"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors cursor-pointer p-1"
                 aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
               >
                 {showPassword ? (
@@ -286,24 +209,17 @@ function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            style={{
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-              boxShadow:
-                "0 4px 20px rgba(16, 185, 129, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35)",
-              textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-            }}
-            className="w-full mt-2 py-3.5 px-4 rounded-2xl text-white font-bold bg-[rgba(16,185,129,0.15)] hover:bg-[rgba(16,185,129,0.3)] border-[1.5px] border-[rgba(255,255,255,0.45)] hover:border-[rgba(255,255,255,0.7)] transition-all duration-200 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base"
+            className="w-full mt-2 py-3.5 px-4 rounded-2xl text-zinc-950 font-extrabold bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 hover:from-teal-300 hover:to-emerald-200 border border-teal-300/60 shadow-[0_4px_25px_rgba(20,184,166,0.35)] transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base"
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin text-white" strokeWidth={2.5} />
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-950" strokeWidth={2.5} />
                 <span>جاري التحقق من الهوية...</span>
               </>
             ) : (
               <>
                 <LogIn
-                  className="w-5 h-5 shrink-0 text-white"
+                  className="w-5 h-5 shrink-0 text-zinc-950"
                   strokeWidth={2.5}
                 />
                 <span>تسجيل الدخول</span>
@@ -312,22 +228,9 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Footer Pill: Powered by Zahi Project Section */}
+        {/* Footer Pill */}
         <div className="mt-8 pt-5 border-t border-white/10 flex items-center justify-center">
-          <div
-            style={{
-              padding: "6px 16px",
-              borderRadius: "999px",
-              border: "1px solid rgba(255, 255, 255, 0.35)",
-              background: "rgba(255, 255, 255, 0.08)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-              fontWeight: 600,
-              color: "rgba(255, 255, 255, 0.95)",
-              textShadow: "0 1px 8px rgba(0, 0, 0, 0.45)",
-            }}
-            className="text-xs tracking-wide"
-          >
+          <div className="px-4 py-1.5 rounded-full border border-white/20 bg-white/10 backdrop-blur-md font-medium text-white/70 text-xs tracking-wide">
             Powered by Zahi Project Section
           </div>
         </div>
@@ -338,17 +241,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-[82vh] flex items-center justify-center px-4 py-8">
+    <div className="fixed inset-0 min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat z-50">
+      {/* Dark vignette backdrop for optimal contrast */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[3px] pointer-events-none" />
+
       <Suspense
         fallback={
-          <div
-            className="p-8 rounded-3xl text-white/70 flex items-center gap-3 border border-white/20"
-            style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-          >
+          <div className="p-8 rounded-3xl text-white/80 flex items-center gap-3 border border-white/20 bg-zinc-950/80 backdrop-blur-2xl shadow-2xl relative z-10">
             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
             <span>جاري تحميل صفحة الدخول...</span>
           </div>

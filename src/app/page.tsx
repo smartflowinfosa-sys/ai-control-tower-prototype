@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import KPIWidget from '@/components/dashboard/KPIWidget';
 import { mockOperationService } from '@/application/services/mockOperationService';
 import AIAutonomyControl from '@/components/dashboard/AIAutonomyControl';
@@ -7,6 +10,19 @@ import { useLanguage } from '@/components/common/LanguageContext';
 
 export default function DashboardPage() {
   const { t } = useLanguage();
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      const role = (session?.user?.role || (session?.user as any)?.role || '').toUpperCase();
+      const isSuperAdminOrAdmin = role === 'SUPERADMIN' || role === 'ADMIN';
+      if (!isSuperAdminOrAdmin) {
+        router.replace('/operations/quantity');
+      }
+    }
+  }, [session, status, router]);
+
   const kpis = mockOperationService.getDashboardKPIs();
 
   return (
