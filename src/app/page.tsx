@@ -1,76 +1,36 @@
-"use client";
+import { Suspense } from "react";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import DashboardClientView from "@/components/dashboard/DashboardClientView";
 
-import { useEffect } from 'react';
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import KPIWidget from '@/components/dashboard/KPIWidget';
-import { mockOperationService } from '@/application/services/mockOperationService';
-import AIAutonomyControl from '@/components/dashboard/AIAutonomyControl';
-import { useLanguage } from '@/components/common/LanguageContext';
+async function DashboardContent() {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  const role = ((session.user as any)?.role || "").toUpperCase();
+  const isSuperAdminOrAdmin = role === "SUPERADMIN" || role === "ADMIN";
+
+  if (!isSuperAdminOrAdmin) {
+    redirect("/operations/quantity");
+  }
+
+  return <DashboardClientView {...({ session } as any)} />;
+}
 
 export default function DashboardPage() {
-  const { t } = useLanguage();
-  const { data: session, status } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      const role = (session?.user?.role || (session?.user as any)?.role || '').toUpperCase();
-      const isSuperAdminOrAdmin = role === 'SUPERADMIN' || role === 'ADMIN';
-      if (!isSuperAdminOrAdmin) {
-        router.replace('/operations/quantity');
-      }
-    }
-  }, [session, status, router]);
-
-  const kpis = mockOperationService.getDashboardKPIs();
-
   return (
-    <div className="max-w-[1560px] mx-auto space-y-6">
-      {/* Title Container */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
-          {t('dashboard.title')}
-        </h1>
-        <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
-          {t('dashboard.subtitle')}
-        </p>
-      </header>
-
-      <AIAutonomyControl />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPIWidget 
-          title={t('dashboard.totalOrders')} 
-          value={kpis.totalOrders} 
-        />
-        <KPIWidget 
-          title={t('dashboard.activeOrders')} 
-          value={kpis.activeOrders} 
-        />
-        <KPIWidget 
-          title={t('dashboard.openExceptions')} 
-          value={kpis.openExceptions} 
-          subtitle={t('dashboard.requiresIntervention')} 
-        />
-        <KPIWidget 
-          title={t('dashboard.criticalCount')} 
-          value={kpis.criticalCount} 
-        />
-        
-        <KPIWidget 
-          title={t('dashboard.delayedOrders')} 
-          value={kpis.delayedOrders} 
-        />
-        <KPIWidget 
-          title={t('dashboard.autoResolved')} 
-          value={`${kpis.autoResolvedPercentage}%`} 
-        />
-        <KPIWidget 
-          title={t('dashboard.humanIntervention')} 
-          value={`${kpis.humanInterventionPercentage}%`} 
-        />
-      </div>
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center text-white font-bold">
+          جاري تحميل البيانات...
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }

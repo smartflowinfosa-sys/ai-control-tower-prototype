@@ -5,6 +5,14 @@ export default withAuth(
   function middleware(req: NextRequestWithAuth) {
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
+
+    // Strict authentication check: If not authenticated, redirect to /login
+    if (!token) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", req.url);
+      return NextResponse.redirect(loginUrl);
+    }
+
     const role = (token?.role as string | undefined)?.toUpperCase();
     const isSuperAdminOrAdmin = role === "SUPERADMIN" || role === "ADMIN";
 
@@ -23,6 +31,9 @@ export default withAuth(
     return NextResponse.next();
   },
   {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
     pages: {
       signIn: "/login",
     },
@@ -30,5 +41,15 @@ export default withAuth(
 );
 
 export const config = {
-  matcher: ["/((?!login|api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * Match root `/` and all protected application routes, excluding:
+     * - /login (custom login page)
+     * - /api/auth/* (NextAuth endpoints)
+     * - /_next/static (static chunks)
+     * - /_next/image (image optimization)
+     * - static files (.svg, .png, .jpg, .ico, etc.)
+     */
+    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

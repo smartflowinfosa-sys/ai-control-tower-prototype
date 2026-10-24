@@ -39,7 +39,6 @@ interface NavItem {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  if (pathname === '/login') return null;
   const { data: session } = useSession();
   const { notifications } = useNotification();
   const { lang, currentUser, t, isRtl } = useLanguage();
@@ -55,7 +54,7 @@ export default function Sidebar() {
 
   // Auto-expand operations submenu when user is on any operations page
   useEffect(() => {
-    if (pathname.startsWith('/operations')) {
+    if (pathname?.startsWith('/operations')) {
       setOperationsOpen(true);
     }
   }, [pathname]);
@@ -112,6 +111,9 @@ export default function Sidebar() {
 
   const closeDrawer = () => { setIsOpen(false); menuButton.current?.focus(); };
   const currentDisplayName = lang === 'ar' ? currentUser.name_ar : currentUser.name_en;
+
+  // Unconditionally rendered hooks above; do not render sidebar on login page
+  if (pathname === '/login') return null;
 
   return (
     <>
@@ -230,13 +232,13 @@ export default function Sidebar() {
                               href={child.href}
                               onClick={closeDrawer}
                               aria-current={isChildActive ? 'page' : undefined}
-                              className={`flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors border ${
+                              className={`flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg transition-colors border ${
                                 isChildActive
-                                  ? 'bg-teal-500/25 border-teal-400/40 text-teal-100 shadow-sm'
-                                  : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                                  ? 'bg-white/10 text-white font-bold border-r-4 border-white shadow-sm'
+                                  : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white font-medium'
                               }`}
                             >
-                              <ChildIcon size={14} className="shrink-0 text-teal-300" />
+                              <ChildIcon size={14} className="shrink-0 text-white" />
                               <span>{t(child.labelKey)}</span>
                             </Link>
                           );
@@ -264,7 +266,7 @@ export default function Sidebar() {
                   <Icon className="w-5 h-5 shrink-0" />
                   <span className="flex-1">{label}</span>
                   {item.href === '/notifications' && pendingCount > 0 && (
-                    <span className="text-xs bg-teal-600 text-white font-bold px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-white/20 border border-white/30 text-white font-bold px-2 py-0.5 rounded-full">
                       {pendingCount}
                     </span>
                   )}
@@ -283,7 +285,7 @@ export default function Sidebar() {
                 closeDrawer();
                 setIsProfileModalOpen(true);
               }}
-              className="flex items-center gap-2.5 text-xs text-white hover:text-teal-200 transition-colors cursor-pointer"
+              className="flex items-center gap-2.5 text-xs text-white hover:text-white/80 transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
                 {session?.user?.name
@@ -292,12 +294,12 @@ export default function Sidebar() {
               </div>
               <div className={isRtl ? 'text-right' : 'text-left'}>
                 <div className="font-bold">{session?.user?.name || currentDisplayName}</div>
-                <div className="text-[10px] text-teal-300 font-semibold">
+                <div className="text-[10px] text-white/80 font-semibold">
                   {userRoleDisplay ? `الدور: ${userRoleDisplay}` : t('sidebar.userProfile')}
                 </div>
               </div>
             </button>
-            <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
           </div>
 
           <button
@@ -336,7 +338,7 @@ export default function Sidebar() {
                 <div>
                   <h3 className="font-extrabold text-sm leading-tight text-white">Zahi Control System</h3>
                   <p className="text-[10px] text-white/65 font-semibold mt-1 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
                     {t('brand.subtitle')}
                   </p>
                 </div>
@@ -398,7 +400,7 @@ export default function Sidebar() {
                     }`}
                   >
                     <Icon size={20} />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-teal-400" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-white" />
                   </button>
                 );
               }
@@ -437,13 +439,13 @@ export default function Sidebar() {
                             key={child.href}
                             href={child.href}
                             aria-current={isChildActive ? 'page' : undefined}
-                            className={`flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors border ${
+                            className={`flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg transition-colors border ${
                               isChildActive
-                                ? 'bg-teal-500/25 border-teal-400/40 text-teal-100 shadow-sm'
-                                : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                                ? 'bg-white/10 text-white font-bold border-r-4 border-white shadow-sm'
+                                : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white font-medium'
                             }`}
                           >
-                            <ChildIcon size={14} className="shrink-0 text-teal-300" />
+                            <ChildIcon size={14} className="shrink-0 text-white" />
                             <span>{t(child.labelKey)}</span>
                           </Link>
                         );
@@ -478,7 +480,7 @@ export default function Sidebar() {
                 <div className="relative shrink-0 flex items-center justify-center">
                   <Icon size={20} />
                   {item.href === '/notifications' && pendingCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-white/80" />
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white ring-2 ring-black/40" />
                   )}
                 </div>
                 {!isCollapsed && <span className="flex-1 leading-relaxed">{label}</span>}
@@ -508,7 +510,7 @@ export default function Sidebar() {
               >
                 <span className="text-sm">👤</span>
                 <span className="flex-1">{t('sidebar.userProfile')}</span>
-                <span className="text-[10px] bg-teal-500/20 text-teal-200 border border-teal-300/30 px-2 py-0.5 rounded-full font-mono font-bold">
+                <span className="text-[10px] bg-white/15 text-white border border-white/25 px-2 py-0.5 rounded-full font-mono font-bold">
                   {lang.toUpperCase()}
                 </span>
               </button>
@@ -563,8 +565,8 @@ export default function Sidebar() {
                   <div className="text-xs font-extrabold text-white truncate max-w-[130px]">
                     {session?.user?.name || currentDisplayName}
                   </div>
-                  <div className="text-[10px] font-semibold text-teal-300 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                  <div className="text-[10px] font-semibold text-white/80 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
                     <span>
                       {userRoleDisplay || t('status.online')}
                     </span>
@@ -572,7 +574,7 @@ export default function Sidebar() {
                 </div>
               )}
             </div>
-            {!isCollapsed && <span className="w-2 h-2 rounded-full bg-teal-500" />}
+            {!isCollapsed && <span className="w-2 h-2 rounded-full bg-white" />}
           </button>
         </div>
       </aside>
