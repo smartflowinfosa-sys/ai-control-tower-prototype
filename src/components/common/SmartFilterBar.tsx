@@ -24,7 +24,7 @@ export default function SmartFilterBar({
   showRisk = false
 }: SmartFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-6 !bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-5 mb-6">
+    <div className="flex flex-wrap items-center gap-6 bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-5 mb-6">
       <div className="flex items-center gap-3">
         <span className="whitespace-nowrap text-sm font-bold text-white">العلامة التجارية:</span>
         <GlassSelect 

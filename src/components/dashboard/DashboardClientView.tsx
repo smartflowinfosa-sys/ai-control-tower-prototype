@@ -12,7 +12,7 @@ export default function DashboardClientView() {
   return (
     <div className="max-w-[1560px] mx-auto space-y-6">
       {/* Title Container */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8">
         <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
           {t('dashboard.title')}
         </h1>

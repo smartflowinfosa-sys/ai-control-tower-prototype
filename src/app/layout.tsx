@@ -7,6 +7,7 @@ import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
 import { NotificationProvider } from "@/components/common/NotificationContext";
 import { LanguageProvider } from "@/components/common/LanguageContext";
 import AuthProvider from "@/components/common/AuthProvider";
+import WelcomeToast from "@/components/common/WelcomeToast";
 import { Suspense } from "react";
 
 const tajawal = Tajawal({
@@ -58,6 +59,7 @@ export default function RootLayout({
                 {children}
               </main>
               <AIAssistantWidget />
+              <WelcomeToast />
             </NotificationProvider>
           </LanguageProvider>
         </AuthProvider>

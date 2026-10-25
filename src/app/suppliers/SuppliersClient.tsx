@@ -730,10 +730,10 @@ export default function SuppliersClient({
       )}
 
       {/* Header */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-2.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
+            <span className="p-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white/65">
               <Truck className="w-6 h-6" />
             </span>
             <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
@@ -785,7 +785,7 @@ export default function SuppliersClient({
 
       {/* Supplier Network Overview Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Registered Suppliers' : 'إجمالي الموردين المعتمدين'}
@@ -797,12 +797,12 @@ export default function SuppliersClient({
               {lang === 'en' ? 'Active Network Partners' : 'شركاء سلاسل إمداد زاهي'}
             </div>
           </div>
-          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
+          <div className="p-3.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white/65">
             <Building2 className="w-6 h-6 text-teal-200" />
           </div>
         </div>
 
-        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Avg. Delivery Lead Time' : 'متوسط سرعة التوريد'}
@@ -820,12 +820,12 @@ export default function SuppliersClient({
               <span>{lang === 'en' ? 'Standard Express Dispatch' : 'جاهزية توريد فورية'}</span>
             </div>
           </div>
-          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-white/65">
+          <div className="p-3.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white/65">
             <Clock className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Network Quality Score' : 'متوسط تقييم الجودة'}
@@ -842,7 +842,7 @@ export default function SuppliersClient({
               {lang === 'en' ? 'Certified Quality Standards' : 'مطابقة لمعايير الجودة المعتمدة'}
             </div>
           </div>
-          <div className="p-3.5 rounded-xl bg-white/8 border border-white/20 text-emerald-300">
+          <div className="p-3.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-emerald-300">
             <ShieldCheck className="w-6 h-6" />
           </div>
         </div>
@@ -852,7 +852,7 @@ export default function SuppliersClient({
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-xl">
+            <div className="p-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl">
               <Layers className="w-5 h-5 text-teal-200" />
             </div>
             <div>
@@ -897,7 +897,7 @@ export default function SuppliersClient({
         </div>
 
         {/* PO Table */}
-        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl overflow-hidden">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className={`w-full text-sm text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
               <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/20">
@@ -984,7 +984,7 @@ export default function SuppliersClient({
                                 <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/8 border border-white/20 text-white/80">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/10 backdrop-blur-md border border-white/20 text-white/80">
                                 <User className="w-3.5 h-3.5 text-white/65" />
                                 <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
                               </span>
@@ -1056,12 +1056,12 @@ export default function SuppliersClient({
       </section>
 
       {/* 2. Smart Bidding Comparison */}
-      <section className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 space-y-6">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 space-y-6">
         <div className="border-b border-white/20 pb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-[18px] bg-white/8 border border-white/20 text-white">
+                <span className="p-2 rounded-[18px] bg-white/10 backdrop-blur-md border border-white/20 text-white">
                   <Bot className="w-5 h-5" />
                 </span>
                 <h2 className="text-xl font-bold text-white">
@@ -1075,7 +1075,7 @@ export default function SuppliersClient({
               </p>
             </div>
 
-            <div className="text-xs font-semibold text-white bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
+            <div className="text-xs font-semibold text-white bg-white/10 backdrop-blur-md border border-white/20 px-3.5 py-1.5 rounded-[18px] self-start sm:self-auto flex items-center gap-2">
               <span>{lang === 'en' ? 'Available Items for Comparison:' : 'أصناف متاحة للمقارنة:'}</span>
               <span className="font-extrabold text-teal-100 bg-teal-600/15 border border-teal-300/30 px-2 py-0.5 rounded-md font-mono">
                 {toEnglishDigits(availableItems.length)}
@@ -1084,7 +1084,7 @@ export default function SuppliersClient({
           </div>
 
           {/* Item Selector Dropdown */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/8 border border-white/20 p-3 rounded-[18px]">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/10 backdrop-blur-md border border-white/20 p-3 rounded-[18px]">
             <label htmlFor="compare-item-select" className="text-xs font-bold text-white/90 shrink-0 px-1 flex items-center gap-2">
               <Package className="w-4 h-4 text-white" />
               <span>{lang === 'en' ? 'Choose item to compare:' : 'اختر صنفاً للمقارنة:'}</span>
@@ -1121,7 +1121,7 @@ export default function SuppliersClient({
                 <span className="text-teal-100 font-extrabold text-base bg-teal-600/15 border border-teal-300/30 px-3 py-1 rounded-[18px]">
                   {lang === 'en' ? (selectedItem.item_name_en || selectedItem.item_name_ar) : selectedItem.item_name_ar}
                 </span>
-                <span className="text-xs text-white/80 font-semibold bg-white/8 border border-white/20 px-2.5 py-1 rounded-[18px] font-mono">
+                <span className="text-xs text-white/80 font-semibold bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-1 rounded-[18px] font-mono">
                   {lang === 'en' ? 'Current Stock:' : 'المخزون الحالي:'} {toEnglishDigits((selectedItem.current_stock ?? 0).toLocaleString('en-US'))} / {lang === 'en' ? 'Reorder Level:' : 'الحد الأدنى:'} {toEnglishDigits((selectedItem.reorder_level ?? 0).toLocaleString('en-US'))}
                 </span>
               </div>
@@ -1136,7 +1136,7 @@ export default function SuppliersClient({
                   </motion.div>
                   <span>{lang === 'en' ? 'AI Recommended Choice:' : 'التوصية الذكية المعتمدة:'}</span>
                   <span className="font-extrabold text-white">{bestQuote.supplierName}</span>
-                  <span className="text-[10px] bg-white/8 border border-white/20 px-1.5 py-0.5 rounded text-white/80 font-semibold">
+                  <span className="text-[10px] bg-white/10 backdrop-blur-md border border-white/20 px-1.5 py-0.5 rounded text-white/80 font-semibold">
                     {lang === 'en' ? 'Match' : 'مطابقة'} {toEnglishDigits(bestQuote.aiRecommendationScore)}%
                   </span>
                 </div>
@@ -1151,7 +1151,7 @@ export default function SuppliersClient({
                   return (
                     <div
                       key={quote.supplierId}
-                      className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
+                      className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
                         isBest
                           ? 'ring-2 ring-white/25 '
                           : ''
@@ -1189,7 +1189,7 @@ export default function SuppliersClient({
                         </div>
 
                         {/* Specs Card */}
-                        <div className="bg-white/8 border border-white/20 p-4 rounded-[18px] space-y-2 text-xs">
+                        <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-[18px] space-y-2 text-xs">
                           <div className="flex justify-between items-center">
                             <span className="text-white/80">{lang === 'en' ? 'Unit Price:' : 'سعر الوحدة:'}</span>
                             <span className="font-extrabold text-white text-lg font-mono">
@@ -1226,7 +1226,7 @@ export default function SuppliersClient({
                         </div>
 
                         {/* AI Reasoning */}
-                        <div className="text-xs text-white/80 leading-relaxed bg-white/8 border border-white/20 p-3.5 rounded-[18px]">
+                        <div className="text-xs text-white/80 leading-relaxed bg-white/10 backdrop-blur-md border border-white/20 p-3.5 rounded-[18px]">
                           <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
                             <Bot className="w-3.5 h-3.5 text-white" />
                             <span>{lang === 'en' ? 'AI Agent Analysis:' : 'تحليل الوكيل الذكي:'}</span>
@@ -1259,7 +1259,7 @@ export default function SuppliersClient({
                 })}
               </div>
             ) : (
-              <div className="p-8 text-center text-white/65 text-sm bg-white/8 border border-white/20 rounded-[18px]">
+              <div className="p-8 text-center text-white/65 text-sm bg-white/10 backdrop-blur-md border border-white/20 rounded-[18px]">
                 {lang === 'en' ? 'No quotes registered for this item currently' : 'لا توجد عروض أسعار مسجلة لهذا الصنف حالياً'}
               </div>
             )}
@@ -1271,7 +1271,7 @@ export default function SuppliersClient({
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-xl">
+            <div className="p-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl">
               <Building2 className="w-5 h-5 text-teal-200" />
             </div>
             <div>
@@ -1286,7 +1286,7 @@ export default function SuppliersClient({
             </div>
           </div>
 
-          <span className="text-xs font-semibold text-white bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-[18px] font-mono">
+          <span className="text-xs font-semibold text-white bg-white/10 backdrop-blur-md border border-white/20 px-3.5 py-1.5 rounded-[18px] font-mono">
             {toEnglishDigits(suppliers.length)} {lang === 'en' ? 'Suppliers Registered' : 'موردين مسجلين'}
           </span>
         </div>
@@ -1298,7 +1298,7 @@ export default function SuppliersClient({
             return (
               <div
                 key={sup.id}
-                className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
+                className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
               >
                 <div className="space-y-4">
                   {/* Top Header: Spacious, Prominent Supplier Name & Category */}
@@ -2085,7 +2085,7 @@ export default function SuppliersClient({
             {/* Header */}
             <div className="flex justify-between items-start border-b border-white/14 pb-3 pl-20">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/8 border border-white/20 flex items-center justify-center text-white/65">
+                <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white/65">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -2322,7 +2322,7 @@ export default function SuppliersClient({
           <div className="font-sans bg-zinc-950/90 rounded-2xl w-full max-w-md p-6 space-y-4 text-white border border-white/20 shadow-2xl relative">
             <div className="flex justify-between items-center border-b border-white/14 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-white/8 border border-white/20 flex items-center justify-center text-white/65">
+                <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white/65">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <h3 className="text-base font-bold text-white">

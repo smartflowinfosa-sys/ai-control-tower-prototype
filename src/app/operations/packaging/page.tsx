@@ -92,7 +92,7 @@ export default function PackagingPage() {
       )}
 
       {/* Title & Header */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -110,7 +110,7 @@ export default function PackagingPage() {
               متابعة وتدقيق معايير التغليف، وتجهيز وجبات الاشتراكات والطلبات حسب خطوط التوزيع
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white/90">
+          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white/90">
             <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             <span>جاهز للربط (API Ready)</span>
           </div>
@@ -118,7 +118,7 @@ export default function PackagingPage() {
       </header>
 
       {/* Main Filter Panel */}
-      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 space-y-6">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-8 space-y-6">
         {/* Filters Grid (8 Fields) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Date */}
@@ -132,7 +132,7 @@ export default function PackagingPage() {
               suppressHydrationWarning
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
           </div>
 
@@ -145,7 +145,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="ALL">الكل (جميع المدن)</option>
               <option value="الرياض">الرياض</option>
@@ -163,7 +163,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={dispatchBranch}
               onChange={(e) => setDispatchBranch(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="جميع فروع الإرسال">جميع فروع الإرسال</option>
               <option value="جميع الفروع باستثناء فروع الإرسال">جميع الفروع باستثناء فروع الإرسال</option>
@@ -180,7 +180,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="مؤكد">مؤكد</option>
               <option value="تم التوصيل">تم التوصيل</option>
@@ -196,7 +196,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="الكل">الكل</option>
               <option value="التوصيل">التوصيل</option>
@@ -213,7 +213,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={deliveryWindow}
               onChange={(e) => setDeliveryWindow(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="الكل">الكل</option>
               <option value="03:00 م - 08:00 م">03:00 م - 08:00 م</option>
@@ -231,7 +231,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={driverName}
               onChange={(e) => setDriverName(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="الكل">الكل</option>
             </GlassSelect>
@@ -246,7 +246,7 @@ export default function PackagingPage() {
             <GlassSelect
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
               <option value="الرياض (فرع التوصيل)">الرياض (فرع التوصيل)</option>
               <option value="مكة المكرمة (فرع التوصيل)">مكة المكرمة (فرع التوصيل)</option>
@@ -393,7 +393,7 @@ export default function PackagingPage() {
       )}
 
       {/* Table Card (Bottom Section) */}
-      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 space-y-5">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-8 space-y-5">
         {/* Card Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-white/15">
           {/* Title Tab Styled with Bottom Border */}

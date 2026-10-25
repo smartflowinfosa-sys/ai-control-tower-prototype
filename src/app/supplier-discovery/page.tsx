@@ -242,10 +242,10 @@ export default function SupplierDiscoveryPage() {
       )}
 
       {/* Header */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2.5 rounded-2xl bg-white/8 border border-white/20 text-white ">
+            <span className="p-2.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white ">
               <PackageSearch className="w-6 h-6" />
             </span>
             <div>
@@ -261,7 +261,7 @@ export default function SupplierDiscoveryPage() {
 
         <div className="flex items-center gap-3 flex-wrap">
           {/* AI Vision Status Badge */}
-          <div className="bg-white/8 border border-white/20 px-4 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-2 ">
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-2 ">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>AI Vision Engine v2.4 متصل</span>
           </div>
@@ -278,10 +278,10 @@ export default function SupplierDiscoveryPage() {
       </header>
 
       {/* 1. INPUT ZONE: AI Vision & Geographic Filtering */}
-      <section className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 md:p-8 space-y-6">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 md:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/20 pb-4">
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-xl bg-white/8 border border-white/20 text-white">
+            <span className="p-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white">
               <Sparkles className="w-4 h-4" />
             </span>
             <h2 className="text-lg font-bold text-white">
@@ -466,9 +466,9 @@ export default function SupplierDiscoveryPage() {
       {/* 2. RESULTS GRID & EXPORT TOOLS */}
       <section className="space-y-5">
         {/* Export Toolbar & Grid Header */}
-        <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/8 border border-white/20 text-white rounded-2xl">
+            <div className="p-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
@@ -531,7 +531,7 @@ export default function SupplierDiscoveryPage() {
             return (
               <div
                 key={sup.id}
-                className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group relative"
+                className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group relative"
               >
                 {/* Top Badge: AI Match Score */}
                 <div className="space-y-4">
@@ -560,7 +560,7 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* Supplier Key Specs Box */}
-                  <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-xl p-4 space-y-2 text-xs">
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-xl p-4 space-y-2 text-xs">
                     <div className="flex justify-between items-center">
                       <span className="text-white/80 flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-white" />
@@ -598,7 +598,7 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* AI Reasoning Analysis */}
-                  <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-xl p-3.5 text-xs text-white leading-relaxed">
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-xl p-3.5 text-xs text-white leading-relaxed">
                     <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
                       <Sparkles className="w-3 h-3 text-white" />
                       <span>تحليل مطابقة الذكاء الاصطناعي:</span>
@@ -682,9 +682,9 @@ export default function SupplierDiscoveryPage() {
       </section>
 
       {/* Operational Assistant Banner */}
-      <section className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-white/8 border border-white/20 flex items-center justify-center text-white shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -771,7 +771,7 @@ export default function SupplierDiscoveryPage() {
                   type="text"
                   disabled
                   value={rfqModalSupplier.name}
-                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-white font-bold"
+                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-white font-bold"
                 />
               </div>
 
@@ -783,7 +783,7 @@ export default function SupplierDiscoveryPage() {
                   step="500"
                   value={rfqQuantity}
                   onChange={(e) => setRfqQuantity(Number(e.target.value))}
-                  className="w-full bg-white/8 border border-white/20 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/20"
+                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/20"
                 />
               </div>
 

@@ -12,7 +12,7 @@ export default function ProductionPage() {
   return (
     <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl mb-8 flex justify-between items-end flex-wrap gap-4 p-6 sm:p-8">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl mb-8 flex justify-between items-end flex-wrap gap-4 p-6 sm:p-8">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">شاشة الإنتاج (KDS)</h1>
           <p className="text-slate-100 font-semibold text-sm mt-2 drop-shadow-sm">الطلبات الحالية في محطات التحضير والمطبخ</p>
@@ -29,7 +29,7 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl flex flex-col relative transition-all overflow-hidden ${
+              className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl flex flex-col relative transition-all overflow-hidden ${
                 isDelayed ? 'border-rose-400 ' : ''
               }`}
             >
@@ -42,7 +42,7 @@ export default function ProductionPage() {
               <div className="p-4 border-b border-white/20 bg-white/8 flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-extrabold text-white font-mono">{order.orderNumber}</h3>
-                  <span className="text-xs font-bold text-white bg-white/8 border border-white/20 px-2 py-0.5 rounded-md mt-1 inline-block">
+                  <span className="text-xs font-bold text-white bg-white/10 backdrop-blur-md border border-white/20 px-2 py-0.5 rounded-md mt-1 inline-block">
                     زاهي
                   </span>
                 </div>
@@ -66,7 +66,7 @@ export default function ProductionPage() {
                       </div>
                       
                       {item.customizations.length > 0 && (
-                        <div className="mt-1.5 text-xs text-white bg-white/8 border border-white/20 px-2.5 py-1 rounded-xl font-semibold">
+                        <div className="mt-1.5 text-xs text-white bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-1 rounded-xl font-semibold">
                           <span className="font-bold text-white">تعديل:</span> {item.customizations.join('، ')}
                         </div>
                       )}

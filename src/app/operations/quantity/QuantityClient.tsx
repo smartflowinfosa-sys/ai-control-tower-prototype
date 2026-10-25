@@ -202,25 +202,21 @@ export default function QuantityClient() {
       )}
 
       {/* Title & Header */}
-      <header className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8">
+      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
             فاتورة الكمية وتتبع استهلاك المخزون
           </h1>
-          <div className="flex items-center gap-2 bg-white/8 border border-white/20 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white/90">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-            <span>نظام جدول المواد نشط (BOM Connected)</span>
-          </div>
         </div>
       </header>
 
       {/* Main Filter Panel */}
-      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 space-y-6">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8 space-y-6">
         {/* Filters Grid (8 Fields, including Packaging Product) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Date From */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-white/80" />
               <span>من تاريخ:</span>
             </label>
@@ -229,13 +225,13 @@ export default function QuantityClient() {
               suppressHydrationWarning
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
           </div>
 
           {/* 2. Date To */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-white/80" />
               <span>إلى تاريخ:</span>
             </label>
@@ -244,20 +240,20 @@ export default function QuantityClient() {
               suppressHydrationWarning
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
           </div>
 
           {/* 3. City */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-white/80" />
               <span>المدينة:</span>
             </label>
             <GlassSelect
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="ALL">الكل (جميع المدن)</option>
               <option value="الرياض">الرياض</option>
@@ -268,14 +264,14 @@ export default function QuantityClient() {
 
           {/* 4. Branch (الفرع - الفروع الفعلية فقط بدون أي خيارات وهمية) */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-white/80" />
               <span>الفرع:</span>
             </label>
             <GlassSelect
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="الكل">الكل</option>
               <option value="الرياض (فرع التوصيل)">الرياض (فرع التوصيل)</option>
@@ -286,14 +282,14 @@ export default function QuantityClient() {
 
           {/* 5. Status */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-white/80" />
               <span>الحالة:</span>
             </label>
             <GlassSelect
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="مؤكد">مؤكد</option>
               <option value="تم التوصيل">تم التوصيل</option>
@@ -305,14 +301,14 @@ export default function QuantityClient() {
 
           {/* 6. Service Type */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-white/80" />
               <span>نوع الخدمة:</span>
             </label>
             <GlassSelect
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="الكل">الكل</option>
               <option value="التوصيل">التوصيل</option>
@@ -322,14 +318,14 @@ export default function QuantityClient() {
 
           {/* 7. Delivery Window */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-white/80" />
               <span>نافذة التوصيل:</span>
             </label>
             <GlassSelect
               value={deliveryWindow}
               onChange={(e) => setDeliveryWindow(e.target.value)}
-              className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
+              className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="الكل">الكل</option>
               <option value="03:00 م - 08:00 م">03:00 م - 08:00 م</option>
@@ -542,7 +538,7 @@ export default function QuantityClient() {
       {selectedPackaging !== 'none' && (
         <section
           aria-label="ملخص استهلاك منتج التغليف"
-          className="!bg-white/5 !backdrop-blur-[12px] !border !border-white/20 shadow-xl rounded-2xl p-6 sm:p-7 space-y-4 animate-in fade-in slide-in-from-top-3 duration-200"
+          className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-7 space-y-4 animate-in fade-in slide-in-from-top-3 duration-200"
         >
           {/* Header of Summary Card */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3.5 border-b border-white/15">
@@ -571,7 +567,7 @@ export default function QuantityClient() {
           {/* 3 Metric Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Metric 1: منتج التغليف (Selected Product Name) */}
-            <div className="bg-white/8 hover:bg-white/12 border border-white/20 rounded-xl p-4 transition-all">
+            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4 transition-all">
               <div className="text-xs font-bold text-white/70 mb-1 flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5 text-white/80" />
                 <span>منتج التغليف:</span>
@@ -585,7 +581,7 @@ export default function QuantityClient() {
             </div>
 
             {/* Metric 2: عدد الأصناف المطلوبة (Dynamic distinct meal items currently visible) */}
-            <div className="bg-white/8 hover:bg-white/12 border border-white/20 rounded-xl p-4 transition-all">
+            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4 transition-all">
               <div className="text-xs font-bold text-white/70 mb-1 flex items-center gap-1.5">
                 <Boxes className="w-3.5 h-3.5 text-white/80" />
                 <span>عدد الأصناف المطلوبة:</span>
@@ -617,7 +613,7 @@ export default function QuantityClient() {
 
           {/* Empty BOM Alert Notice when mapping array is empty */}
           {selectedPackaging !== 'none' && selectedPackaging !== 'all' && PACKAGING_MAPPING[selectedPackaging]?.length === 0 && (
-            <div className="bg-white/5 border border-white/15 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-white/80">
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-white/80">
               <Info className="w-4 h-4 text-white shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-white">ملاحظة جدول المواد (BOM):</span> لم يتم تعيين أكواد وجبات لمنتج التغليف هذا في ملف جدول المواد حتى الآن. لذلك لا تظهر أي وجبات مستهلكة له في الوقت الحالي.
@@ -628,7 +624,7 @@ export default function QuantityClient() {
       )}
 
       {/* Table Card (Bottom Section) */}
-      <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl p-6 sm:p-8 space-y-5">
+      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8 space-y-5">
         {/* Card Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-white/15">
           {/* Top Right (RTL): Status Text */}
@@ -657,7 +653,7 @@ export default function QuantityClient() {
                 placeholder="بحث في الوجبات أو الكود..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white/8 border border-white/20 text-white placeholder-white/40 text-xs rounded-xl pr-9 pl-3 py-2 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-colors"
+                className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder-white/40 text-xs rounded-xl pr-9 pl-3 py-2 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-colors"
               />
             </div>
 
@@ -682,7 +678,7 @@ export default function QuantityClient() {
         </div>
 
         {/* Below Header: Dynamic Total Counters */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-xl p-3 px-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3 px-4">
           <div className="text-sm font-bold text-white flex items-center gap-2">
             <span className="text-white/80">إجمالي الوجبات:</span>
             <span className="font-mono text-white font-extrabold text-xl">
@@ -704,10 +700,10 @@ export default function QuantityClient() {
         </div>
 
         {/* The Table Structure */}
-        <div className="overflow-x-auto rounded-xl border border-white/20">
+        <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
           <table className="w-full text-center border-collapse">
             <thead>
-              <tr className="bg-white/10 border-b border-white/20 text-white font-extrabold text-sm">
+              <tr className="bg-white/5 border-b border-white/10 text-white font-extrabold text-sm">
                 <th scope="col" className="py-3.5 px-3 w-16 text-center font-bold">
                   #
                 </th>
@@ -730,12 +726,12 @@ export default function QuantityClient() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/10">
+            <tbody className="divide-y divide-white/5">
               {filteredRows.length > 0 ? (
                 filteredRows.map((row, idx) => (
                   <tr
                     key={row.id || `${row.mealCode}-${idx}`}
-                    className="hover:bg-white/5 transition-colors border-b border-white/10"
+                    className="hover:bg-white/5 transition-colors border-b border-white/5"
                   >
                     <td className="py-3 px-3 text-xs font-mono text-white/60 text-center">
                       {idx + 1}

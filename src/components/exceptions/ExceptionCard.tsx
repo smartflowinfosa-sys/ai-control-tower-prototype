@@ -15,7 +15,7 @@ export default function ExceptionCard({ exception }: Props) {
   const badgeClass = riskColorMap[exception.riskLevel];
 
   return (
-    <div className="!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl flex flex-col transition-all duration-200 overflow-hidden">
+    <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl flex flex-col transition-all duration-200 overflow-hidden">
       {/* Header */}
       <div className="p-5 border-b border-white/20 flex justify-between items-start">
         <div>
@@ -26,7 +26,7 @@ export default function ExceptionCard({ exception }: Props) {
             <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${badgeClass}`}>
               {exception.riskLevel}
             </span>
-            <span className="text-xs text-white/80 bg-white/8 border border-white/20 px-2 py-0.5 rounded-lg font-bold">
+            <span className="text-xs text-white/80 bg-white/10 backdrop-blur-md border border-white/20 px-2 py-0.5 rounded-lg font-bold">
               {exception.department}
             </span>
           </div>
@@ -57,7 +57,7 @@ export default function ExceptionCard({ exception }: Props) {
             <button className="bg-white/20 hover:bg-white/25 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-all active:scale-95 cursor-pointer ">
               موافقة وتنفيذ
             </button>
-            <button className="bg-white/8 border border-white/20 text-white/80 hover:bg-white/15 px-5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer">
+            <button className="bg-white/10 backdrop-blur-md border border-white/20 text-white/80 hover:bg-white/15 px-5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer">
               تجاهل
             </button>
           </div>

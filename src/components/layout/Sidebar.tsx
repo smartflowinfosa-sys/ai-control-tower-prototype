@@ -123,7 +123,7 @@ export default function Sidebar() {
         onClick={() => setIsOpen(true)}
         aria-expanded={isOpen}
         aria-controls="mobile-navigation"
-        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 !bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl text-white cursor-pointer`}
+        className={`md:hidden fixed top-4 ${isRtl ? 'right-4' : 'left-4'} z-40 p-3 bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white cursor-pointer`}
         aria-label={t('sidebar.openNav')}
       >
         <Menu size={22} />
@@ -162,7 +162,7 @@ export default function Sidebar() {
             }
           }
         }}
-        className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
+        className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl md:hidden fixed inset-y-4 z-50 w-80 p-6 flex flex-col justify-between transition-all duration-200 ${
           isRtl
             ? isOpen ? 'right-4' : '-right-96'
             : isOpen ? 'left-4' : '-left-96'
@@ -306,7 +306,8 @@ export default function Sidebar() {
             type="button"
             onClick={() => {
               closeDrawer();
-              signOut({ callbackUrl: "/login" });
+              sessionStorage.removeItem("welcome_toast_shown");
+signOut({ callbackUrl: "/login" });
             }}
             className="w-full mt-3 px-3 py-2 text-xs text-rose-200 font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
@@ -318,7 +319,7 @@ export default function Sidebar() {
 
       {/* Desktop Main Transparent Sidebar */}
       <aside
-        className={`!bg-white/5 !backdrop-blur-[8px] !border !border-white/20 shadow-lg rounded-2xl hidden md:flex flex-col select-none sticky top-6 h-[calc(100vh-3rem)] my-6 ms-4 p-4 shrink-0 z-30 transition-all duration-200 ${
+        className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl hidden md:flex flex-col select-none sticky top-6 h-[calc(100vh-3rem)] my-6 ms-4 p-4 shrink-0 z-30 transition-all duration-200 ${
           isCollapsed ? 'w-20 items-center' : 'w-72'
         }`}
         onKeyDown={(event) => {
@@ -533,7 +534,8 @@ export default function Sidebar() {
                 type="button"
                 onClick={() => {
                   setProfileOpen(false);
-                  signOut({ callbackUrl: "/login" });
+                  sessionStorage.removeItem("welcome_toast_shown");
+signOut({ callbackUrl: "/login" });
                 }}
                 className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2 text-xs text-rose-200 font-bold hover:bg-rose-500/15 rounded-xl transition-colors flex items-center gap-2 cursor-pointer`}
               >

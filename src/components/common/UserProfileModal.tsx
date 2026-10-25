@@ -244,8 +244,8 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
           onClick={(e) => e.stopPropagation()}
         >
           {/* Subtle Ambient Glow Effect inside dialog */}
-          <div className="absolute top-0 right-1/4 w-96 h-36 bg-teal-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
-          <div className="absolute bottom-0 left-1/4 w-96 h-36 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
+          <div className="absolute top-0 right-1/4 w-96 h-36 bg-white/15 rounded-full blur-3xl pointer-events-none -z-10" />
+          <div className="absolute bottom-0 left-1/4 w-96 h-36 bg-white/15 rounded-full blur-3xl pointer-events-none -z-10" />
 
           {/* Toast Notification Banner */}
           <AnimatePresence>
@@ -254,9 +254,9 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                 initial={{ opacity: 0, y: -20, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -20, scale: 0.9 }}
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-teal-500/25 border border-teal-300/50 text-teal-100 text-xs sm:text-sm font-bold px-5 py-2.5 rounded-2xl flex items-center gap-2.5 shadow-2xl backdrop-blur-xl"
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white/15 border border-white/25 text-white text-xs sm:text-sm font-bold px-5 py-2.5 rounded-2xl flex items-center gap-2.5 shadow-2xl backdrop-blur-xl"
               >
-                <Sparkles className="w-4 h-4 text-teal-300 shrink-0 animate-spin" />
+                <Sparkles className="w-4 h-4 text-white shrink-0 animate-spin" />
                 <span>{toastMessage}</span>
               </motion.div>
             )}
@@ -267,13 +267,13 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
             {/* Top Row: Modal Title & Close Button */}
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-teal-500/15 border border-teal-300/30 flex items-center justify-center text-teal-200 shadow-inner">
+                <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-inner">
                   <User className="w-4 h-4" />
                 </div>
                 <div>
                   <h2 id="user-profile-title" className="text-base sm:text-lg font-extrabold text-white tracking-tight flex items-center gap-2">
                     <span>{lang === "ar" ? "الملف الشخصي للمستخدم" : "User Profile Settings"}</span>
-                    {isLoading && <Loader2 className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
+                    {isLoading && <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />}
                   </h2>
                   <p className="text-[11px] text-white/60 font-medium">
                     {lang === "ar"
@@ -298,10 +298,10 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                 {/* User Avatar & Identification */}
                 <div className="flex items-center gap-3.5">
                   <div className="relative shrink-0">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-teal-600/50 to-emerald-400/20 border-2 border-white/25 flex items-center justify-center font-black text-lg text-white shadow-xl shadow-teal-950/40">
+                    <div className="w-14 h-14 rounded-2xl bg-white/15 border-2 border-white/25 flex items-center justify-center font-black text-lg text-white shadow-xl shadow-black/40">
                       {displayInitials}
                     </div>
-                    <span className="absolute -bottom-1 -end-1 w-3.5 h-3.5 rounded-full bg-teal-400 border-2 border-zinc-950 ring-2 ring-teal-400/40" />
+                    <span className="absolute -bottom-1 -end-1 w-3.5 h-3.5 rounded-full bg-white border-2 border-zinc-950 ring-2 ring-white/40" />
                   </div>
 
                   <div className="space-y-1">
@@ -322,16 +322,16 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm ${
                       isRoleAdmin
                         ? "bg-amber-500/15 border border-amber-400/30 text-amber-200"
-                        : "bg-teal-500/15 border border-teal-400/30 text-teal-200"
+                        : "bg-white/15 border border-white/25 text-white"
                     }`}
                     title={isRoleAdmin ? "Admin (Protected Role)" : "Staff (Protected Role)"}
                   >
-                    <ShieldCheck className={`w-3.5 h-3.5 ${isRoleAdmin ? "text-amber-300" : "text-teal-300"}`} />
+                    <ShieldCheck className={`w-3.5 h-3.5 ${isRoleAdmin ? "text-amber-300" : "text-white"}`} />
                     <span>{simplifiedRoleBadge}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono flex items-center gap-1 ${
                       isRoleAdmin
                         ? "bg-amber-400/20 text-amber-100 border border-amber-300/40"
-                        : "bg-teal-400/20 text-teal-100 border border-teal-300/40"
+                        : "bg-white/15 text-white border border-white/25"
                     }`}>
                       <Lock className="w-2.5 h-2.5" />
                       <span>{lang === "ar" ? "محمي" : "Protected"}</span>
@@ -363,7 +363,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                 {/* Column 1: Personal Information (Arabic Name & English Name) */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 pb-1 border-b border-white/10">
-                    <User className="w-4 h-4 text-teal-300" />
+                    <User className="w-4 h-4 text-white" />
                     <h4 className="text-sm font-bold text-white">
                       {lang === "ar" ? "المعلومات الشخصية" : "Personal Information"}
                     </h4>
@@ -373,7 +373,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-white/85 flex items-center justify-between">
                       <span>{lang === "ar" ? "الاسم بالعربية" : "Full Name in Arabic"}</span>
-                      <span className="text-[10px] text-teal-300 font-normal">AR</span>
+                      <span className="text-[10px] text-white font-normal">AR</span>
                     </label>
                     <input
                       type="text"
@@ -381,7 +381,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                       value={nameAr}
                       onChange={(e) => setNameAr(e.target.value)}
                       placeholder="مثال: محمد العمري"
-                      className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-all shadow-inner"
+                      className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all shadow-inner"
                     />
                   </div>
 
@@ -389,7 +389,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-white/85 flex items-center justify-between">
                       <span>{lang === "ar" ? "الاسم بالإنجليزية" : "Name in English"}</span>
-                      <span className="text-[10px] text-teal-300 font-mono font-normal">EN</span>
+                      <span className="text-[10px] text-white font-mono font-normal">EN</span>
                     </label>
                     <input
                       type="text"
@@ -397,7 +397,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                       value={nameEn}
                       onChange={(e) => setNameEn(e.target.value)}
                       placeholder="e.g. Mohammed Al-Amri"
-                      className="w-full bg-white/8 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-all font-mono shadow-inner"
+                      className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all font-mono shadow-inner"
                     />
                   </div>
                 </div>
@@ -405,7 +405,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                 {/* Column 2: System Language & Password Update */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 pb-1 border-b border-white/10">
-                    <Globe className="w-4 h-4 text-teal-300" />
+                    <Globe className="w-4 h-4 text-white" />
                     <h4 className="text-sm font-bold text-white">
                       {lang === "ar" ? "تفضيلات الواجهة والأمان" : "Interface & Security"}
                     </h4>
@@ -415,7 +415,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-white/85 flex items-center justify-between">
                       <span>{lang === "ar" ? "لغة واجهة النظام" : "System Interface Language"}</span>
-                      <span className="text-[10px] font-mono text-teal-200 bg-teal-500/15 border border-teal-300/30 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] font-mono text-white bg-white/15 border border-white/25 px-2 py-0.5 rounded-full font-bold">
                         {selectedLang === "ar" ? "العربية (RTL)" : "English (LTR)"}
                       </span>
                     </label>
@@ -434,13 +434,13 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                         {selectedLang === "ar" && (
                           <motion.div
                             layoutId="activeModalLangIndicator"
-                            className="absolute inset-0 bg-teal-500/30 border border-teal-300/50 rounded-xl shadow-lg -z-10"
+                            className="absolute inset-0 bg-white/15 border border-white/25 rounded-xl shadow-lg -z-10"
                             transition={{ type: "spring", stiffness: 350, damping: 28 }}
                           />
                         )}
                         <span>🇸🇦</span>
                         <span>العربية (AR)</span>
-                        {selectedLang === "ar" && <Check className="w-3.5 h-3.5 text-teal-300" />}
+                        {selectedLang === "ar" && <Check className="w-3.5 h-3.5 text-white" />}
                       </button>
 
                       <button
@@ -455,13 +455,13 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                         {selectedLang === "en" && (
                           <motion.div
                             layoutId="activeModalLangIndicator"
-                            className="absolute inset-0 bg-teal-500/30 border border-teal-300/50 rounded-xl shadow-lg -z-10"
+                            className="absolute inset-0 bg-white/15 border border-white/25 rounded-xl shadow-lg -z-10"
                             transition={{ type: "spring", stiffness: 350, damping: 28 }}
                           />
                         )}
                         <span>🇺🇸</span>
                         <span>English (EN)</span>
-                        {selectedLang === "en" && <Check className="w-3.5 h-3.5 text-teal-300" />}
+                        {selectedLang === "en" && <Check className="w-3.5 h-3.5 text-white" />}
                       </button>
                     </div>
                   </div>
@@ -471,7 +471,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-white/85 flex items-center gap-1.5">
-                          <KeyRound className="w-3.5 h-3.5 text-teal-300" />
+                          <KeyRound className="w-3.5 h-3.5 text-white" />
                           <span>{lang === "ar" ? "كلمة المرور الجديدة (اختياري)" : "New Password (Optional)"}</span>
                         </label>
                         <span className="text-[10px] text-white/50">
@@ -487,7 +487,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="••••••••"
                           autoComplete="new-password"
-                          className="w-full bg-white/8 border border-white/20 rounded-xl ps-3.5 pe-10 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-all font-mono shadow-inner"
+                          className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl ps-3.5 pe-10 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all font-mono shadow-inner"
                         />
                         <button
                           type="button"
@@ -511,7 +511,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                         <label className="text-xs font-bold text-white/85 flex items-center justify-between">
                           <span>{lang === "ar" ? "تأكيد كلمة المرور الجديدة" : "Confirm New Password"}</span>
                           {confirmPassword && (
-                            <span className={`text-[10px] font-bold ${newPassword === confirmPassword ? "text-teal-300" : "text-rose-300"}`}>
+                            <span className={`text-[10px] font-bold ${newPassword === confirmPassword ? "text-white" : "text-rose-300"}`}>
                               {newPassword === confirmPassword
                                 ? (lang === "ar" ? "متطابقتان ✓" : "Matching ✓")
                                 : (lang === "ar" ? "غير متطابقتين ✗" : "Mismatch ✗")}
@@ -528,7 +528,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                           className={`w-full bg-white/8 border rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 transition-all font-mono shadow-inner ${
                             confirmPassword && newPassword !== confirmPassword
                               ? "border-rose-400/60 focus:ring-rose-400"
-                              : "border-white/20 focus:ring-teal-400"
+                              : "border-white/20 focus:ring-white/40"
                           }`}
                         />
                       </motion.div>
@@ -546,7 +546,8 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
               type="button"
               onClick={() => {
                 onClose();
-                signOut({ callbackUrl: "/login" });
+                sessionStorage.removeItem("welcome_toast_shown");
+signOut({ callbackUrl: "/login" });
               }}
               className="w-full sm:w-auto text-rose-300 hover:text-rose-100 hover:bg-rose-500/15 border border-rose-400/20 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer order-2 sm:order-1"
             >
@@ -569,7 +570,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
                 type="submit"
                 form="user-profile-form"
                 disabled={isSaving}
-                className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 hover:from-teal-400 hover:to-emerald-300 text-zinc-950 text-xs font-extrabold transition-all shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
+                className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-extrabold transition-all shadow-lg shadow-black/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
               >
                 {isSaving ? (
                   <>

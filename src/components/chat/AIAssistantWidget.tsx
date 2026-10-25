@@ -302,7 +302,7 @@ export default function AIAssistantWidget() {
               key={msg.id} 
               className={`p-3.5 rounded-2xl max-w-[85%] text-sm relative transition-all break-words ${
                 msg.sender === 'user' 
-                  ? 'self-end bg-white/8 border border-white/20 text-white rounded-tr-xs font-semibold'
+                  ? 'self-end bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-tr-xs font-semibold'
                   : 'self-start bg-teal-600/10 border border-teal-300/30 text-white rounded-tl-xs font-semibold'
               }`}
             >
