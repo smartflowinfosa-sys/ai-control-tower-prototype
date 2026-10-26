@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getSessionPurchaseOrders, updateSessionPurchaseOrder } from './mockInventoryData';
+import { compareItemCodes, getStockPolicy } from '@/constants/inventoryCodes';
 
 export interface SupabaseInventoryItem {
   item_code: string;
@@ -9,6 +10,12 @@ export interface SupabaseInventoryItem {
   category_en?: string;
   current_stock: number;
   reorder_level: number;
+  /** Minimum stock level / reorder point (INTEGER column `min_stock_level`) */
+  min_stock_level?: number | null;
+  /** Supplier lead time in days (INTEGER column `lead_time_days`) */
+  lead_time_days?: number | null;
+  /** Last restock date in ISO string format (e.g., '2026-10-21T10:00:00.000Z') */
+  last_restock_date?: string | null;
   cost_per_unit?: number;
   supplier_id?: string | null;
   created_at?: string;
@@ -114,8 +121,19 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
     throw new Error(error.message);
   }
 
-  const items = (data as SupabaseInventoryItem[]) || [];
-  return items.sort((a, b) => a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' }));
+  // DB values win when present; otherwise fall back to the real-world policy constants.
+  const items = ((data as SupabaseInventoryItem[]) || []).map(row => {
+    const policy = getStockPolicy(row.item_code);
+    return {
+      ...row,
+      min_stock_level: row.min_stock_level ?? policy.min_stock_level ?? null,
+      lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? null,
+    };
+  });
+  // Frontend Data Transformation: PostgreSQL standard .order('item_code') sorts lexicographically
+  // as P1, P10, P2, P3. Here we apply strict numerical/alphanumeric transformation so P1..P10
+  // are sorted strictly ascending (P1, P2 ... P9, P10).
+  return items.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
 }
 
 function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): SupabaseSupplier {
@@ -467,14 +485,26 @@ export async function receivePurchaseOrder(
       const existingStock = Number(currentItem.current_stock) || 0;
       finalStock = existingStock + Number(receivedQty);
 
+      const updatePayload: Record<string, any> = {
+        current_stock: finalStock,
+        last_restock_date: new Date().toISOString(),
+      };
+
       const { error: updateErr } = await supabase
         .from('inventory_items')
-        .update({ current_stock: finalStock })
+        .update(updatePayload)
         .eq('item_code', currentItem.item_code);
 
       if (updateErr) {
-        console.error('Failed to update current_stock in inventory_items:', updateErr.message);
-        throw new Error(`تعذر تحديث كمية المخزون في Supabase: ${updateErr.message}`);
+        // If last_restock_date column does not exist yet in DB schema, fall back to current_stock only
+        const { error: retryErr } = await supabase
+          .from('inventory_items')
+          .update({ current_stock: finalStock })
+          .eq('item_code', currentItem.item_code);
+        if (retryErr) {
+          console.error('Failed to update current_stock in inventory_items:', retryErr.message);
+          throw new Error(`تعذر تحديث كمية المخزون في Supabase: ${retryErr.message}`);
+        }
       }
     } else {
       console.warn(`Could not locate item ${targetItemCode} in inventory_items`);
@@ -710,6 +740,49 @@ export async function fetchAllSupplierItems(): Promise<SupabaseSupplierItem[]> {
   return (data || []) as unknown as SupabaseSupplierItem[];
 }
 
+/**
+ * Query supplier_items joined with suppliers table dynamically by inventory_item_code (e.g. P1)
+ * Real Database Mapping without hardcoded arrays.
+ */
+export async function fetchSuppliersForItem(itemCode: string): Promise<Array<{ id: string; name: string }>> {
+  const code = (itemCode || '').trim().toUpperCase();
+  if (!code) return [];
+
+  const { data, error } = await supabase
+    .from('supplier_items')
+    .select(`
+      supplier_id,
+      inventory_item_code,
+      suppliers (
+        id,
+        name_ar,
+        name_en
+      )
+    `)
+    .eq('inventory_item_code', code);
+
+  if (error) {
+    console.error('Failed to fetch suppliers for item from Supabase:', error.message);
+    return [];
+  }
+
+  const result: Array<{ id: string; name: string }> = [];
+  const seen = new Set<string>();
+
+  for (const row of (data || []) as any[]) {
+    const sup = row.suppliers;
+    if (sup) {
+      const name = (sup.name_ar || sup.name_en || '').trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        result.push({ id: sup.id, name });
+      }
+    }
+  }
+
+  return result;
+}
+
 export interface SupplierItemRecord {
   id?: string;
   supplier_id: string;
@@ -763,7 +836,7 @@ export async function fetchSupplierItems(supplierId: string): Promise<SupplierIt
       category_ar: inv?.category_ar || '',
       current_stock: inv?.current_stock ?? 0,
     };
-  });
+  }).sort((a: any, b: any) => compareItemCodes(a.item_code, b.item_code));
 }
 
 /**

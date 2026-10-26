@@ -28,6 +28,7 @@ import {
   SupabasePurchaseOrder,
   SupabaseSupplierItem
 } from '@/lib/supabaseService';
+import { compareItemCodes } from '@/constants/inventoryCodes';
 import {
   Clock,
   Mail,
@@ -93,7 +94,7 @@ export default function SuppliersClient({
     : [];
 
   const availableItems = [...rawAvailableItems].sort((a, b) =>
-    a.item_code.localeCompare(b.item_code, undefined, { numeric: true, sensitivity: 'base' })
+    compareItemCodes(a.item_code, b.item_code)
   );
   
   // State initialization directly from Supabase props (strictly sorted by default order)
