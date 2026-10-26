@@ -10,6 +10,15 @@
   --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20);
 }
 
+/* Background Configuration with Subtle Dark Contrast Overlay */
+body {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.20), rgba(0, 0, 0, 0.20)), url('/bg-dashboard.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
 /* 1. Global Glass Card & Panel Styling:
    Applies to all cards, panels, headers, sections, and widgets */
 .glass-card,

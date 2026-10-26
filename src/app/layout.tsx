@@ -48,7 +48,9 @@ export default function RootLayout({
       dir="rtl"
       className={`${tajawal.variable} ${inter.variable} antialiased h-full`}
     >
-      <body className="min-h-screen flex bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative">
+      <body className="min-h-screen flex bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative">
+        {/* Subtle dark overlay to ensure white text and crystal glassmorphism remain perfectly sharp */}
+        <div className="fixed inset-0 bg-black/20 pointer-events-none -z-10" aria-hidden="true" />
         <AuthProvider>
           <LanguageProvider>
             <NotificationProvider>

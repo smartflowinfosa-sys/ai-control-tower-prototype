@@ -241,7 +241,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="fixed inset-0 min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto bg-[url('/bg_plants.jpg')] bg-cover bg-center bg-fixed bg-no-repeat z-50">
+    <div className="fixed inset-0 min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat z-50">
       {/* Dark vignette backdrop for optimal contrast */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[3px] pointer-events-none" />
 
