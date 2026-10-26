@@ -12,7 +12,7 @@ export default function ProductionPage() {
   return (
     <div className="page-shell w-full mx-auto space-y-6">
       {/* Title Container with 28px radius */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl mb-8 flex justify-between items-end flex-wrap gap-4 p-6 sm:p-8">
+      <header className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl mb-8 flex justify-between items-end flex-wrap gap-4 p-6 sm:p-8">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">شاشة الإنتاج (KDS)</h1>
           <p className="text-slate-100 font-semibold text-sm mt-2 drop-shadow-sm">الطلبات الحالية في محطات التحضير والمطبخ</p>
@@ -29,7 +29,7 @@ export default function ProductionPage() {
           return (
             <div 
               key={order.id} 
-              className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl flex flex-col relative transition-all overflow-hidden ${
+              className={`bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl flex flex-col relative transition-all overflow-hidden hover:bg-white/[0.09] hover:border-white/[0.32] ${
                 isDelayed ? 'border-rose-400 ' : ''
               }`}
             >

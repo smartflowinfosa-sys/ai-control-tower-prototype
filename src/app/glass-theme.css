@@ -1,1 +1,93 @@
-/* Custom CSS removed: Pure Tailwind utility classes with !important modifiers */
+/* ==========================================================================
+   Ultra-Clear Transparent Glassmorphism Theme
+   Transforms dense milky/frosted cards into crystal-clear translucent glass.
+   ========================================================================== */
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-blur: blur(2px) saturate(110%);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.24);
+  --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}
+
+/* 1. Global Glass Card & Panel Styling:
+   Applies to all cards, panels, headers, sections, and widgets */
+.glass-card,
+.glass-panel,
+header.bg-white\/10,
+header.bg-white\/\[0\.06\],
+section.bg-white\/10,
+section.bg-white\/\[0\.06\],
+aside.bg-white\/10,
+aside.bg-white\/\[0\.06\],
+div.bg-white\/10.backdrop-blur-xl,
+div.bg-white\/10.backdrop-blur-2xl,
+div.bg-white\/10.backdrop-blur-md,
+div.bg-white\/\[0\.06\],
+div[class*="bg-white/10"][class*="backdrop-blur"],
+[class*="backdrop-blur-xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not(.fixed),
+[class*="backdrop-blur-2xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not(.fixed) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(2px) saturate(110%) !important;
+  -webkit-backdrop-filter: blur(2px) saturate(110%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20) !important;
+}
+
+/* 2. Interactive States:
+   Subtle sheen on hover without turning into a solid white block */
+.glass-card:hover:not(:disabled),
+.glass-panel:hover:not(:disabled),
+div.bg-white\/10.backdrop-blur-xl:hover:not(:disabled),
+div.bg-white\/10.backdrop-blur-md:hover:not(:disabled),
+div.bg-white\/\[0\.06\]:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+/* 3. Nested Cards and Sub-panels:
+   Avoid blur & opacity accumulation inside cards */
+div.bg-white\/10 div.bg-white\/10,
+div.bg-white\/\[0\.06\] div.bg-white\/\[0\.06\],
+div.bg-white\/10 div.bg-white\/8,
+div.bg-white\/10 div.bg-white\/5,
+section.bg-white\/10 div.bg-white\/10,
+section.bg-white\/10 div.bg-white\/5 {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 4. Sub-elements and internal dividers */
+.bg-white\/8 {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.border-white\/10,
+.border-white\/15,
+.border-white\/20,
+.border-white\/25 {
+  border-color: rgba(255, 255, 255, 0.20) !important;
+}
+
+/* 5. Translucent inputs and dropdown triggers */
+button.bg-white\/10.backdrop-blur-md,
+input.bg-white\/10,
+select.bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(2px) saturate(110%) !important;
+  -webkit-backdrop-filter: blur(2px) saturate(110%) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+}
+
+/* 6. Ensure high legibility of text and numbers over transparent glass */
+.text-white,
+h1, h2, h3, h4, h5, h6 {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.text-slate-100 {
+  color: rgba(255, 255, 255, 0.90) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}

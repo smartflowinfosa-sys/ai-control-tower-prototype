@@ -738,7 +738,7 @@ export default function InventoryClient({
       )}
 
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">{t('inventory.title')}</h1>
           <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
@@ -769,13 +769,13 @@ export default function InventoryClient({
 
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiTotalItems')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(items.length)}</div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiTotalItemsDesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiLowStock')}</div>
           <div className={`text-3xl font-extrabold font-mono tracking-wider mt-2 drop-shadow-sm ${lowStockCount > 0 ? 'text-rose-200' : 'text-white'}`}>
             {toEnglishDigits(lowStockCount)}
@@ -783,13 +783,13 @@ export default function InventoryClient({
           <div className="text-xs text-rose-200 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiLowStockDesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiActivePO')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(activePOs.length)}</div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiActivePODesc')}</div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
+        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiCoverage')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">
             {items.length > 0 ? `${Math.round(((items.length - lowStockCount) / items.length) * 100)}%` : '0%'}
@@ -799,7 +799,7 @@ export default function InventoryClient({
       </div>
 
       {/* Smart Filter Bar */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-5 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-2 w-full md:w-auto">
           <span className="text-sm font-bold text-white whitespace-nowrap drop-shadow-sm">{t('inventory.categoryLabel')}</span>
           <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto">
@@ -839,7 +839,7 @@ export default function InventoryClient({
       {/* Smart Auto PO Table — the primary inventory view (Consumption-Based Replenishment Engine) */}
       <section
         aria-label="Smart Auto PO"
-        className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-7 space-y-4"
+        className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 sm:p-7 space-y-4"
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-white/15">
           <div>
@@ -999,7 +999,7 @@ export default function InventoryClient({
       </section>
 
       {filteredItems.length === 0 && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-12 text-center text-white">
+        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-12 text-center text-white">
           <p className="text-lg font-bold drop-shadow-sm">{t('inventory.noItemsFound')}</p>
           <p className="text-xs text-white/80 mt-1 drop-shadow-sm">{t('inventory.noItemsFoundHint')}</p>
         </div>
@@ -1223,7 +1223,7 @@ export default function InventoryClient({
         const selectedReceivePO = purchaseOrders.find(p => p.id === receivePoId);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-            <div className="font-sans bg-white/10 backdrop-blur-xl rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-6 sm:p-7 space-y-4 text-white border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] relative">
+            <div className="font-sans bg-white/[0.08] backdrop-blur-md rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-6 sm:p-7 space-y-4 text-white border border-white/25 shadow-[0_16px_48px_0_rgba(0,0,0,0.3)] relative">
               {/* Modal Header */}
               <div className="flex justify-between items-start border-b border-white/20 pb-3.5">
                 <div className="flex items-center gap-3">

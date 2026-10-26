@@ -32,7 +32,7 @@ export default function AIAutonomyControl() {
   const currentConfig = autonomyConfig[level];
 
   return (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 md:p-8">
+    <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl text-white p-6 md:p-8">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2 drop-shadow-sm">
@@ -44,7 +44,7 @@ export default function AIAutonomyControl() {
         </div>
 
         {/* Animated Segmented Control Capsule */}
-        <div className="bg-white/5 border border-white/20 rounded-full p-1.5 flex relative flex-wrap sm:flex-nowrap gap-1">
+        <div className="bg-white/[0.05] border border-white/[0.20] rounded-full p-1.5 flex relative flex-wrap sm:flex-nowrap gap-1">
           {(Object.keys(autonomyConfig) as AutonomyLevel[]).map(key => {
             const isActive = level === key;
             const Icon = autonomyConfig[key].icon;

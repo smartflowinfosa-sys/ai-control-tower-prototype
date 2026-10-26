@@ -202,7 +202,7 @@ export default function QuantityClient() {
       )}
 
       {/* Title & Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8">
+      <header className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl text-white p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
             فاتورة الكمية وتتبع استهلاك المخزون
@@ -211,7 +211,7 @@ export default function QuantityClient() {
       </header>
 
       {/* Main Filter Panel */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8 space-y-6">
+      <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl text-white p-6 sm:p-8 space-y-6">
         {/* Filters Grid (8 Fields, including Packaging Product) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Date From */}
@@ -538,7 +538,7 @@ export default function QuantityClient() {
       {selectedPackaging !== 'none' && (
         <section
           aria-label="ملخص استهلاك منتج التغليف"
-          className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-7 space-y-4 animate-in fade-in slide-in-from-top-3 duration-200"
+          className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl text-white p-6 sm:p-7 space-y-4 animate-in fade-in slide-in-from-top-3 duration-200"
         >
           {/* Header of Summary Card */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3.5 border-b border-white/15">
@@ -624,7 +624,7 @@ export default function QuantityClient() {
       )}
 
       {/* Table Card (Bottom Section) */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl text-white p-6 sm:p-8 space-y-5">
+      <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl text-white p-6 sm:p-8 space-y-5">
         {/* Card Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-white/15">
           {/* Top Right (RTL): Status Text */}

@@ -6,3 +6,19 @@
   --color-risk-critical: #DC2626; --color-risk-high: #D97706;
   --color-risk-medium: #CA8A04; --color-risk-low: #16A34A;
 }
+
+@utility glass-card {
+  background-color: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(2px) saturate(110%);
+  -webkit-backdrop-filter: blur(2px) saturate(110%);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}
+
+@utility glass-panel {
+  background-color: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(2px) saturate(110%);
+  -webkit-backdrop-filter: blur(2px) saturate(110%);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}

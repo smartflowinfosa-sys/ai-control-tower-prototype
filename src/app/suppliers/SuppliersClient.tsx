@@ -731,7 +731,7 @@ export default function SuppliersClient({
       )}
 
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="glass-panel bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white/65">
@@ -786,7 +786,7 @@ export default function SuppliersClient({
 
       {/* Supplier Network Overview Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Registered Suppliers' : 'إجمالي الموردين المعتمدين'}
@@ -803,7 +803,7 @@ export default function SuppliersClient({
           </div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Avg. Delivery Lead Time' : 'متوسط سرعة التوريد'}
@@ -826,7 +826,7 @@ export default function SuppliersClient({
           </div>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
+        <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 flex items-center justify-between transition-all duration-200">
           <div>
             <div className="text-xs font-semibold text-slate-100 drop-shadow-sm">
               {lang === 'en' ? 'Network Quality Score' : 'متوسط تقييم الجودة'}
@@ -898,7 +898,7 @@ export default function SuppliersClient({
         </div>
 
         {/* PO Table */}
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl overflow-hidden">
+        <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className={`w-full text-sm text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
               <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/20">
@@ -1057,7 +1057,7 @@ export default function SuppliersClient({
       </section>
 
       {/* 2. Smart Bidding Comparison */}
-      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 space-y-6">
+      <section className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 space-y-6">
         <div className="border-b border-white/20 pb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -1152,7 +1152,7 @@ export default function SuppliersClient({
                   return (
                     <div
                       key={quote.supplierId}
-                      className={`bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
+                      className={`glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 transition-all flex flex-col justify-between relative ${
                         isBest
                           ? 'ring-2 ring-white/25 '
                           : ''
@@ -1299,7 +1299,7 @@ export default function SuppliersClient({
             return (
               <div
                 key={sup.id}
-                className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative hover:border-white/40"
+                className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 group relative"
               >
                 <div className="space-y-4">
                   {/* Top Header: Spacious, Prominent Supplier Name & Category */}

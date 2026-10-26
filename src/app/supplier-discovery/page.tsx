@@ -242,7 +242,7 @@ export default function SupplierDiscoveryPage() {
       )}
 
       {/* Header */}
-      <header className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <header className="glass-panel bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="p-2.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white ">
@@ -278,7 +278,7 @@ export default function SupplierDiscoveryPage() {
       </header>
 
       {/* 1. INPUT ZONE: AI Vision & Geographic Filtering */}
-      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 md:p-8 space-y-6">
+      <section className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 md:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/20 pb-4">
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white">
@@ -466,7 +466,7 @@ export default function SupplierDiscoveryPage() {
       {/* 2. RESULTS GRID & EXPORT TOOLS */}
       <section className="space-y-5">
         {/* Export Toolbar & Grid Header */}
-        <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl">
               <Building2 className="w-5 h-5" />
@@ -531,7 +531,7 @@ export default function SupplierDiscoveryPage() {
             return (
               <div
                 key={sup.id}
-                className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group relative"
+                className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-white/[0.32] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group relative"
               >
                 {/* Top Badge: AI Match Score */}
                 <div className="space-y-4">
@@ -560,7 +560,7 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* Supplier Key Specs Box */}
-                  <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-xl p-4 space-y-2 text-xs">
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-4 space-y-2 text-xs">
                     <div className="flex justify-between items-center">
                       <span className="text-white/80 flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-white" />
@@ -598,7 +598,7 @@ export default function SupplierDiscoveryPage() {
                   </div>
 
                   {/* AI Reasoning Analysis */}
-                  <div className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-xl p-3.5 text-xs text-white leading-relaxed">
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3.5 text-xs text-white leading-relaxed">
                     <strong className="text-white flex items-center gap-1 text-[11px] mb-1 font-bold">
                       <Sparkles className="w-3 h-3 text-white" />
                       <span>تحليل مطابقة الذكاء الاصطناعي:</span>
@@ -682,7 +682,7 @@ export default function SupplierDiscoveryPage() {
       </section>
 
       {/* Operational Assistant Banner */}
-      <section className="bg-white/10 backdrop-blur-xl border border-white/25 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <section className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
