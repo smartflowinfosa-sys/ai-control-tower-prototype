@@ -41,7 +41,17 @@ export interface InventoryItem {
   created_at?: string;
 }
 
-export interface MenuItem {
+export interface SupabaseMenuItem {
+  meal_code: string;
+  meal_name_ar: string;
+  meal_name_en?: string | null;
+  category?: string | null;
+  category_ar?: string | null;
+  category_en?: string | null;
+  created_at?: string;
+}
+
+export interface MenuItem extends Partial<SupabaseMenuItem> {
   id?: string;
   meal_name_ar: string;
   meal_name_en?: string;
@@ -49,6 +59,21 @@ export interface MenuItem {
   category_en?: string;
   price?: number;
   is_active?: boolean;
+}
+
+export interface SupabaseBomPackaging {
+  id: string;
+  meal_code: string;
+  inventory_item_code: string;
+  quantity_used: number;
+}
+
+export interface BomPackagingDetail extends SupabaseBomPackaging {
+  inventory_item?: SupabaseInventoryItem;
+}
+
+export interface MealWithPackaging extends SupabaseMenuItem {
+  packaging: BomPackagingDetail[];
 }
 
 export interface SupabaseSupplier {
@@ -983,5 +1008,157 @@ export async function addSupplierItem(
   }
 
   return newItem;
+}
+
+/**
+ * Fetch all real menu items from Supabase (109+ items)
+ */
+export async function fetchMenuItems(): Promise<SupabaseMenuItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('meal_code', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching menu_items from Supabase:', error);
+      return [];
+    }
+
+    return (data || []) as SupabaseMenuItem[];
+  } catch (err) {
+    console.error('Unexpected error in fetchMenuItems:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all BOM packaging relationships from Supabase (313+ relationships)
+ */
+export async function fetchBomPackaging(): Promise<SupabaseBomPackaging[]> {
+  try {
+    const { data, error } = await supabase
+      .from('bom_packaging')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching bom_packaging from Supabase:', error);
+      return [];
+    }
+
+    return (data || []) as SupabaseBomPackaging[];
+  } catch (err) {
+    console.error('Unexpected error in fetchBomPackaging:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch meals with joined BOM packaging items and current inventory stock
+ */
+export async function fetchMealsWithPackaging(): Promise<MealWithPackaging[]> {
+  try {
+    const [menuResult, bomResult, invResult] = await Promise.all([
+      supabase.from('menu_items').select('*').order('meal_code', { ascending: true }),
+      supabase.from('bom_packaging').select('*'),
+      supabase.from('inventory_items').select('*'),
+    ]);
+
+    const menu = (menuResult.data || []) as SupabaseMenuItem[];
+    const bom = (bomResult.data || []) as SupabaseBomPackaging[];
+    const inv = (invResult.data || []) as SupabaseInventoryItem[];
+
+    const invMap = new Map<string, SupabaseInventoryItem>();
+    inv.forEach(i => invMap.set(i.item_code.toUpperCase(), i));
+
+    const bomMap = new Map<string, BomPackagingDetail[]>();
+    bom.forEach(b => {
+      const code = b.meal_code;
+      if (!bomMap.has(code)) bomMap.set(code, []);
+      bomMap.get(code)!.push({
+        ...b,
+        inventory_item: invMap.get(b.inventory_item_code.toUpperCase()),
+      });
+    });
+
+    return menu.map(m => ({
+      ...m,
+      packaging: bomMap.get(m.meal_code) || [],
+    }));
+  } catch (err) {
+    console.error('Unexpected error in fetchMealsWithPackaging:', err);
+    return [];
+  }
+}
+
+/**
+ * Calculate packaging demand for a scheduled production batch plan
+ * Returns a map of inventory item code to total required units
+ */
+export async function calculatePackagingDemand(
+  batches: Array<{ meal_code?: string; target_quantity: number }>
+): Promise<Array<{
+  item_code: string;
+  item_name_ar: string;
+  required_units: number;
+  current_stock: number;
+  is_shortage: boolean;
+  shortage_units: number;
+}>> {
+  try {
+    const [bom, inv] = await Promise.all([
+      fetchBomPackaging(),
+      fetchInventoryItems(),
+    ]);
+
+    const invMap = new Map<string, SupabaseInventoryItem>();
+    inv.forEach(i => invMap.set(i.item_code.toUpperCase(), i));
+
+    const bomByMeal = new Map<string, SupabaseBomPackaging[]>();
+    bom.forEach(b => {
+      if (!bomByMeal.has(b.meal_code)) bomByMeal.set(b.meal_code, []);
+      bomByMeal.get(b.meal_code)!.push(b);
+    });
+
+    const demandMap = new Map<string, number>();
+    batches.forEach(batch => {
+      if (!batch.meal_code) return;
+      const materials = bomByMeal.get(batch.meal_code) || [];
+      materials.forEach(mat => {
+        const code = mat.inventory_item_code.toUpperCase();
+        const needed = (Number(mat.quantity_used) || 1) * (Number(batch.target_quantity) || 0);
+        demandMap.set(code, (demandMap.get(code) || 0) + needed);
+      });
+    });
+
+    const result: Array<{
+      item_code: string;
+      item_name_ar: string;
+      required_units: number;
+      current_stock: number;
+      is_shortage: boolean;
+      shortage_units: number;
+    }> = [];
+
+    demandMap.forEach((required_units, item_code) => {
+      const invItem = invMap.get(item_code);
+      const current_stock = Number(invItem?.current_stock) || 0;
+      const is_shortage = current_stock < required_units;
+      const shortage_units = is_shortage ? required_units - current_stock : 0;
+      result.push({
+        item_code,
+        item_name_ar: invItem?.item_name_ar || item_code,
+        required_units,
+        current_stock,
+        is_shortage,
+        shortage_units,
+      });
+    });
+
+    return result.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+  } catch (err) {
+    console.error('Error calculating packaging demand:', err);
+    return [];
+  }
 }
 

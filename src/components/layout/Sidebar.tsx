@@ -82,8 +82,8 @@ export default function Sidebar() {
         { href: '/operations/packaging', labelKey: 'nav.operationsPackaging', icon: PackageCheck },
       ],
     },
-    // Admin-only: Production (الإنتاج)
-    { href: '/production', labelKey: 'nav.production', icon: ChefHat, adminOnly: true },
+    // Production KDS (الإنتاج) - accessible to STAFF and ADMIN
+    { href: '/production', labelKey: 'nav.production', icon: ChefHat, adminOnly: false },
     // Inventory (إدارة المخزون) - accessible to STAFF and ADMIN
     { href: '/inventory', labelKey: 'nav.inventory', icon: Package, adminOnly: false },
     // Admin-only: Suppliers (الموردين)

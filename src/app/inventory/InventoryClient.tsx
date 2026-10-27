@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
+import { getKdsBatches } from '@/lib/kdsProductionStore';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
@@ -18,7 +19,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, Trash2, Plus, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, Trash2, Plus, ArrowUpDown, ChevronDown, Layers3, Box } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to ensure all digits are strictly English / Western (0-9)
@@ -244,6 +245,32 @@ export default function InventoryClient({
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [storageNotice, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Real Supabase BOM Packaging Demand State for KDS
+  const [bomDemand, setBomDemand] = useState<Array<{
+    item_code: string;
+    item_name_ar: string;
+    required_units: number;
+    current_stock: number;
+    is_shortage: boolean;
+    shortage_units: number;
+  }>>([]);
+  const [showBomDemand, setShowBomDemand] = useState(false);
+
+  useEffect(() => {
+    const syncDemand = () => {
+      const kdsBatches = getKdsBatches();
+      calculatePackagingDemand(kdsBatches).then(res => {
+        setBomDemand(res);
+      }).catch(err => console.error('Error fetching BOM demand:', err));
+    };
+
+    syncDemand();
+    window.addEventListener('kds_batches_updated', syncDemand);
+    return () => {
+      window.removeEventListener('kds_batches_updated', syncDemand);
+    };
+  }, [items]);
 
   useEffect(() => {
     const handleStorageError = (e: any) => {
@@ -976,33 +1003,111 @@ export default function InventoryClient({
             </span>
           </div>
 
-          {/* Sorting Dropdown Menu */}
-          <div className="flex items-center gap-2.5 self-start sm:self-auto">
-            <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">
-              <ArrowUpDown className="w-3.5 h-3.5 text-white/70" />
-              <span>ترتيب حسب:</span>
-            </label>
-            <div className="relative">
-              <select
-                id="smart-po-sort"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SmartPOSortOption)}
-                className="bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer appearance-none pe-8"
-              >
-                <option value="default_priority" className="bg-slate-900 text-white font-bold">
-                  الأولوية الافتراضية
-                </option>
-                <option value="highest_stock" className="bg-slate-900 text-white font-bold">
-                  الأعلى رصيداً
-                </option>
-                <option value="most_consumed" className="bg-slate-900 text-white font-bold">
-                  الأكثر استهلاكاً
-                </option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-white/60 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          {/* Controls: BOM Demand Toggle & Sorting */}
+          <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+            {/* Live BOM Packaging Demand Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowBomDemand(!showBomDemand)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                showBomDemand
+                  ? 'bg-teal-500/25 border-teal-400/40 text-teal-200 shadow-sm'
+                  : 'bg-white/10 hover:bg-white/15 border-white/20 text-white/90 hover:text-white'
+              }`}
+            >
+              <Layers3 className="w-3.5 h-3.5 text-teal-300" />
+              <span>{lang === 'en' ? 'BOM Demand (KDS Batches)' : 'احتياج التغليف لخطة المطبخ (BOM)'}</span>
+              <span className="font-mono bg-teal-500/20 px-1.5 py-0.5 rounded text-[10px] text-teal-300 font-bold border border-teal-400/20" dir="ltr">
+                {toEnglishDigits(bomDemand.reduce((acc, d) => acc + d.required_units, 0))} units
+              </span>
+            </button>
+
+            {/* Sorting Dropdown Menu */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">
+                <ArrowUpDown className="w-3.5 h-3.5 text-white/70" />
+                <span>ترتيب حسب:</span>
+              </label>
+              <div className="relative">
+                <select
+                  id="smart-po-sort"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SmartPOSortOption)}
+                  className="bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer appearance-none pe-8"
+                >
+                  <option value="default_priority" className="bg-slate-900 text-white font-bold">
+                    الأولوية الافتراضية
+                  </option>
+                  <option value="highest_stock" className="bg-slate-900 text-white font-bold">
+                    الأعلى رصيداً
+                  </option>
+                  <option value="most_consumed" className="bg-slate-900 text-white font-bold">
+                    الأكثر استهلاكاً
+                  </option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-white/60 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Live BOM Packaging Demand Panel */}
+        {showBomDemand && (
+          <div className="bg-teal-500/10 border border-teal-400/30 rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Box className="w-4 h-4 text-teal-300" />
+                <h3 className="text-sm font-bold text-white">
+                  {lang === 'en' ? 'Kitchen BOM Packaging Demand vs Stock' : 'مطابقة استهلاك مواد التغليف مع خطة وجبات اليوم (BOM)'}
+                </h3>
+              </div>
+              <span className="text-[11px] text-teal-200/80 font-mono">
+                Real-time Supabase bom_packaging join
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+              {bomDemand.map(d => {
+                const invItem = items.find(i => i.item_code.toUpperCase() === d.item_code);
+                return (
+                  <div
+                    key={d.item_code}
+                    className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all ${
+                      d.is_shortage
+                        ? 'bg-rose-500/15 border-rose-400/40 text-rose-200'
+                        : 'bg-white/5 border-white/15 text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-mono">
+                      <span className="font-bold text-teal-300">{d.item_code}</span>
+                      <span className="text-[10px] text-white/60">{toEnglishDigits(d.current_stock)} في المستودع</span>
+                    </div>
+                    <div className="font-bold truncate text-[11px]" title={d.item_name_ar}>
+                      {d.item_name_ar}
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/10 font-mono">
+                      <span className="text-white/70">المطلوب للوجبات:</span>
+                      <span className="font-bold text-white">{toEnglishDigits(d.required_units)}</span>
+                    </div>
+                    {d.is_shortage ? (
+                      <button
+                        type="button"
+                        onClick={() => invItem && handleOpenPO(invItem, Math.ceil(d.shortage_units / (CARTON_SIZES[d.item_code] || 1)))}
+                        className="w-full mt-1 py-1 rounded bg-rose-500/30 hover:bg-rose-500/50 border border-rose-400/50 text-[10px] font-bold text-rose-100 cursor-pointer transition-colors"
+                      >
+                        طلب تعويض (+{toEnglishDigits(d.shortage_units)})
+                      </button>
+                    ) : (
+                      <span className="block text-center text-[10px] text-emerald-300 font-bold bg-emerald-500/10 rounded py-0.5 border border-emerald-400/20">
+                        مغطى بالكامل ✓
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
           <table className="w-full text-center border-collapse">

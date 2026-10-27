@@ -4,6 +4,7 @@ import "./globals.css";
 import "./glass-theme.css";
 import Sidebar from "@/components/layout/Sidebar";
 import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
+import VoiceAIAgent from "@/components/voice/VoiceAIAgent";
 import { NotificationProvider } from "@/components/common/NotificationContext";
 import { LanguageProvider } from "@/components/common/LanguageContext";
 import AuthProvider from "@/components/common/AuthProvider";
@@ -61,6 +62,7 @@ export default function RootLayout({
                 {children}
               </main>
               <AIAssistantWidget />
+              <VoiceAIAgent />
               <WelcomeToast />
             </NotificationProvider>
           </LanguageProvider>
