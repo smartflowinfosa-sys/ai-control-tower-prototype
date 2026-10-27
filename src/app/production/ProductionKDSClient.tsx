@@ -338,17 +338,9 @@ export default function ProductionKDSClient() {
               <ChefHat className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm flex items-center gap-3">
-                <span>{lang === 'en' ? 'Aggregated Production KDS' : 'شاشة الإنتاج المجمع (Batch KDS)'}</span>
-                <span className="text-xs font-mono font-bold bg-white/10 text-teal-300 border border-white/20 px-2.5 py-0.5 rounded-full">
-                  Batch Board
-                </span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
+                <span>{lang === 'en' ? 'Production (KDS)' : 'الإنتاج (KDS)'}</span>
               </h1>
-              <p className="text-slate-100 font-medium text-xs sm:text-sm mt-1 drop-shadow-sm">
-                {lang === 'en'
-                  ? 'Batch preparation display for healthy diet meals — track swimlanes from In Progress to Delivered'
-                  : 'لوحة التحكم بإنتاج وجبات الحمية المجمعة — تتبع المراحل من قيد التحضير حتى التسليم النهائي'}
-              </p>
             </div>
           </div>
         </div>
@@ -382,22 +374,10 @@ export default function ProductionKDSClient() {
         </div>
       </header>
 
-      {/* 2. Search & Category Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/[0.04] border border-white/15 p-3 rounded-2xl">
-        {/* Search */}
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-white/50 absolute top-1/2 -translate-y-1/2 start-3" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={lang === 'en' ? 'Search by meal, chef, or batch code...' : 'ابحث بالصنف، الشيف، أو رمز الدفعة...'}
-            className="w-full bg-white/10 border border-white/20 rounded-xl ps-9 pe-3 py-2 text-xs text-white placeholder:text-white/50 focus:outline-none font-medium"
-          />
-        </div>
-
-        {/* Categories */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+      {/* 2. Category Filter & Search Bar (Aligned to the right side directly next to each other) */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 bg-white/[0.04] border border-white/15 p-3 rounded-2xl">
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {categories.map((cat) => (
             <button
               key={cat}
@@ -412,6 +392,18 @@ export default function ProductionKDSClient() {
               {cat === 'ALL' ? (lang === 'en' ? 'All Batches' : 'جميع الوجبات') : cat}
             </button>
           ))}
+        </div>
+
+        {/* Search Bar Placed Directly Next to Categories */}
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-white/50 absolute top-1/2 -translate-y-1/2 start-3" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={lang === 'en' ? 'Search by meal, chef, or code...' : 'ابحث بالصنف، الشيف، أو الرمز...'}
+            className="w-full bg-white/10 border border-white/20 rounded-xl ps-9 pe-3 py-2 text-xs text-white placeholder:text-white/50 focus:outline-none font-medium"
+          />
         </div>
       </div>
 
@@ -555,30 +547,16 @@ export default function ProductionKDSClient() {
                           isDone ? 'border-emerald-400/40' : ''
                         }`}
                       >
-                        {/* Top ID & Meal Code & Priority Badges */}
+                        {/* Top: Category Pill & Meal Code (Clean focus) */}
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-1.5 font-mono">
-                            <span className="text-[11px] font-extrabold text-white/90 bg-white/10 px-2 py-0.5 rounded-md border border-white/20" dir="ltr" lang="en">
-                              {toEnglishDigits(batch.id)}
+                          <span className="text-[10px] font-bold text-white/80 bg-white/10 border border-white/15 px-2 py-0.5 rounded-md">
+                            {batch.category}
+                          </span>
+                          {(batch.meal_code || batch.menuId) && (
+                            <span className="text-[11px] font-mono font-bold text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded-md border border-teal-400/30" dir="ltr" lang="en">
+                              #{toEnglishDigits(batch.meal_code || batch.menuId)}
                             </span>
-                            {batch.meal_code && (
-                              <span className="text-[10px] font-bold text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded-md border border-teal-400/30" dir="ltr" lang="en">
-                                #{toEnglishDigits(batch.meal_code)}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            {batch.priority === 'HIGH' && (
-                              <span className="text-[10px] font-bold text-rose-200 bg-rose-500/20 border border-rose-400/30 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
-                                {lang === 'en' ? 'High' : 'أولوية قصوى'}
-                              </span>
-                            )}
-                            <span className="text-[10px] text-white/70 bg-white/5 border border-white/15 px-2 py-0.5 rounded-md">
-                              {batch.category}
-                            </span>
-                          </div>
+                          )}
                         </div>
 
                         {/* Meal Title (Real Supabase Arabic & English) */}
@@ -612,14 +590,6 @@ export default function ProductionKDSClient() {
                             </div>
                           </div>
                         )}
-
-                        {/* Diet / Allergen Tag */}
-                        <div className="mt-2.5 text-[11px] text-teal-200/90 bg-teal-500/10 border border-teal-400/20 px-2 py-1 rounded-lg flex items-center justify-between font-medium">
-                          <span>{batch.dietNotes}</span>
-                          <span className="font-mono font-bold" dir="ltr" lang="en">
-                            {toEnglishDigits(batch.calories)} {lang === 'en' ? 'kcal' : 'سعرة'}
-                          </span>
-                        </div>
 
                         {/* Target Quantity & Progress */}
                         <div className="mt-3 pt-2.5 border-t border-white/10 space-y-1.5">

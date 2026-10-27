@@ -347,7 +347,7 @@ export default function AIAssistantWidget() {
           !isOpen && 'hidden'
         }`}
       >
-        {/* Header: Renamed to "Zahi AI Agent" (وكيل زاهي الذكي) */}
+        {/* Header: Zahi Agent */}
         <div className="p-4 border-b border-white/15 flex items-center justify-between bg-white/[0.04]">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
@@ -356,7 +356,7 @@ export default function AIAssistantWidget() {
               </div>
               <div>
                 <h3 className="font-extrabold text-sm tracking-wide flex items-center gap-2 text-white">
-                  <span>{lang === 'en' ? 'Zahi AI Agent' : 'وكيل زاهي الذكي'}</span>
+                  <span>Zahi Agent</span>
                   <span className="text-[10px] bg-teal-500/20 border border-teal-300/40 text-teal-200 px-2 py-0.5 rounded-full font-bold">
                     PRO
                   </span>
@@ -387,7 +387,7 @@ export default function AIAssistantWidget() {
               </div>
               <div>
                 <h4 className="font-extrabold text-base text-white">
-                  {lang === 'en' ? 'Zahi AI Operations Agent' : 'وكيل زاهي الذكي للعمليات'}
+                  Zahi Agent
                 </h4>
                 <p className="text-xs text-white/60 mt-1.5 max-w-[270px] leading-relaxed">
                   {lang === 'en'
@@ -576,7 +576,7 @@ export default function AIAssistantWidget() {
           className={`w-14 h-14 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.35)] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-md ${
             isOpen ? 'text-teal-300 rotate-90' : 'text-white'
           }`}
-          title={lang === 'en' ? 'Zahi AI Agent' : 'وكيل زاهي الذكي'}
+          title="Zahi Agent"
         >
           {isOpen ? <X className="w-6 h-6" /> : <Bot className="w-7 h-7 text-teal-300" />}
         </button>

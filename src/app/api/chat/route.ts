@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       productionTarget: 215,
     };
 
-    const systemInstruction = `أنت (وكيل زاهي الذكي - Zahi AI Agent) المسؤول عن مراقبة وتوجيه عمليات مطاعم (زاهي) وسلاسل الإمداد والمخزون والمطبخ المركزي.
+    const systemInstruction = `أنت (Zahi Agent) المسؤول عن مراقبة وتوجيه عمليات مطاعم (زاهي) وسلاسل الإمداد والمخزون والمطبخ المركزي.
 مدير العمليات يخاطبك الآن.
 القواعد:
 1. أجب بمهنية عالية، اختصار ذكي، وبصيغة Markdown واضحة ومقروءة.
@@ -114,9 +114,9 @@ ${JSON.stringify(compactContext)}
 
     // -------------------------------------------------------------
     // WATERFALL ROUTING LOGIC:
-    // Priority 1: GEMINI_API_KEY (gemini-1.5-flash / Vision & Fast)
-    // Priority 2: OPENROUTER_API_KEY (Free models / auto)
-    // Priority 3: DEEPSEEK_API_KEY (deepseek-chat)
+    // Priority 1 (Primary & Free): GEMINI_API_KEY (gemini-3.8-flash, fallback gemini-3.5-flash)
+    // Priority 2 (Secondary & Free): OPENROUTER_API_KEY (Free model meta-llama/llama-3-8b-instruct:free, no openrouter/auto)
+    // Priority 3 (Ultimate Fallback): DEEPSEEK_API_KEY (deepseek-chat)
     // -------------------------------------------------------------
 
     let replyContent: string | null = null;
@@ -124,13 +124,13 @@ ${JSON.stringify(compactContext)}
     let detectedFunctionCall: any = null;
 
     // -------------------------------------------------------------
-    // PRIORITY 1: Google Gemini (gemini-1.5-flash)
+    // PRIORITY 1: Google Gemini (gemini-3.8-flash -> gemini-3.5-flash)
     // -------------------------------------------------------------
     if (process.env.GEMINI_API_KEY && !replyContent) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Try flash models supported by the key
-        const geminiModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+        // Strict priority: gemini-3.8-flash first, falling back to gemini-3.5-flash
+        const geminiModels = ["gemini-3.8-flash", "gemini-3.5-flash"];
         for (const modelName of geminiModels) {
           try {
             const geminiModel = genAI.getGenerativeModel({ model: modelName });
@@ -147,9 +147,10 @@ ${JSON.stringify(compactContext)}
               text: `${systemInstruction}\n\nطلب مدير العمليات:\n${userPrompt}`,
             });
 
-            // Call with 10s timeout
+            // Fast timeout for 3.8 (1.5s) to quickly cascade to 3.5 (8s) if 3.8 is unavailable
+            const candidateTimeout = modelName === "gemini-3.8-flash" ? 1500 : 8000;
             const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Gemini timeout")), 10000)
+              setTimeout(() => reject(new Error(`Gemini timeout for ${modelName}`)), candidateTimeout)
             );
             const geminiCall = geminiModel.generateContent(parts);
             const response: any = await Promise.race([geminiCall, timeoutPromise]);
@@ -160,7 +161,7 @@ ${JSON.stringify(compactContext)}
               break;
             }
           } catch (mErr: any) {
-            console.warn(`Gemini model ${modelName} candidate failed:`, mErr?.message || mErr);
+            console.warn(`Gemini candidate ${modelName} failed or timed out:`, mErr?.message || mErr);
           }
         }
       } catch (geminiErr: any) {
@@ -169,21 +170,22 @@ ${JSON.stringify(compactContext)}
     }
 
     // -------------------------------------------------------------
-    // PRIORITY 2: OpenRouter (Free / auto models)
+    // PRIORITY 2: OpenRouter (Strictly Free models like meta-llama/llama-3-8b-instruct:free - NO openrouter/auto)
     // -------------------------------------------------------------
     if (process.env.OPENROUTER_API_KEY && !replyContent) {
       try {
         const openrouter = new OpenAI({
           baseURL: "https://openrouter.ai/api/v1",
           apiKey: process.env.OPENROUTER_API_KEY,
-          timeout: 12000,
+          timeout: 8000,
         });
 
-        const openRouterModels = [
-          "openrouter/auto",
-          "meta-llama/llama-3.3-70b-instruct:free",
-          "google/gemini-2.0-flash-exp:free",
-          "openrouter/free",
+        // Strictly free models, meta-llama/llama-3-8b-instruct:free prioritized, no openrouter/auto
+        const openRouterFreeModels = [
+          "meta-llama/llama-3-8b-instruct:free",
+          "google/gemma-4-26b-a4b-it:free",
+          "nvidia/nemotron-3.5-lightning:free",
+          "liquid/lfm-2.5-2.6b:free",
         ];
 
         const userContentParts: any[] = [{ type: "text", text: userPrompt }];
@@ -202,7 +204,7 @@ ${JSON.stringify(compactContext)}
           { role: "user", content: image?.data ? (userContentParts as any) : userPrompt },
         ];
 
-        for (const model of openRouterModels) {
+        for (const model of openRouterFreeModels) {
           try {
             const completion = await openrouter.chat.completions.create({
               model,
@@ -225,11 +227,11 @@ ${JSON.stringify(compactContext)}
 
             if (message?.content) {
               replyContent = message.content;
-              providerUsed = `OpenRouter (${model})`;
+              providerUsed = `OpenRouter Free (${model})`;
               break;
             }
           } catch (orErr: any) {
-            console.warn(`OpenRouter candidate ${model} failed:`, orErr?.status, orErr?.message);
+            console.warn(`OpenRouter free candidate ${model} failed:`, orErr?.status, orErr?.message);
           }
         }
       } catch (openRouterErr: any) {
@@ -301,11 +303,11 @@ ${JSON.stringify(compactContext)}
 تم إنشاء أمر شراء جديد لعدد **2,000 وحدة** من [علب صوص الدايت] للمورد [مصنع البلاستيك الوطني]، وهو بانتظار الاعتماد النهائي في سجل المشتريات.`;
       } else if (q.includes("مطبخ") || q.includes("إنتاج") || q.includes("وجبات") || q.includes("kds")) {
         replyContent = `👨‍🍳 **حالة خطوط الإنتاج المجمع (Batch KDS)**:
-- **المستهدف الإجمالي**: **215 وجبة** اليوم عبر 4 خطوط رئيسية (فطور، رئيسية، سلطات، حلى).
+- **إجمالي الإنتاج**: **215 وجبة** اليوم عبر 4 خطوط رئيسية (فطور، رئيسية، سلطات، حلى).
 - **أعلى أولوية**: دفعة دجاج بالزعتر (45 وجبة) في محطة الشوايات.
 - جميع الخطوط تعمل بوتيرة منتظمة وفق خطة الإنتاج اليومية.`;
       } else {
-        replyContent = `مرحباً بك! أنا **وكيل زاهي الذكي (Zahi AI Agent)**.
+        replyContent = `مرحباً بك! أنا **Zahi Agent**.
 أنا متصل مباشرة ببرج المراقبة لرصد:
 1. النواقص ومستويات المخزون وإصدار أوامر الشراء (PO).
 2. متابعة خطوط إنتاج المطبخ المجمع (Batch KDS).

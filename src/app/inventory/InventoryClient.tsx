@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, SupabaseMenuItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand, fetchMenuItems } from '@/lib/supabaseService';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { getKdsBatches } from '@/lib/kdsProductionStore';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
@@ -256,6 +256,29 @@ export default function InventoryClient({
     shortage_units: number;
   }>>([]);
   const [showBomDemand, setShowBomDemand] = useState(false);
+
+  // Real Supabase Menu Items (109+ live items e.g. بان كيك جبنه قريش, تونه كلوب)
+  const [supabaseMenuItems, setSupabaseMenuItems] = useState<SupabaseMenuItem[]>([]);
+  const [isLoadingMenuItems, setIsLoadingMenuItems] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingMenuItems(true);
+    fetchMenuItems()
+      .then((data) => {
+        if (isMounted) {
+          setSupabaseMenuItems(data || []);
+          setIsLoadingMenuItems(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching Supabase menu items:', err);
+        if (isMounted) setIsLoadingMenuItems(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const syncDemand = () => {
@@ -900,13 +923,31 @@ export default function InventoryClient({
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving */}
           {isAuthorized && (
-            <button
-              onClick={() => openReceiveModal()}
-              className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <PackageCheck className="w-4 h-4 shrink-0 text-white" />
-              <span>استلام مخزون</span>
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const defaultItem = items[0] || (supabaseMenuItems[0] ? {
+                    item_code: supabaseMenuItems[0].meal_code,
+                    item_name_ar: supabaseMenuItems[0].meal_name_ar,
+                    current_stock: 0,
+                    reorder_level: 0,
+                  } : null);
+                  if (defaultItem) handleOpenPO(defaultItem);
+                }}
+                className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 shrink-0 text-teal-300" />
+                <span>{lang === 'en' ? 'New Purchase Order' : 'أمر شراء جديد'}</span>
+              </button>
+
+              <button
+                onClick={() => openReceiveModal()}
+                className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <PackageCheck className="w-4 h-4 shrink-0 text-white" />
+                <span>{lang === 'en' ? 'Receive Inventory' : 'استلام مخزون'}</span>
+              </button>
+            </>
           )}
 
           <Link
@@ -1284,6 +1325,83 @@ export default function InventoryClient({
 
               {/* Landscape Multi-Column Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 0. Real Supabase Menu Item Selection Dropdown (109 items) */}
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="block text-xs font-bold text-white flex justify-between items-center">
+                    <span>{lang === 'en' ? 'Select Meal / Item from Database:' : 'اختيار الصنف / الوجبة من قاعدة البيانات:'}</span>
+                    {isLoadingMenuItems ? (
+                      <span className="text-[11px] text-teal-300 flex items-center gap-1 font-sans">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {lang === 'en' ? 'Fetching 109 items from Supabase...' : 'جاري تحميل الـ 109 صنف من Supabase...'}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
+                        {toEnglishDigits(supabaseMenuItems.length)} {lang === 'en' ? 'real meals loaded' : 'صنف متصل بقاعدة البيانات'}
+                      </span>
+                    )}
+                  </label>
+                  <GlassSelect
+                    value={selectedItemForPO.item_code}
+                    onChange={async (e) => {
+                      const newCode = e.target.value;
+                      const meal = supabaseMenuItems.find(m => m.meal_code === newCode);
+                      if (meal) {
+                        const updated: SupabaseInventoryItem = {
+                          item_code: meal.meal_code,
+                          item_name_ar: meal.meal_name_ar,
+                          item_name_en: meal.meal_name_en || meal.meal_name_ar,
+                          category_ar: meal.category_ar || 'عام',
+                          current_stock: 0,
+                          reorder_level: 0,
+                          cost_per_unit: 1.0,
+                        };
+                        setSelectedItemForPO(updated);
+                      } else {
+                        const inv = items.find(i => i.item_code === newCode);
+                        if (inv) setSelectedItemForPO(inv);
+                      }
+                      setIsLoadingSuppliers(true);
+                      try {
+                        const dbSuppliers = await fetchSuppliersForItem(newCode);
+                        if (dbSuppliers && dbSuppliers.length > 0) {
+                          setItemSuppliers(prev => ({ ...prev, [newCode]: dbSuppliers }));
+                          setSelectedSupplier(dbSuppliers[0].name);
+                        } else {
+                          setSelectedSupplier(initialSuppliers[0]?.name || 'الصندوق المناسب');
+                        }
+                      } catch {
+                        setSelectedSupplier(initialSuppliers[0]?.name || 'الصندوق المناسب');
+                      } finally {
+                        setIsLoadingSuppliers(false);
+                      }
+                    }}
+                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none cursor-pointer"
+                  >
+                    {isLoadingMenuItems ? (
+                      <option value="" className="bg-zinc-900 text-white">
+                        {lang === 'en' ? 'Loading menu items from Supabase...' : 'جاري تحميل الوجبات من قاعدة البيانات...'}
+                      </option>
+                    ) : (
+                      <>
+                        <optgroup label={lang === 'en' ? 'Real Menu Items (Supabase 109 items)' : 'قائمة الوجبات الحية (قاعدة بيانات Supabase)'}>
+                          {supabaseMenuItems.map((meal) => (
+                            <option key={meal.meal_code} value={meal.meal_code} className="bg-zinc-900 text-white py-1">
+                              [{meal.meal_code}] {meal.meal_name_ar} {meal.category_ar ? `• ${meal.category_ar}` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label={lang === 'en' ? 'Packaging & Operational Items' : 'أصناف التغليف ومواد التشغيل'}>
+                          {items.map((it) => (
+                            <option key={it.item_code} value={it.item_code} className="bg-zinc-900 text-white py-1">
+                              [{it.item_code}] {getItemDisplayName(it)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
+                    )}
+                  </GlassSelect>
+                </div>
+
                 {/* 1. Supplier Selection (Real Approved Mappings from Supabase supplier_items) */}
                 <div className="space-y-1.5 flex flex-col justify-between">
                   <label className="block text-xs font-bold text-white flex justify-between items-center">
@@ -1637,15 +1755,33 @@ export default function InventoryClient({
                             className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
                           >
                             <option value="" disabled className="bg-slate-900 text-white/60">
-                              اختر الصنف من القائمة...
+                              {isLoadingMenuItems
+                                ? (lang === 'en' ? '⏳ Loading menu items from Supabase...' : '⏳ جاري جلب قائمة الأصناف من قاعدة البيانات...')
+                                : (lang === 'en' ? 'Select meal / item from list...' : 'اختر الصنف / الوجبة من القائمة...')}
                             </option>
-                            {[...STANDARD_ITEM_CODES]
-                              .sort((a, b) => compareItemCodes(a.code, b.code))
-                              .map((c) => (
-                                <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
-                                  {c.code} - {c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code])} حبة/كرتون`})
-                                </option>
-                              ))}
+                            {isLoadingMenuItems && (
+                              <option disabled className="bg-slate-900 text-teal-300">
+                                {lang === 'en' ? 'Fetching 109 items from Supabase...' : 'جاري تحميل الـ 109 صنف من Supabase...'}
+                              </option>
+                            )}
+                            {supabaseMenuItems.length > 0 && (
+                              <optgroup label={lang === 'en' ? 'Real Menu Items (Supabase 109 items)' : 'قائمة الوجبات الحية (قاعدة بيانات Supabase)'}>
+                                {supabaseMenuItems.map((meal) => (
+                                  <option key={meal.meal_code} value={meal.meal_code} className="bg-slate-900 text-white py-1">
+                                    [{meal.meal_code}] {meal.meal_name_ar} {meal.category_ar ? `• ${meal.category_ar}` : ''}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <optgroup label={lang === 'en' ? 'Operational & Packaging Materials' : 'مواد التغليف والتوريد'}>
+                              {[...STANDARD_ITEM_CODES]
+                                .sort((a, b) => compareItemCodes(a.code, b.code))
+                                .map((c) => (
+                                  <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
+                                    [{c.code}] {c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code])} حبة/كرتون`})
+                                  </option>
+                                ))}
+                            </optgroup>
                           </select>
                         </div>
 

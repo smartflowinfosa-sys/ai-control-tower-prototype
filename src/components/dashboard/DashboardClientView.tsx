@@ -113,28 +113,15 @@ export default function DashboardClientView() {
               <Layers className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm flex items-center gap-3">
-                <span>{lang === 'en' ? 'Central Operations Control Tower' : 'برج مراقبة العمليات وسلاسل الإمداد'}</span>
-                <span className="text-xs font-mono font-bold bg-white/10 text-emerald-300 border border-white/20 px-2.5 py-0.5 rounded-full hidden sm:inline-block">
-                  v2.0 PRO
-                </span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
+                <span>{lang === 'en' ? 'Dashboard' : 'لوحة التحكم'}</span>
               </h1>
-              <p className="text-slate-100 font-medium text-xs sm:text-sm mt-1 drop-shadow-sm">
-                {lang === 'en'
-                  ? 'Unified command center: live inventory shortages, active purchase orders, and batch kitchen production'
-                  : 'منظومة القيادة الموحدة: رصد النواقص الحرجة، أوامر الشراء النشطة، وخطوط الإنتاج المجمع لحظياً'}
-              </p>
             </div>
           </div>
         </div>
 
-        {/* Live Status & Quick KDS Link */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-bold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>{lang === 'en' ? 'Control Tower Active' : 'برج المراقبة نشط'}</span>
-          </div>
-
+        {/* Quick KDS Link */}
+        <div className="flex items-center gap-3">
           <Link
             href="/production"
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white text-xs font-bold transition-all shadow-sm cursor-pointer group"
@@ -146,8 +133,8 @@ export default function DashboardClientView() {
         </div>
       </header>
 
-      {/* 2. Four Operational Metric Glassmorphism Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* 2. Three Operational Metric Glassmorphism Cards */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: نواقص حرجة (Critical Inventory) */}
         <Link
           href="/inventory"
@@ -218,82 +205,83 @@ export default function DashboardClientView() {
           </div>
         </Link>
 
-        {/* Card 3: المستهدف الإجمالي للإنتاج (Total Production Target - Consolidated) */}
+        {/* Card 3: ملخص الإنتاج اليومي (Daily Production Summary - Consolidated) */}
         <Link
           href="/production"
           className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] hover:border-teal-400/50 rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between group cursor-pointer"
         >
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <span className="text-xs font-bold text-white/75">
-                {lang === 'en' ? 'Total Production Target' : 'المستهدف الإجمالي للإنتاج'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <ChefHat className="w-3.5 h-3.5 text-teal-300" />
+                <span className="text-xs font-bold text-white/75">
+                  {lang === 'en' ? 'Daily Production Summary' : 'ملخص الإنتاج اليومي'}
+                </span>
+              </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl sm:text-4xl font-extrabold text-white font-mono" dir="ltr" lang="en">
-                  {toEnglishDigits(TOTAL_PRODUCTION_TARGET)}
+                  {toEnglishDigits(kdsStats.totalTarget || TOTAL_PRODUCTION_TARGET)}
                 </span>
                 <span className="text-xs font-medium text-white/60">
-                  {lang === 'en' ? 'meals' : 'وجبة'}
+                  {lang === 'en' ? 'target meals' : 'وجبة مستهدفة'}
                 </span>
               </div>
             </div>
-            <div className="p-3 rounded-xl bg-teal-500/15 border border-teal-400/30 text-teal-300 shadow-[0_0_15px_rgba(45,212,191,0.25)] group-hover:scale-105 transition-transform">
-              <ChefHat className="w-6 h-6" />
-            </div>
-          </div>
 
-          <div className="pt-4 border-t border-white/10 mt-4 flex items-center justify-between text-xs">
-            <span className="text-teal-300 font-semibold flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 text-amber-300" />
-              {lang === 'en' ? 'Master Daily Production Plan' : 'إجمالي خطة الإنتاج اليومية'}
-            </span>
-            <span className="text-white/50 group-hover:text-white font-mono font-bold flex items-center">
-              {lang === 'en' ? 'KDS Board' : 'شاشة الإنتاج'} <ChevronRight className="w-3.5 h-3.5" />
-            </span>
-          </div>
-        </Link>
-
-        {/* Card 4: نسبة الإنجاز (Completion Rate - dynamically reactive to KDS board) */}
-        <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] hover:bg-white/[0.09] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <span className="text-xs font-bold text-white/75">
-                {lang === 'en' ? 'Completion Rate' : 'نسبة الإنجاز'}
-              </span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl sm:text-4xl font-extrabold text-emerald-300 font-mono" dir="ltr" lang="en">
+            {/* Sleek Circular Progress Ring */}
+            <div className="relative flex items-center justify-center w-14 h-14 shrink-0 group-hover:scale-105 transition-transform">
+              <svg className="w-14 h-14 -rotate-90" viewBox="0 0 52 52">
+                <circle
+                  cx="26"
+                  cy="26"
+                  r="21"
+                  className="stroke-white/10"
+                  strokeWidth="4"
+                  fill="transparent"
+                />
+                <circle
+                  cx="26"
+                  cy="26"
+                  r="21"
+                  className="stroke-emerald-400 transition-all duration-700 ease-out"
+                  strokeWidth="4"
+                  strokeDasharray={131.95}
+                  strokeDashoffset={131.95 - (131.95 * Math.min(100, Math.max(0, kdsStats.completionRate))) / 100}
+                  strokeLinecap="round"
+                  fill="transparent"
+                  style={{
+                    filter: 'drop-shadow(0 0 6px rgba(52, 211, 153, 0.6))',
+                  }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xs font-extrabold font-mono text-emerald-300 drop-shadow-sm" dir="ltr" lang="en">
                   {toEnglishDigits(kdsStats.completionRate)}%
                 </span>
-                <span className="text-xs font-medium text-white/60">
-                  {lang === 'en' ? 'progress' : 'إنجاز مهام اليوم'}
-                </span>
               </div>
-            </div>
-            <div className="p-3 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
-              <CheckCircle2 className="w-6 h-6" />
             </div>
           </div>
 
-          <div className="pt-3 mt-3 space-y-2">
-            {/* Glowing Progress Bar */}
-            <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden p-0.5 border border-white/15">
+          {/* Minimalist Progress Bar & Live Status */}
+          <div className="pt-3 mt-3 border-t border-white/10 space-y-2">
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden p-0.5 border border-white/15">
               <div
-                className="bg-gradient-to-r from-emerald-500 to-teal-300 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_#10b981]"
+                className="bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-300 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_#10b981]"
                 style={{ width: `${Math.min(100, Math.max(0, kdsStats.completionRate))}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[11px] text-white/60 font-medium">
-              <span>
+            <div className="flex items-center justify-between text-xs text-white/70 font-medium">
+              <span className="text-white/80">
                 {lang === 'en'
-                  ? `${toEnglishDigits(kdsStats.readyUnits)} of ${toEnglishDigits(kdsStats.totalTarget)} units ready`
-                  : `تم إنجاز ${toEnglishDigits(kdsStats.readyUnits)} من ${toEnglishDigits(kdsStats.totalTarget)} وجبة`}
+                  ? `${toEnglishDigits(kdsStats.readyUnits)} of ${toEnglishDigits(kdsStats.totalTarget || TOTAL_PRODUCTION_TARGET)} ready`
+                  : `تم إنجاز ${toEnglishDigits(kdsStats.readyUnits)} من ${toEnglishDigits(kdsStats.totalTarget || TOTAL_PRODUCTION_TARGET)} وجبة`}
               </span>
-              <span className="text-emerald-300 font-bold font-mono" dir="ltr" lang="en">
-                {lang === 'en' ? 'Live KDS' : 'محدث لحظياً'}
+              <span className="text-white/50 group-hover:text-emerald-300 font-mono font-bold flex items-center gap-1 transition-colors">
+                {lang === 'en' ? 'KDS Board' : 'شاشة الإنتاج'} <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
           </div>
-        </div>
+        </Link>
       </section>
 
       {/* 3. Recharts Visual Analytics Section */}
