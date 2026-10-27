@@ -5,13 +5,18 @@ export interface KPIWidgetProps {
   subtitle?: string;
 }
 
-// Ensure numbers are displayed with English digits (0-9)
+// Ensure numbers are displayed strictly with English digits (0-9)
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return str.toLocaleString('en-US');
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
   }
-  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const num = Number(clean);
+  if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+  }
+  return clean;
 };
 
 export default function KPIWidget({ title, value, subtitle }: KPIWidgetProps) {

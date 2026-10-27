@@ -25,6 +25,7 @@ import {
   fetchPurchaseOrders,
   createPurchaseOrder,
   fetchAllSupplierItems,
+  fetchSuppliersForItem,
   SupabasePurchaseOrder,
   SupabaseSupplierItem
 } from '@/lib/supabaseService';
@@ -62,13 +63,18 @@ import {
   RotateCcw
 } from 'lucide-react';
 
-// Helper to ensure all digits are English (0-9)
+// Helper to ensure all digits are strictly English / Western (0-9)
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return str.toLocaleString('en-US');
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
   }
-  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const num = Number(clean);
+  if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+  }
+  return clean;
 };
 
 interface SuppliersClientProps {
@@ -165,6 +171,8 @@ export default function SuppliersClient({
   const [isEditingPO, setIsEditingPO] = useState<boolean>(false);
   const [editPOQuantity, setEditPOQuantity] = useState<number>(0);
   const [editPOSupplier, setEditPOSupplier] = useState<string>('');
+  const [poAvailableSuppliers, setPoAvailableSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingPOSuppliers, setIsLoadingPOSuppliers] = useState<boolean>(false);
 
   // Supplier Add / Edit Modal State
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState<boolean>(false);
@@ -387,7 +395,7 @@ export default function SuppliersClient({
         quantity,
         total_cost: totalCost,
         status: 'PENDING_APPROVAL',
-        created_by: 'AI_AGENT',
+        created_by: 'HUMAN',
       });
 
       // 3. RE-FETCH the entire PO list from Supabase (strictly ensuring tracking table reflects single true state)
@@ -431,11 +439,71 @@ export default function SuppliersClient({
     );
   };
 
-  const handleOpenEditPO = () => {
+  const handleOpenEditPO = async () => {
     if (!selectedPO) return;
     setEditPOQuantity(selectedPO.quantity);
     setEditPOSupplier(selectedPO.supplierName);
     setIsEditingPO(true);
+
+    // Resolve the itemCode for the specific item being edited
+    const itemCode = (
+      selectedPO.itemId ||
+      availableItems.find(i =>
+        i.item_name_ar === selectedPO.itemName ||
+        i.item_name_en === selectedPO.itemName ||
+        i.item_code === selectedPO.itemId
+      )?.item_code ||
+      mockInventoryItems.find(i =>
+        i.item_name_ar === selectedPO.itemName ||
+        i.item_name_en === selectedPO.itemName ||
+        i.item_code === selectedPO.itemId
+      )?.item_code ||
+      ''
+    ).trim().toUpperCase();
+
+    // 1. Initial resolution from allSupplierItems & suppliers for instant zero-latency display
+    const localMatches = allSupplierItems.filter(
+      si => (si.inventory_item_code || '').trim().toUpperCase() === itemCode && si.is_available !== false
+    );
+
+    const initialList: Array<{ id: string; name: string }> = [];
+    const seen = new Set<string>();
+
+    for (const rel of localMatches) {
+      const sup = suppliers.find(s => s.id === rel.supplier_id);
+      const name = (lang === 'en' ? (sup?.name_en || sup?.name_ar || sup?.name) : (sup?.name_ar || sup?.name)) || rel.suppliers?.name_ar || '';
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        initialList.push({ id: rel.supplier_id, name });
+      }
+    }
+
+    if (initialList.length > 0) {
+      setPoAvailableSuppliers(initialList);
+      if (!initialList.some(s => s.name === selectedPO.supplierName)) {
+        setEditPOSupplier(initialList[0].name);
+      }
+    } else if (selectedPO.supplierName) {
+      setPoAvailableSuppliers([{ id: selectedPO.supplier_id || selectedPO.supplierId || 'curr', name: selectedPO.supplierName }]);
+    }
+
+    // 2. Dynamic fetch directly from Supabase supplier_items junction table
+    if (itemCode) {
+      setIsLoadingPOSuppliers(initialList.length === 0);
+      try {
+        const dbSuppliers = await fetchSuppliersForItem(itemCode);
+        if (dbSuppliers && dbSuppliers.length > 0) {
+          setPoAvailableSuppliers(dbSuppliers);
+          if (!dbSuppliers.some(s => s.name === selectedPO.supplierName)) {
+            setEditPOSupplier(dbSuppliers[0].name);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch suppliers for PO item:', err);
+      } finally {
+        setIsLoadingPOSuppliers(false);
+      }
+    }
   };
 
   const handleSavePOEdit = () => {
@@ -444,11 +512,15 @@ export default function SuppliersClient({
     const matchedItem = availableItems.find(i => i.item_name_ar === selectedPO.itemName || i.item_code === selectedPO.itemId);
     const unitCost = matchedItem?.cost_per_unit || 0.5;
     const newTotalCost = Number((editPOQuantity * unitCost).toFixed(2));
+    const matchedSupplier = poAvailableSuppliers.find(s => s.name === editPOSupplier) ||
+      suppliers.find(s => s.name_ar === editPOSupplier || s.name_en === editPOSupplier || s.name === editPOSupplier);
 
     const updatedPO: PurchaseOrder = {
       ...selectedPO,
       quantity: editPOQuantity,
       supplierName: editPOSupplier,
+      supplier_id: matchedSupplier?.id || selectedPO.supplier_id,
+      supplierId: matchedSupplier?.id || selectedPO.supplierId,
       totalCost: newTotalCost,
     };
 
@@ -900,18 +972,18 @@ export default function SuppliersClient({
         {/* PO Table */}
         <div className="glass-card bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className={`w-full text-sm text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+            <table className="w-full text-sm text-white">
               <thead className="bg-white/8 text-white/80 text-xs font-bold border-b border-white/20">
                 <tr>
-                  <th className="px-5 py-4">{lang === 'en' ? 'PO #' : 'رقم الأمر'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Assigned Supplier' : 'المورد المعتمد'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Quantity' : 'الكمية'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Estimated Cost' : 'التكلفة التقديرية'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Origin' : 'المُنشئ'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Created At' : 'توقيت الإنشاء'}</th>
-                  <th className="px-5 py-4">{lang === 'en' ? 'Live Status' : 'الحالة الحركية'}</th>
-                  <th className="px-5 py-4 text-center">{lang === 'en' ? 'Action' : 'إجراء'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'PO #' : 'رقم الأمر'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Assigned Supplier' : 'المورد المعتمد'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Quantity' : 'الكمية'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Estimated Cost' : 'التكلفة التقديرية'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Origin' : 'المُنشئ'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Created At' : 'توقيت الإنشاء'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Live Status' : 'الحالة الحركية'}</th>
+                  <th className="px-4 py-3.5 text-center font-bold">{lang === 'en' ? 'Action' : 'إجراء'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/15">
@@ -939,112 +1011,121 @@ export default function SuppliersClient({
                           className="hover:bg-white/15 transition-colors group"
                         >
                           {/* ID */}
-                          <td className="px-5 py-4 font-mono font-bold text-white">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPO(po);
-                                setIsEditingPO(false);
-                              }}
-                              className="hover:underline decoration-white/50 flex items-center gap-1 group/btn cursor-pointer"
-                              title={lang === 'en' ? 'View PO details' : 'عرض تفاصيل أمر الشراء'}
-                            >
-                              <span>{toEnglishDigits(po.id)}</span>
-                              <ExternalLink className="w-3 h-3 text-white/65 opacity-70 group-hover/btn:opacity-100 transition-opacity" />
-                            </button>
+                          <td className="px-4 py-3.5 font-mono font-bold text-white text-center">
+                            <div className="flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPO(po);
+                                  setIsEditingPO(false);
+                                }}
+                                className="hover:underline decoration-white/50 inline-flex items-center gap-1 group/btn cursor-pointer"
+                                title={lang === 'en' ? 'View PO details' : 'عرض تفاصيل أمر الشراء'}
+                              >
+                                <span dir="ltr" lang="en">{toEnglishDigits(po.id)}</span>
+                                <ExternalLink className="w-3 h-3 text-white/65 opacity-70 group-hover/btn:opacity-100 transition-opacity" />
+                              </button>
+                            </div>
                           </td>
 
                           {/* Item Name */}
-                          <td className="px-5 py-4 font-bold text-white">
+                          <td className="px-4 py-3.5 font-bold text-white text-center">
                             {po.itemName}
                           </td>
 
                           {/* Supplier Name */}
-                          <td className="px-5 py-4 text-white/80 font-medium">
-                            <div className="flex items-center gap-1.5">
+                          <td className="px-4 py-3.5 text-white/80 font-medium text-center">
+                            <div className="flex items-center justify-center gap-1.5">
                               <Building2 className="w-4 h-4 text-white/65 shrink-0" />
                               <span>{po.supplierName}</span>
                             </div>
                           </td>
 
                           {/* Quantity */}
-                          <td className="px-5 py-4 font-bold text-white font-mono">
+                          <td className="px-4 py-3.5 font-bold text-white font-mono text-center" dir="ltr" lang="en">
                             {toEnglishDigits(po.quantity.toLocaleString('en-US'))}
                           </td>
 
                           {/* Total Cost */}
-                          <td className="px-5 py-4 font-bold text-white font-mono">
-                            {toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
+                          <td className="px-4 py-3.5 font-bold text-white font-mono text-center" dir="ltr" lang="en">
+                            <span>{toEnglishDigits(po.totalCost.toLocaleString('en-US'))}</span>{' '}
+                            <span className="text-xs font-normal text-white/70">{lang === 'en' ? 'SAR' : 'ر.س'}</span>
                           </td>
 
                           {/* Created By */}
-                          <td className="px-5 py-4">
-                            {po.createdBy === 'AI_AGENT' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                                <Bot className="w-3.5 h-3.5 text-white" />
-                                <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/10 backdrop-blur-md border border-white/20 text-white/80">
-                                <User className="w-3.5 h-3.5 text-white/65" />
-                                <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
-                              </span>
-                            )}
+                          <td className="px-4 py-3.5 text-center">
+                            <div className="flex items-center justify-center">
+                              {po.createdBy === 'AI_AGENT' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                  <Bot className="w-3.5 h-3.5 text-white" />
+                                  <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/10 backdrop-blur-md border border-white/20 text-white/90">
+                                  <User className="w-3.5 h-3.5 text-white/80" />
+                                  <span>{lang === 'en' ? 'System User' : 'مستخدم النظام'}</span>
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Created At */}
-                          <td className="px-5 py-4 text-xs text-white/80 font-medium font-mono">
+                          <td className="px-4 py-3.5 text-xs text-white/80 font-medium font-mono text-center" dir="ltr" lang="en">
                             {toEnglishDigits(po.createdAt)}
                           </td>
 
                           {/* Status */}
-                          <td className="px-5 py-4">
-                            {po.status === 'PENDING_APPROVAL' && (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-200">
-                                <Clock className="w-3.5 h-3.5 text-rose-200 animate-pulse" />
-                                <span>{lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة'}</span>
-                              </span>
-                            )}
+                          <td className="px-4 py-3.5 text-center">
+                            <div className="flex items-center justify-center">
+                              {po.status === 'PENDING_APPROVAL' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 border border-rose-400/30 text-rose-200">
+                                  <Clock className="w-3.5 h-3.5 text-rose-200 animate-pulse" />
+                                  <span>{lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة'}</span>
+                                </span>
+                              )}
 
-                            {po.status === 'SENT' && (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                                <motion.div
-                                  animate={{ y: [0, -3, 0] }}
-                                  transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                                >
-                                  <Mail className="w-3.5 h-3.5 text-white" />
-                                </motion.div>
-                                <span>{lang === 'en' ? 'Email Dispatched' : 'تم إرسال الإيميل'}</span>
-                              </span>
-                            )}
+                              {po.status === 'SENT' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                  <motion.div
+                                    animate={{ y: [0, -3, 0] }}
+                                    transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                                  >
+                                    <Mail className="w-3.5 h-3.5 text-white" />
+                                  </motion.div>
+                                  <span>{lang === 'en' ? 'Email Dispatched' : 'تم إرسال الإيميل'}</span>
+                                </span>
+                              )}
 
-                            {po.status === 'IN_TRANSIT' && (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-200">
-                                <Loader2 className="w-3.5 h-3.5 text-amber-200 animate-spin" />
-                                <span>{lang === 'en' ? 'In Transit' : 'جاري التوصيل'}</span>
-                              </span>
-                            )}
+                              {po.status === 'IN_TRANSIT' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-200">
+                                  <Loader2 className="w-3.5 h-3.5 text-amber-200 animate-spin" />
+                                  <span>{lang === 'en' ? 'In Transit' : 'جاري التوصيل'}</span>
+                                </span>
+                              )}
 
-                            {po.status === 'APPROVED' && (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                                <BadgeCheck className="w-3.5 h-3.5 text-white" />
-                                <span>{lang === 'en' ? 'Approved' : 'معتمد'}</span>
-                              </span>
-                            )}
+                              {po.status === 'APPROVED' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
+                                  <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                                  <span>{lang === 'en' ? 'Approved' : 'معتمد'}</span>
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Action Quick Button */}
-                          <td className="px-5 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPO(po);
-                                setIsEditingPO(false);
-                              }}
-                              className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
-                            >
-                              {lang === 'en' ? 'Details' : 'التفاصيل'}
-                            </button>
+                          <td className="px-4 py-3.5 text-center">
+                            <div className="flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPO(po);
+                                  setIsEditingPO(false);
+                                }}
+                                className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
+                              >
+                                {lang === 'en' ? 'Details' : 'التفاصيل'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2026,9 +2107,14 @@ export default function SuppliersClient({
                         type="number"
                         step="0.01"
                         min="0.01"
+                        dir="ltr"
+                        lang="en"
                         required
                         value={agreedUnitPrice}
-                        onChange={(e) => setAgreedUnitPrice(Number(e.target.value))}
+                        onChange={(e) => {
+                          const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                          setAgreedUnitPrice(clean === '' ? 0 : Number(clean));
+                        }}
                         className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
                       />
                     </div>
@@ -2069,92 +2155,120 @@ export default function SuppliersClient({
 
       {/* Modal: View & Edit Purchase Order Details (PO Modal) */}
       {selectedPO && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
-          <div className="font-sans bg-zinc-950/90 rounded-2xl w-full max-w-lg p-6 space-y-5 text-white border border-white/20 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="font-sans bg-black/75 backdrop-blur-2xl rounded-3xl w-full max-w-4xl lg:max-w-5xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
             
-            {/* Edit Button in Header (Far Left) */}
-            <button
-              type="button"
-              onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
-              className="absolute left-6 top-6 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all cursor-pointer z-10"
-              title={lang === 'en' ? 'Edit purchase order details' : 'تعديل تفاصيل أمر الشراء'}
-            >
-              <Edit2 size={16} className="text-white/65" />
-              <span>{isEditingPO ? (lang === 'en' ? 'Cancel' : 'إلغاء') : (lang === 'en' ? 'Edit' : 'تعديل')}</span>
-            </button>
-
-            {/* Header */}
-            <div className="flex justify-between items-start border-b border-white/14 pb-3 pl-20">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-white/15 pb-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white/65">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md border border-white/25 flex items-center justify-center text-teal-300 shrink-0 shadow-inner">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">
-                    {lang === 'en' ? `Purchase Order Details (${toEnglishDigits(selectedPO.id)})` : `تفاصيل أمر الشراء (${toEnglishDigits(selectedPO.id)})`}
+                  <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
+                    <span>{lang === 'en' ? 'Purchase Order Details' : 'تفاصيل أمر الشراء'}</span>
+                    <span className="font-mono text-xs text-teal-200 bg-teal-500/20 border border-teal-400/30 px-2 py-0.5 rounded-lg" dir="ltr" lang="en">
+                      {toEnglishDigits(selectedPO.id)}
+                    </span>
                   </h3>
-                  <p className="text-xs text-white/65 mt-0.5">
+                  <p className="text-[11px] text-white/65 font-medium mt-0.5">
                     {lang === 'en' ? 'Official Procurement Record with Suppliers Network' : 'سجل التوريد الرسمي لدى شبكة الموردين'}
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setSelectedPO(null);
-                  setIsEditingPO(false);
-                }}
-                className="text-white/65 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors border border-white/20"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {/* Action Buttons: Edit Toggle & Close (X) Button */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all cursor-pointer"
+                  title={lang === 'en' ? 'Edit purchase order details' : 'تعديل تفاصيل أمر الشراء'}
+                >
+                  <Edit2 size={14} className="text-white/80" />
+                  <span>{isEditingPO ? (lang === 'en' ? 'Cancel' : 'إلغاء') : (lang === 'en' ? 'Edit' : 'تعديل')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPO(null);
+                    setIsEditingPO(false);
+                  }}
+                  className="text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/20 p-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center w-9 h-9"
+                  aria-label={lang === 'en' ? 'Close' : 'إلغاء'}
+                  title={lang === 'en' ? 'Close' : 'إغلاق'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Edit Mode Form */}
             {isEditingPO ? (
-              <div className="bg-white/5 rounded-2xl p-4 border border-white/20 space-y-3.5 text-sm">
-                <div className="text-center font-bold text-white border-b border-white/14 pb-2">
-                  {lang === 'en' ? 'Edit Purchase Order Details' : 'تعديل بيانات أمر الشراء'}
+              <div className="bg-white/[0.04] rounded-2xl p-4 sm:p-5 border border-white/20 space-y-4 text-sm">
+                <div className="font-bold text-white border-b border-white/15 pb-2 flex items-center justify-between">
+                  <span>{lang === 'en' ? 'Edit Purchase Order Details' : 'تعديل بيانات أمر الشراء'}</span>
+                  <span className="font-mono text-xs text-white/60" dir="ltr" lang="en">{toEnglishDigits(selectedPO.id)}</span>
                 </div>
 
-                <div className="space-y-1 text-center">
-                  <label className="text-xs font-bold text-white">
-                    {lang === 'en' ? 'Assigned Supplier:' : 'المورد المعتمد:'}
-                  </label>
-                  <GlassSelect
-                    value={editPOSupplier}
-                    onChange={(e) => setEditPOSupplier(e.target.value)}
-                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:text-center"
-                  >
-                    {suppliers.map(s => {
-                      const name = lang === 'en' ? (s.name_en || s.name_ar || s.name) : (s.name_ar || s.name);
-                      const city = lang === 'en' ? (s.location_en || s.location_ar || s.city) : (s.location_ar || s.city);
-                      return (
-                        <option key={s.id} value={name}>{name} ({city})</option>
-                      );
-                    })}
-                  </GlassSelect>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-white">
+                      {lang === 'en' ? 'Assigned Supplier:' : 'المورد المعتمد:'}
+                    </label>
+                    <GlassSelect
+                      value={editPOSupplier}
+                      onChange={(e) => setEditPOSupplier(e.target.value)}
+                      disabled={isLoadingPOSuppliers || poAvailableSuppliers.length === 0}
+                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
+                    >
+                      {isLoadingPOSuppliers ? (
+                        <option value="" className="bg-slate-900 text-white">
+                          {lang === 'en' ? 'Loading approved suppliers...' : 'جاري جلب الموردين المعتمدين لهذا الصنف...'}
+                        </option>
+                      ) : poAvailableSuppliers.length === 0 ? (
+                        <option value={editPOSupplier || selectedPO.supplierName} className="bg-slate-900 text-white">
+                          {editPOSupplier || selectedPO.supplierName || (lang === 'en' ? 'No approved supplier registered' : 'لا يوجد مورد معتمد مسجل لهذا الصنف')}
+                        </option>
+                      ) : (
+                        poAvailableSuppliers.map(s => (
+                          <option key={s.id} value={s.name} className="bg-slate-900 text-white">
+                            {s.name}
+                          </option>
+                        ))
+                      )}
+                    </GlassSelect>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-white flex justify-between items-center">
+                      <span>{lang === 'en' ? 'Requested Quantity (Units):' : 'الكمية المطلوبة (وحدة):'}</span>
+                      <span className="text-[10px] text-white/50 font-mono">0-9</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="100"
+                      dir="ltr"
+                      lang="en"
+                      value={editPOQuantity}
+                      onChange={(e) => {
+                        const clean = String(e.target.value)
+                          .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                          .replace(/[^0-9]/g, '');
+                        setEditPOQuantity(clean === '' ? 0 : Number(clean));
+                      }}
+                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none font-mono text-center font-bold"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1 text-center">
-                  <label className="text-xs font-bold text-white">
-                    {lang === 'en' ? 'Requested Quantity (Units):' : 'الكمية المطلوبة (وحدة):'}
-                  </label>
-                  <input
-                    type="number"
-                    min="100"
-                    step="100"
-                    value={editPOQuantity}
-                    onChange={(e) => setEditPOQuantity(Number(e.target.value))}
-                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:text-center font-mono"
-                  />
-                </div>
-
-                <div className="pt-2 flex gap-2">
+                <div className="pt-2 flex gap-3">
                   <button
                     type="button"
                     onClick={handleSavePOEdit}
-                    className="flex-1 bg-white/15 hover:bg-white/25 text-white font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 border border-white/20"
+                    className="flex-1 bg-emerald-600/40 hover:bg-emerald-600/60 text-white font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40"
                   >
                     <Check className="w-4 h-4" />
                     <span>{lang === 'en' ? 'Save Changes' : 'حفظ التعديل'}</span>
@@ -2162,108 +2276,116 @@ export default function SuppliersClient({
                   <button
                     type="button"
                     onClick={() => setIsEditingPO(false)}
-                    className="px-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer"
+                    className="px-5 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer"
                   >
                     {lang === 'en' ? 'Cancel' : 'إلغاء'}
                   </button>
                 </div>
               </div>
             ) : (
-              /* Centered Details View */
-              <div className="bg-white/5 rounded-2xl p-4 border border-white/20 divide-y divide-white/20 text-sm">
-                
-                {/* 1. PO Number */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
-                  <span className="font-extrabold text-white font-mono text-base bg-white/15 px-3 py-0.5 rounded-lg border border-white/20 mt-0.5">
-                    {toEnglishDigits(selectedPO.id)}
-                  </span>
-                </div>
+              /* Landscape Multi-Column Grid Details View */
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-sm">
+                  {/* 1. PO Number */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'PO Number' : 'رقم أمر الشراء'}</span>
+                    <span className="font-extrabold text-white font-mono text-sm sm:text-base bg-white/15 px-2.5 py-0.5 rounded-lg border border-white/20 mt-1" dir="ltr" lang="en">
+                      {toEnglishDigits(selectedPO.id)}
+                    </span>
+                  </div>
 
-                {/* 2. Item Name */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</span>
-                  <span className="font-bold text-white text-base mt-0.5">
-                    {selectedPO.itemName}
-                  </span>
-                </div>
+                  {/* 2. Item Name */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</span>
+                    <span className="font-bold text-white text-xs sm:text-sm mt-1 line-clamp-1" title={selectedPO.itemName}>
+                      {selectedPO.itemName}
+                    </span>
+                  </div>
 
-                {/* 3. Supplier Name */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Assigned Supplier' : 'المورد المعتمد'}</span>
-                  <span className="font-semibold text-white text-sm flex items-center justify-center gap-1.5 mt-0.5">
-                    <Building2 className="w-4 h-4 text-white/65" />
-                    <span>{selectedPO.supplierName}</span>
-                  </span>
-                </div>
+                  {/* 3. Supplier Name */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Assigned Supplier' : 'المورد المعتمد'}</span>
+                    <span className="font-semibold text-white text-xs sm:text-sm flex items-center justify-center gap-1.5 mt-1 truncate max-w-full">
+                      <Building2 className="w-3.5 h-3.5 text-teal-300 shrink-0" />
+                      <span className="truncate">{selectedPO.supplierName}</span>
+                    </span>
+                  </div>
 
-                {/* 4. Quantity */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Quantity' : 'الكمية المطلوبة'}</span>
-                  <span className="font-bold text-white text-base font-mono mt-0.5">
-                    {toEnglishDigits(selectedPO.quantity.toLocaleString('en-US'))} {lang === 'en' ? 'units' : 'وحدة'}
-                  </span>
-                </div>
+                  {/* 4. Quantity */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Quantity' : 'الكمية المطلوبة'}</span>
+                    <span className="font-extrabold text-emerald-300 text-sm sm:text-base font-mono mt-1" dir="ltr" lang="en">
+                      {toEnglishDigits(selectedPO.quantity)} <span className="text-[10px] font-sans text-white/70">{lang === 'en' ? 'units' : 'وحدة'}</span>
+                    </span>
+                  </div>
 
-                {/* 5. Total Cost */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Estimated Total Cost' : 'التكلفة التقديرية الإجمالية'}</span>
-                  <span className="font-extrabold text-white text-lg font-mono mt-0.5">
-                    {toEnglishDigits(selectedPO.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
-                  </span>
-                </div>
+                  {/* 5. Total Cost */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Estimated Total Cost' : 'التكلفة التقديرية'}</span>
+                    <span className="font-extrabold text-white text-sm sm:text-base font-mono mt-1" dir="ltr" lang="en">
+                      {toEnglishDigits(selectedPO.totalCost)} <span className="text-[10px] font-sans text-white/70">{lang === 'en' ? 'SAR' : 'ر.س'}</span>
+                    </span>
+                  </div>
 
-                {/* 6. Creation Time */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Creation Timestamp' : 'توقيت الإنشاء'}</span>
-                  <span className="text-white text-xs font-medium font-mono mt-0.5">
-                    {toEnglishDigits(selectedPO.createdAt)}
-                  </span>
-                </div>
+                  {/* 6. Status */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Current Status' : 'الحالة الحالية'}</span>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full border border-white/20 bg-white/15 text-white mt-1">
+                      {selectedPO.status === 'PENDING_APPROVAL' && (lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة')}
+                      {selectedPO.status === 'SENT' && (lang === 'en' ? 'Dispatched' : 'تم إرسال الإيميل')}
+                      {selectedPO.status === 'IN_TRANSIT' && (lang === 'en' ? 'In Transit' : 'جاري التوصيل')}
+                      {(selectedPO.status === 'DELIVERED' || selectedPO.status === 'تم الاستلام') && (lang === 'en' ? 'Delivered' : 'تم الاستلام')}
+                      {selectedPO.status === 'APPROVED' && (lang === 'en' ? 'Approved' : 'معتمد')}
+                    </span>
+                  </div>
 
-                {/* 7. Creator */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Origin' : 'جهة الإصدار'}</span>
-                  <span className="text-xs font-bold text-white bg-white/10 px-3 py-1 rounded-md border border-white/20 flex items-center justify-center gap-1.5 mt-1">
-                    {selectedPO.createdBy === 'AI_AGENT' ? (
-                      <>
-                        <Bot className="w-3.5 h-3.5 text-white/65" />
-                        <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي (AI Agent)'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <User className="w-3.5 h-3.5 text-white/65" />
-                        <span>{lang === 'en' ? 'Procurement Lead' : 'مسؤول المشتريات'}</span>
-                      </>
-                    )}
-                  </span>
-                </div>
+                  {/* 7. Creator */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Origin' : 'جهة الإصدار'}</span>
+                    <span className="text-[11px] font-bold text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/20 flex items-center justify-center gap-1.5 mt-1">
+                      {selectedPO.createdBy === 'AI_AGENT' ? (
+                        <>
+                          <Bot className="w-3.5 h-3.5 text-teal-300" />
+                          <span>{lang === 'en' ? 'AI Agent' : 'الذكاء الاصطناعي'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <User className="w-3.5 h-3.5 text-white/80" />
+                          <span>{lang === 'en' ? 'System User' : 'مستخدم النظام'}</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
 
-                {/* 8. Status */}
-                <div className="flex flex-col items-center justify-center text-center py-2">
-                  <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Current Status' : 'الحالة الحالية'}</span>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full border border-white/20 bg-white/15 text-white mt-1">
-                    {selectedPO.status === 'PENDING_APPROVAL' && (lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة')}
-                    {selectedPO.status === 'SENT' && (lang === 'en' ? 'Email Dispatched to Supplier' : 'تم إرسال الإيميل للمورد')}
-                    {selectedPO.status === 'IN_TRANSIT' && (lang === 'en' ? 'In Transit to Branches' : 'جاري التوصيل الآن')}
-                    {(selectedPO.status === 'DELIVERED' || selectedPO.status === 'تم الاستلام') && (lang === 'en' ? 'Delivered & Received' : 'تم الاستلام بنجاح')}
-                    {selectedPO.status === 'APPROVED' && (lang === 'en' ? 'Approved' : 'معتمد')}
-                  </span>
+                  {/* 8. Creation Time */}
+                  <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Creation Timestamp' : 'توقيت الإنشاء'}</span>
+                    <span className="text-white/85 text-[11px] font-medium font-mono mt-1 truncate max-w-full" dir="ltr" lang="en">
+                      {toEnglishDigits(selectedPO.createdAt)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* 9. Attached Invoice Copy if available */}
                 {selectedPO.invoiceUrl && (
-                  <div className="flex flex-col items-center justify-center text-center py-2 col-span-full">
-                    <span className="text-white/65 text-xs font-medium">{lang === 'en' ? 'Invoice Copy' : 'نسخة الفاتورة'}</span>
+                  <div className="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/15 rounded-xl px-4 py-2.5 text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-1.5 bg-teal-500/20 border border-teal-400/30 rounded-lg text-teal-300 shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <span className="font-bold text-white truncate">
+                        {lang === 'en' ? 'Attached Invoice Document' : 'مستند الفاتورة المرفق مع أمر الشراء'}
+                      </span>
+                    </div>
                     <a
                       href={selectedPO.invoiceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       download
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 mt-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 border border-teal-300/40 text-xs font-bold transition-all shadow-sm"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 border border-teal-300/40 text-xs font-bold transition-all shadow-sm shrink-0"
                     >
                       <FileText className="w-3.5 h-3.5 text-teal-300" />
-                      <span>data</span>
+                      <span>{lang === 'en' ? 'View / Download Invoice' : 'عرض / تنزيل الفاتورة'}</span>
                       <ExternalLink className="w-3 h-3 text-teal-300/70" />
                     </a>
                   </div>
@@ -2272,11 +2394,11 @@ export default function SuppliersClient({
             )}
 
             {/* Status Flow Buttons */}
-            <div className="space-y-2 pt-1">
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2 border-t border-white/10">
               {selectedPO.status === 'PENDING_APPROVAL' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'SENT')}
-                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
                   <Mail className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Confirm & Dispatch Email to Supplier' : 'تأكيد وإرسال الإيميل للمورد'}</span>
@@ -2286,7 +2408,7 @@ export default function SuppliersClient({
               {selectedPO.status === 'SENT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'IN_TRANSIT')}
-                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-amber-500/30 hover:bg-amber-500/45 border border-amber-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
                   <Truck className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Update to: In Transit' : 'تحديث إلى: جاري التوصيل (In Transit)'}</span>
@@ -2296,7 +2418,7 @@ export default function SuppliersClient({
               {selectedPO.status === 'IN_TRANSIT' && (
                 <button
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'DELIVERED')}
-                  className="w-full py-3 px-6 rounded-xl font-bold bg-white/15 hover:bg-white/25 border border-white/20 text-white transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Confirm Delivery & Add to Inventory' : 'تأكيد استلام الشحنة وإضافتها للمخزون'}</span>
@@ -2308,7 +2430,7 @@ export default function SuppliersClient({
                   setSelectedPO(null);
                   setIsEditingPO(false);
                 }}
-                className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer"
+                className="px-6 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer"
               >
                 {lang === 'en' ? 'Close' : 'إغلاق'}
               </button>
@@ -2393,11 +2515,13 @@ export default function SuppliersClient({
                     step="0.1"
                     min="0"
                     max="5"
+                    dir="ltr"
+                    lang="en"
                     required
                     value={supplierForm.rating}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      setSupplierForm({ ...supplierForm, rating: val === '' ? ('' as any) : parseFloat(val) });
+                      const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                      setSupplierForm({ ...supplierForm, rating: clean === '' ? ('' as any) : parseFloat(clean) });
                     }}
                     className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none font-mono"
                   />
@@ -2412,10 +2536,15 @@ export default function SuppliersClient({
                   <input
                     type="number"
                     min="1"
+                    dir="ltr"
+                    lang="en"
                     required
                     placeholder="24"
                     value={supplierForm.delivery_time_hours}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, delivery_time_hours: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
+                      setSupplierForm({ ...supplierForm, delivery_time_hours: clean === '' ? 0 : Number(clean) });
+                    }}
                     className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/65 focus:outline-none font-mono"
                   />
                 </div>

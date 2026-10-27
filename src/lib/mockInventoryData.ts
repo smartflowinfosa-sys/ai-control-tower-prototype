@@ -96,7 +96,7 @@ export const initialPurchaseOrders: PurchaseOrder[] = [
     totalCost: 625,
     status: 'IN_TRANSIT',
     createdAt: '10:30 ص',
-    createdBy: 'AI_AGENT',
+    createdBy: 'HUMAN',
   },
   {
     id: 'PO-8820',

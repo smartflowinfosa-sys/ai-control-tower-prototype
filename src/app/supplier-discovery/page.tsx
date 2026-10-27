@@ -33,13 +33,18 @@ import {
 } from 'lucide-react';
 import { initialSuppliers, Supplier } from '@/lib/mockInventoryData';
 
-// Helper for English digits (0-9)
+// Helper for strictly English digits (0-9)
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return str.toLocaleString('en-US');
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
   }
-  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const num = Number(clean);
+  if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+  }
+  return clean;
 };
 
 // Interface for Discovered Suppliers
@@ -781,9 +786,14 @@ export default function SupplierDiscoveryPage() {
                   type="number"
                   min="500"
                   step="500"
+                  dir="ltr"
+                  lang="en"
                   value={rfqQuantity}
-                  onChange={(e) => setRfqQuantity(Number(e.target.value))}
-                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/20"
+                  onChange={(e) => {
+                    const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
+                    setRfqQuantity(clean === '' ? 500 : Number(clean));
+                  }}
+                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-white/20 text-center"
                 />
               </div>
 

@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { getSessionPurchaseOrders, updateSessionPurchaseOrder } from './mockInventoryData';
-import { compareItemCodes, getStockPolicy } from '@/constants/inventoryCodes';
+import { compareItemCodes, getStockPolicy, CARTON_SIZES } from '@/constants/inventoryCodes';
 
 export interface SupabaseInventoryItem {
   item_code: string;
@@ -518,6 +518,95 @@ export async function receivePurchaseOrder(
   };
 }
 
+export interface BatchReceivedItemInput {
+  itemCode: string;
+  quantityCartons: number;
+}
+
+export async function batchReceiveInventory(
+  receivedItems: BatchReceivedItemInput[],
+  poNumber?: string,
+  invoiceUrl?: string,
+  signature?: string
+): Promise<{ success: boolean; updatedItems: { itemCode: string; addedUnits: number; newStock: number }[] }> {
+  const updatedItems: { itemCode: string; addedUnits: number; newStock: number }[] = [];
+  const nowIso = new Date().toISOString();
+
+  for (const item of receivedItems) {
+    const code = item.itemCode.toUpperCase();
+    const cartons = Number(item.quantityCartons) || 0;
+    const cSize = CARTON_SIZES[code] || 1;
+    const addedUnits = cartons * cSize;
+
+    let finalStock = addedUnits;
+    try {
+      const { data: cur } = await supabase
+        .from('inventory_items')
+        .select('item_code, current_stock')
+        .eq('item_code', code)
+        .maybeSingle();
+
+      if (cur) {
+        finalStock = (Number(cur.current_stock) || 0) + addedUnits;
+        const { error: err1 } = await supabase
+          .from('inventory_items')
+          .update({
+            current_stock: finalStock,
+            last_restock_date: nowIso,
+          })
+          .eq('item_code', code);
+        if (err1) {
+          await supabase
+            .from('inventory_items')
+            .update({ current_stock: finalStock })
+            .eq('item_code', code);
+        }
+      }
+    } catch (e) {
+      console.warn(`Error updating stock for ${code}:`, e);
+    }
+    updatedItems.push({ itemCode: code, addedUnits, newStock: finalStock });
+  }
+
+  // Update PO if provided
+  if (poNumber) {
+    try {
+      await supabase
+        .from('purchase_orders')
+        .update({
+          status: 'تم الاستلام',
+          received_quantity: receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0),
+          receiver_signature: signature,
+          invoice_url: invoiceUrl,
+        })
+        .eq('id', poNumber);
+    } catch (poErr) {
+      console.warn('purchase_orders table update exception:', poErr);
+    }
+
+    updateSessionPurchaseOrder(poNumber, {
+      status: 'تم الاستلام',
+      invoiceUrl: invoiceUrl || undefined,
+      receiverSignature: signature,
+      receivedAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('purchase_order_received', {
+          detail: {
+            id: poNumber,
+            poNumber,
+            invoiceUrl,
+          },
+        })
+      );
+    }
+  }
+
+  return { success: true, updatedItems };
+}
+
 /**
  * Purchase Orders Model & Dynamic Fetching from Supabase
  */
@@ -595,7 +684,7 @@ export async function fetchPurchaseOrders(): Promise<SupabasePurchaseOrder[]> {
       totalCost: Number(row.total_cost) || 0,
       status: row.status || 'pending',
       createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('ar-SA') : '',
-      createdBy: (row.created_by as any) || 'AI_AGENT',
+      createdBy: (row.created_by as any) || 'HUMAN',
       invoiceUrl: row.invoice_url || undefined,
       invoice_url: row.invoice_url || undefined,
       receiverSignature: row.receiver_signature || undefined,
@@ -625,7 +714,7 @@ export async function createPurchaseOrder(poData: {
     quantity: poData.quantity,
     total_cost: poData.total_cost,
     status: poData.status || 'PENDING_APPROVAL',
-    created_by: poData.created_by || 'AI_AGENT',
+    created_by: poData.created_by || 'HUMAN',
   };
 
   const { data, error } = await supabase

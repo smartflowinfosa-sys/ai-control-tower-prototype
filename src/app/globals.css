@@ -22,3 +22,25 @@
   border: 1px solid rgba(255, 255, 255, 0.24);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.20);
 }
+
+/* Ensure all numbers across the application strictly render as Western Latin numerals (0-9) */
+:root, [dir="rtl"], [dir="ltr"], body, html {
+  font-feature-settings: "locl" 0, "lnum" 1, "tnum" 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.font-mono,
+input,
+select,
+textarea,
+[data-numeric] {
+  font-feature-settings: "locl" 0, "tnum" 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+input[type="number"] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-feature-settings: "locl" 0;
+}
+

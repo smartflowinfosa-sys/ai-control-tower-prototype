@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
@@ -18,16 +18,21 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, Trash2, Plus, ArrowUpDown, ChevronDown } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
-// Helper to ensure all digits are English (0-9)
+// Helper to ensure all digits are strictly English / Western (0-9)
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return str.toLocaleString('en-US');
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
   }
-  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const num = Number(clean);
+  if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+  }
+  return clean;
 };
 
 // Helper to infer or categorize items from Arabic name
@@ -55,6 +60,12 @@ const applyStockPolicy = (item: SupabaseInventoryItem): SupabaseInventoryItem =>
 // Effective critical threshold: min_stock_level when known, otherwise legacy reorder_level.
 const getMinLevel = (item: SupabaseInventoryItem): number =>
   item.min_stock_level ?? item.reorder_level;
+
+export interface ReceivedItemRow {
+  id: string;
+  itemCode: string;
+  quantityCartons: number | '';
+}
 
 interface InventoryClientProps {
   initialItems: SupabaseInventoryItem[];
@@ -158,6 +169,8 @@ export default function InventoryClient({
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  type SmartPOSortOption = 'default_priority' | 'highest_stock' | 'most_consumed';
+  const [sortBy, setSortBy] = useState<SmartPOSortOption>('default_priority');
   const [selectedItemForPO, setSelectedItemForPO] = useState<SupabaseInventoryItem | null>(null);
   const [poQuantity, setPoQuantity] = useState<number>(10);
   const [itemSuppliers, setItemSuppliers] = useState<Record<string, Array<{ id: string; name: string }>>>(
@@ -210,12 +223,12 @@ export default function InventoryClient({
     ))
   );
 
-  // Receive Stock & Invoice Modal State
+  // Receive Stock & Multi-Item Invoice Modal State
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
   const [receivePoId, setReceivePoId] = useState<string>('');
-  const [receivedQty, setReceivedQty] = useState<number | ''>('');
-  // Item Code (Golden Key, e.g. P1/P2/P4) typed by the warehouse receiver in the receipt modal
-  const [receiveItemCode, setReceiveItemCode] = useState<string>('');
+  const [receivedItems, setReceivedItems] = useState<ReceivedItemRow[]>([
+    { id: 'row-1', itemCode: '', quantityCartons: 1 },
+  ]);
 
   /**
    * Consumption-Based Replenishment flow (mock UI state):
@@ -307,12 +320,22 @@ export default function InventoryClient({
     const targetId = defaultPoId || activePOs[0]?.id || '';
     setReceivePoId(targetId);
     const po = purchaseOrders.find(p => p.id === targetId);
-    if (po) {
-      setReceivedQty(po.quantity);
+    if (po && po.itemId) {
+      const cCode = po.itemId.toUpperCase();
+      const cSize = CARTON_SIZES[cCode] || 1;
+      const initialCartons = Math.max(1, Math.round(po.quantity / cSize));
+      setReceivedItems([{
+        id: `row-${Date.now()}-1`,
+        itemCode: cCode,
+        quantityCartons: initialCartons,
+      }]);
     } else {
-      setReceivedQty(1000);
+      setReceivedItems([{
+        id: `row-${Date.now()}-1`,
+        itemCode: '',
+        quantityCartons: 1,
+      }]);
     }
-    setReceiveItemCode(po?.itemId || '');
     setReceiverSignature('');
     setInvoiceFile(null);
     setReceiptError(null);
@@ -322,11 +345,55 @@ export default function InventoryClient({
   const handleSelectPO = (poId: string) => {
     setReceivePoId(poId);
     const po = purchaseOrders.find(p => p.id === poId);
-    if (po) {
-      setReceivedQty(po.quantity);
-      setReceiveItemCode(po.itemId || '');
+    if (po && po.itemId) {
+      const cCode = po.itemId.toUpperCase();
+      const cSize = CARTON_SIZES[cCode] || 1;
+      const initialCartons = Math.max(1, Math.round(po.quantity / cSize));
+      setReceivedItems(prev => {
+        if (prev.length === 1 && (!prev[0].itemCode || prev[0].itemCode === '')) {
+          return [{ id: prev[0].id, itemCode: cCode, quantityCartons: initialCartons }];
+        }
+        return [{ id: `row-${Date.now()}`, itemCode: cCode, quantityCartons: initialCartons }, ...prev.filter(r => r.itemCode !== cCode)];
+      });
     }
     setReceiptError(null);
+  };
+
+  const handleAddReceivedItemRow = () => {
+    setReceivedItems(prev => [
+      ...prev,
+      {
+        id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        itemCode: '',
+        quantityCartons: 1,
+      }
+    ]);
+  };
+
+  const handleRemoveReceivedItemRow = (id: string) => {
+    setReceivedItems(prev => {
+      if (prev.length <= 1) {
+        return [{ id: `row-${Date.now()}-1`, itemCode: '', quantityCartons: 1 }];
+      }
+      return prev.filter(row => row.id !== id);
+    });
+  };
+
+  const handleUpdateReceivedItemRow = (id: string, field: 'itemCode' | 'quantityCartons', value: any) => {
+    setReceivedItems(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      if (field === 'itemCode') {
+        return { ...row, itemCode: String(value).toUpperCase() };
+      }
+      if (field === 'quantityCartons') {
+        const strVal = String(value)
+          .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+          .replace(/[^0-9]/g, '');
+        return { ...row, quantityCartons: strVal === '' ? '' : Number(strVal) };
+      }
+      return row;
+    }));
+    if (receiptError) setReceiptError(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,33 +403,21 @@ export default function InventoryClient({
     }
   };
 
-  // Convert and enforce standard English numerals (0-9)
-  const handleQuantityChange = (valStr: string) => {
-    const converted = valStr
-      .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
-      .replace(/[^0-9]/g, '');
-    if (converted === '') {
-      setReceivedQty('');
-    } else {
-      setReceivedQty(Number(converted));
-    }
-  };
-
   const handleConfirmReceipt = async () => {
-    if (!receivePoId) {
-      setReceiptError(t('inventory.noPOSelected'));
+    if (receivedItems.length === 0) {
+      setReceiptError('الرجاء إضافة صنف واحد على الأقل للاستلام');
       return;
     }
 
-    const po = purchaseOrders.find(p => p.id === receivePoId);
-    if (!po) {
-      setReceiptError(t('inventory.noPOSelected'));
+    const hasEmptyItem = receivedItems.some(i => !i.itemCode.trim());
+    if (hasEmptyItem) {
+      setReceiptError('الرجاء تحديد الصنف لجميع بنود الفاتورة');
       return;
     }
 
-    const inputCartons = Number(receivedQty);
-    if (isNaN(inputCartons) || inputCartons <= 0) {
-      setReceiptError('الرجاء إدخال كمية كراتين صحيحة أكبر من الصفر');
+    const hasInvalidQty = receivedItems.some(i => !i.quantityCartons || Number(i.quantityCartons) <= 0);
+    if (hasInvalidQty) {
+      setReceiptError('الرجاء التأكد من إدخال كميات صحيحة بالكرتون (أكبر من الصفر) لجميع البنود');
       return;
     }
 
@@ -376,26 +431,11 @@ export default function InventoryClient({
       return;
     }
 
-    const enteredCode = receiveItemCode.trim().toUpperCase();
-    if (!enteredCode) {
-      setReceiptError('الرجاء إدخال رمز الصنف (مثال: P1 أو P2)');
-      return;
-    }
-    if (enteredCode !== String(po.itemId || '').toUpperCase()) {
-      setReceiptError(`رمز الصنف (${enteredCode}) لا يطابق صنف أمر الشراء (${po.itemId})`);
-      return;
-    }
-
-    // CRITICAL LOGIC FIX: Convert Cartons to Units automatically
-    // Logic: StockToAdd = Input_Cartons * CARTON_SIZES[Item_Code]
-    const cartonSize = CARTON_SIZES[enteredCode] || 1;
-    const stockToAdd = inputCartons * cartonSize;
-
     setIsSubmittingReceipt(true);
     setReceiptError(null);
 
     try {
-      // Step 1: Sanitize File Name (Strip Arabic/special characters and generate safe ASCII filename)
+      // Step 1: Sanitize File Name (Safe ASCII filename)
       const rawExt = invoiceFile.name && invoiceFile.name.includes('.')
         ? invoiceFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'pdf'
         : 'pdf';
@@ -405,13 +445,14 @@ export default function InventoryClient({
         type: invoiceFile.type || 'application/pdf',
       });
 
-      // Step 1: Upload invoice to Supabase Storage 'invoices' bucket
-      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, po.id);
+      // Upload invoice to Supabase Storage 'invoices' bucket
+      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, receivePoId || `multi-${Date.now()}`);
 
-      // Step 1.5: Trigger n8n Webhook for automated Google Drive archiving (STRICTLY inside success block)
+      // Step 1.5: Trigger n8n Webhook for automated Google Drive archiving
       if (invoicePublicUrl) {
         try {
-          const supplierName = po.supplierName || (po as any).supplier_name || 'المورد المعتمد';
+          const po = purchaseOrders.find(p => p.id === receivePoId);
+          const supplierName = po?.supplierName || (po as any)?.supplier_name || 'فاتورة استلام مجمعة';
           const invoiceDate = new Date().toISOString().split('T')[0];
 
           fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook/zahi-invoice-upload', {
@@ -423,6 +464,12 @@ export default function InventoryClient({
               supplier_name: supplierName,
               invoice_date: invoiceDate,
               file_url: invoicePublicUrl,
+              po_number: receivePoId || null,
+              received_items: receivedItems.map(row => ({
+                code: row.itemCode,
+                cartons: Number(row.quantityCartons) || 0,
+                units: (Number(row.quantityCartons) || 0) * (CARTON_SIZES[row.itemCode] || 1)
+              }))
             }),
           }).catch((webhookErr) => {
             console.warn('n8n webhook notification error (silent):', webhookErr);
@@ -432,46 +479,71 @@ export default function InventoryClient({
         }
       }
 
-      // Step 2: Receive PO in Supabase: add converted stockToAdd to current_stock
-      const result = await receivePurchaseOrder(
-        po.id,
-        stockToAdd,
-        invoicePublicUrl,
-        receiverSignature.trim(),
-        enteredCode
-      );
-
-      // Step 3: Refresh local inventory items immediately and reset last_restock_date (maintain strict numerical order P1..P11)
-      const nowIso = new Date().toISOString();
-      setItems(prevItems =>
-        [...prevItems.map(item =>
-          item.item_code === (result.itemCode || enteredCode) || item.item_code.toUpperCase() === enteredCode
-            ? { ...item, current_stock: result.itemCode ? result.newStock : item.current_stock, last_restock_date: nowIso }
-            : item
-        )].sort((a, b) => compareItemCodes(a.item_code, b.item_code))
-      );
-
-      // Step 3.5: Receipt converts cartons to units and deducts StockToAdd from unreplenished consumption counter
-      setUnreplenished(prev => ({
-        ...prev,
-        [enteredCode]: Math.max(0, (prev[enteredCode] || 0) - stockToAdd),
+      // Step 2: Batch Receive in Supabase: add converted units to current_stock for each item
+      const batchPayload = receivedItems.map(row => ({
+        itemCode: row.itemCode,
+        quantityCartons: Number(row.quantityCartons) || 0,
       }));
 
-      // Step 4: Update purchase orders state locally
-      setPurchaseOrders(prev =>
-        prev.map(p =>
-          p.id === po.id
-            ? {
-                ...p,
-                status: 'تم الاستلام',
-                receivedQuantity: inputCartons,
-                receiverSignature: receiverSignature.trim(),
-                invoiceUrl: invoicePublicUrl,
-                receivedAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
-              }
-            : p
-        )
+      await batchReceiveInventory(
+        batchPayload,
+        receivePoId || undefined,
+        invoicePublicUrl,
+        receiverSignature.trim()
       );
+
+      // Step 3: Compute added units map for local state update
+      const nowIso = new Date().toISOString();
+      const addedUnitsMap: Record<string, number> = {};
+      receivedItems.forEach(row => {
+        const code = row.itemCode.toUpperCase();
+        const cartons = Number(row.quantityCartons) || 0;
+        const cSize = CARTON_SIZES[code] || 1;
+        const units = cartons * cSize;
+        addedUnitsMap[code] = (addedUnitsMap[code] || 0) + units;
+      });
+
+      // Update local inventory items immediately and set last_restock_date to nowIso
+      setItems(prevItems =>
+        [...prevItems.map(item => {
+          const code = item.item_code.toUpperCase();
+          const added = addedUnitsMap[code];
+          if (added !== undefined) {
+            return {
+              ...item,
+              current_stock: (Number(item.current_stock) || 0) + added,
+              last_restock_date: nowIso,
+            };
+          }
+          return item;
+        })].sort((a, b) => compareItemCodes(a.item_code, b.item_code))
+      );
+
+      // Step 3.5: Deduct AddedUnits from unreplenished_consumption counter (can go to 0)
+      setUnreplenished(prev => {
+        const next = { ...prev };
+        Object.entries(addedUnitsMap).forEach(([code, addedUnits]) => {
+          next[code] = Math.max(0, (next[code] || 0) - addedUnits);
+        });
+        return next;
+      });
+
+      // Step 4: Update purchase orders state locally if linked
+      if (receivePoId) {
+        setPurchaseOrders(prev =>
+          prev.map(p =>
+            p.id === receivePoId
+              ? {
+                  ...p,
+                  status: 'تم الاستلام',
+                  receiverSignature: receiverSignature.trim(),
+                  invoiceUrl: invoicePublicUrl,
+                  receivedAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
+                }
+              : p
+          )
+        );
+      }
 
       // Background re-fetch to ensure complete sync with database
       try {
@@ -489,16 +561,18 @@ export default function InventoryClient({
         console.warn('Background sync warning:', syncErr);
       }
 
-      const isPerPiece = cartonSize === 1;
+      const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
+      const totalUnits = Object.values(addedUnitsMap).reduce((acc, u) => acc + u, 0);
+
       const successMsg = lang === 'ar'
-        ? `تم استلام ${toEnglishDigits(inputCartons)} ${isPerPiece ? 'حبة' : 'كرتون'} (ما يعادل ${toEnglishDigits(stockToAdd)} وحدة) بنجاح وتحديث المخزون وخصم الاستهلاك غير المعوض لأمر الشراء (${po.id}) ✨`
-        : `Received ${toEnglishDigits(inputCartons)} cartons (${toEnglishDigits(stockToAdd)} units), updated stock & deducted unreplenished consumption for (${po.id}) ✨`;
+        ? `تم استلام الفاتورة بنجاح: ${toEnglishDigits(receivedItems.length)} أصناف (${toEnglishDigits(totalCartons)} كرتون / ما يعادل ${toEnglishDigits(totalUnits)} وحدة) وتحديث المخزون وتصفير الاستهلاك ✨`
+        : `Invoice received successfully: ${toEnglishDigits(receivedItems.length)} items (${toEnglishDigits(totalCartons)} cartons / ${toEnglishDigits(totalUnits)} units) ✨`;
 
       setSuccessToast(successMsg);
       setIsReceiveModalOpen(false);
       setInvoiceFile(null);
       setReceivePoId('');
-      setReceivedQty('');
+      setReceivedItems([{ id: 'row-1', itemCode: '', quantityCartons: 1 }]);
       setReceiverSignature('');
 
       setTimeout(() => {
@@ -559,6 +633,57 @@ export default function InventoryClient({
       catDisplay.toLowerCase().includes(q);
 
     return matchCat && matchSearch;
+  });
+
+  // Smart Auto PO Sorting Engine
+  const sortedTableItems = [...filteredItems].sort((a, b) => {
+    if (sortBy === 'highest_stock') {
+      return (b.current_stock ?? 0) - (a.current_stock ?? 0);
+    }
+
+    if (sortBy === 'most_consumed') {
+      const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
+      const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+      if (consumedB !== consumedA) {
+        return consumedB - consumedA;
+      }
+      return compareItemCodes(a.item_code, b.item_code);
+    }
+
+    // Default Priority Sorting Hierarchy:
+    const minA = getMinLevel(a);
+    const minB = getMinLevel(b);
+    const isCriticalA = (a.current_stock ?? 0) <= minA;
+    const isCriticalB = (b.current_stock ?? 0) <= minB;
+
+    // 1. Critical items (current_stock <= min_stock_level) MUST appear at the very top
+    if (isCriticalA && !isCriticalB) return -1;
+    if (!isCriticalA && isCriticalB) return 1;
+
+    // 2. Among critical items:
+    if (isCriticalA && isCriticalB) {
+      // Sort by lead_time_days in DESCENDING order (items taking longest to arrive are first)
+      const leadA = a.lead_time_days ?? 0;
+      const leadB = b.lead_time_days ?? 0;
+      if (leadB !== leadA) {
+        return leadB - leadA;
+      }
+      // 3. Then sort by unreplenished_consumption in DESCENDING order (highest consumption first)
+      const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
+      const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+      if (consumedB !== consumedA) {
+        return consumedB - consumedA;
+      }
+      return compareItemCodes(a.item_code, b.item_code);
+    }
+
+    // 4. For non-critical items, sort by unreplenished_consumption DESCENDING, then standard P-code
+    const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
+    const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+    if (consumedB !== consumedA) {
+      return consumedB - consumedA;
+    }
+    return compareItemCodes(a.item_code, b.item_code);
   });
 
   const lowStockCount = items.filter(i => i.current_stock <= getMinLevel(i)).length;
@@ -841,33 +966,41 @@ export default function InventoryClient({
         aria-label="Smart Auto PO"
         className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 sm:p-7 space-y-4"
       >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-white/15">
-          <div>
-            <div className="flex flex-wrap items-baseline gap-2.5">
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Smart Auto PO
-              </h2>
-              <span className="text-xs sm:text-sm font-bold text-white/85">
-                (محرك بناء أوامر الشراء التلقائي بناءً على الاستهلاك)
-              </span>
-            </div>
-            <p className="text-xs text-white/70 font-medium mt-1">
-              إصدار أمر الشراء لا يصفّر عداد الاستهلاك — يتم الخصم/التصفير فقط عند استلام الشحنة بإدخال رمز الصنف والكمية المستلمة.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsInvoiceModalOpen(true)}
-              className="text-[11px] font-bold text-emerald-200 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-sm"
-              title="محاكاة إصدار فاتورة كمية لخصم المخزون وزيادة الاستهلاك غير المعوض"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>محاكاة فاتورة كمية (خصم استهلاك)</span>
-            </button>
-            <span className="text-[11px] font-mono font-bold text-white bg-white/10 border border-white/25 px-3 py-1.5 rounded-full w-fit">
-              حجم الكرتون ديناميكي حسب مواصفات الصنف
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/15">
+          <div className="flex flex-wrap items-baseline gap-2.5">
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              Smart Auto PO
+            </h2>
+            <span className="text-xs sm:text-sm font-bold text-white/85">
+              (محرك بناء أوامر الشراء التلقائي بناءً على الاستهلاك)
             </span>
+          </div>
+
+          {/* Sorting Dropdown Menu */}
+          <div className="flex items-center gap-2.5 self-start sm:self-auto">
+            <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-white/70" />
+              <span>ترتيب حسب:</span>
+            </label>
+            <div className="relative">
+              <select
+                id="smart-po-sort"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SmartPOSortOption)}
+                className="bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer appearance-none pe-8"
+              >
+                <option value="default_priority" className="bg-slate-900 text-white font-bold">
+                  الأولوية الافتراضية
+                </option>
+                <option value="highest_stock" className="bg-slate-900 text-white font-bold">
+                  الأعلى رصيداً
+                </option>
+                <option value="most_consumed" className="bg-slate-900 text-white font-bold">
+                  الأكثر استهلاكاً
+                </option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-white/60 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
         </div>
 
@@ -886,7 +1019,7 @@ export default function InventoryClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {[...filteredItems].sort((a, b) => compareItemCodes(a.item_code, b.item_code)).map(item => {
+              {sortedTableItems.map(item => {
                 const code = item.item_code.toUpperCase();
                 const std = getStandardCodeInfo(code);
                 const consumed = unreplenished[code] || 0;
@@ -901,11 +1034,7 @@ export default function InventoryClient({
                 return (
                   <tr
                     key={code}
-                    className={`hover:bg-white/5 transition-colors border-b ${
-                      isCritical
-                        ? 'bg-rose-500/10 border-rose-500/30 shadow-[inset_0_0_0_1px_rgba(244,63,94,0.35)]'
-                        : 'border-white/5'
-                    }`}
+                    className="hover:bg-white/[0.04] transition-colors border-b border-white/5"
                   >
                     <td className="py-3.5 px-3">
                       <span className="font-mono font-extrabold text-sm text-white bg-white/15 border border-white/25 px-2.5 py-0.5 rounded-lg">
@@ -915,9 +1044,12 @@ export default function InventoryClient({
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center gap-2 text-sm font-bold text-white">
                         {isCritical && (
-                          <span className="relative flex h-2.5 w-2.5 shrink-0" title="مستوى حرج">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                          <span className="flex items-center gap-1.5 text-rose-400 shrink-0" title="مستوى حرج">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                            </span>
+                            <AlertTriangle className="w-4 h-4 text-rose-400" />
                           </span>
                         )}
                         <span>{getItemDisplayName(item)}</span>
@@ -930,7 +1062,7 @@ export default function InventoryClient({
                       <div className="text-[11px] text-white/60 font-mono" dir="ltr">{std?.nameEn || item.item_name_en}</div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className={`font-mono font-black text-lg ${isCritical ? 'text-rose-200' : 'text-white'}`}>
+                      <span className={`font-mono font-black text-lg ${isCritical ? 'text-rose-400 font-extrabold' : 'text-white'}`}>
                         {toEnglishDigits(item.current_stock)}
                       </span>
                       <span className="text-xs text-white/60 ms-1">{t('common.unit')}</span>
@@ -940,7 +1072,7 @@ export default function InventoryClient({
                     </td>
                     <td className="py-3.5 px-4">
                       {leadDays != null ? (
-                        <span className={`text-sm font-bold ${isCritical ? 'text-rose-200' : 'text-white'}`}>
+                        <span className="text-sm font-bold text-white">
                           <span className="font-mono">{toEnglishDigits(leadDays)}</span> يوم
                         </span>
                       ) : (
@@ -1018,16 +1150,16 @@ export default function InventoryClient({
         const suggestedCartons = Math.ceil(consumed / cartonSize);
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in">
-            <div className="font-sans bg-zinc-900/90 backdrop-blur-2xl rounded-3xl w-full max-w-lg p-6 sm:p-7 space-y-4 text-white border border-white/20 shadow-[0_16px_48px_0_rgba(0,0,0,0.5)]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="font-sans bg-black/75 backdrop-blur-2xl rounded-3xl w-full max-w-3xl lg:max-w-4xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
               {/* Modal Header */}
-              <div className="flex justify-between items-start border-b border-white/15 pb-4">
+              <div className="flex justify-between items-center border-b border-white/15 pb-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-black text-xs text-white bg-white/15 border border-white/25 px-2 py-0.5 rounded-lg">
+                    <span className="font-mono font-black text-xs text-white bg-white/15 border border-white/25 px-2.5 py-0.5 rounded-lg" dir="ltr" lang="en">
                       {selectedItemForPO.item_code}
                     </span>
-                    <h3 className="text-lg font-black text-white">
+                    <h3 className="text-lg sm:text-xl font-extrabold text-white">
                       {t('inventory.modalCreatePOTitle')}
                     </h3>
                   </div>
@@ -1037,22 +1169,24 @@ export default function InventoryClient({
                 </div>
                 <button
                   onClick={() => setSelectedItemForPO(null)}
-                  className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors"
+                  className="text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/20 p-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center w-9 h-9"
                   aria-label={t('common.close')}
+                  title={t('common.close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-4">
+              {/* Landscape Multi-Column Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* 1. Supplier Selection (Real Approved Mappings from Supabase supplier_items) */}
-                <div>
-                  <label className="block text-xs font-bold text-white mb-1.5 flex justify-between items-center">
+                <div className="space-y-1.5 flex flex-col justify-between">
+                  <label className="block text-xs font-bold text-white flex justify-between items-center">
                     <span>{t('inventory.modalSupplierLabel')}</span>
                     {isLoadingSuppliers ? (
                       <span className="text-[11px] text-white/60 flex items-center gap-1 font-sans">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        جاري جلب الموردين من قاعدة البيانات...
+                        جاري جلب الموردين...
                       </span>
                     ) : (
                       <span className="text-[11px] text-emerald-400 font-semibold font-sans">
@@ -1064,7 +1198,7 @@ export default function InventoryClient({
                     value={selectedSupplier}
                     onChange={(e) => setSelectedSupplier(e.target.value)}
                     disabled={isLoadingSuppliers || currentSuppliers.length === 0}
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none"
+                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
                   >
                     {currentSuppliers.length > 0 ? (
                       currentSuppliers.map((sup: { id: string; name: string }) => (
@@ -1078,15 +1212,18 @@ export default function InventoryClient({
                       </option>
                     )}
                   </GlassSelect>
+                  <span className="text-[10px] text-white/50 block">
+                    يتم جلب الموردين المعتمدين ديناميكياً من قاعدة البيانات لهذا الصنف
+                  </span>
                 </div>
 
                 {/* 2. Quantity Input in Cartons (not Units) */}
-                <div>
-                  <label className="block text-xs font-bold text-white mb-1.5 flex justify-between items-center">
+                <div className="space-y-1.5 flex flex-col justify-between">
+                  <label className="block text-xs font-bold text-white flex justify-between items-center">
                     <span>
                       {isPerPiece ? 'الكمية المطلوبة (بالقطعة / حبة)' : 'الكمية المطلوبة (بالكرتون)'}
                     </span>
-                    <span className="text-[11px] text-emerald-400 font-mono font-bold">
+                    <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
                       الطلب المقترح: {toEnglishDigits(suggestedCartons > 0 ? suggestedCartons : 1)} {isPerPiece ? 'حبة' : 'كرتون'}
                     </span>
                   </label>
@@ -1094,17 +1231,22 @@ export default function InventoryClient({
                     type="number"
                     min="1"
                     step="1"
+                    dir="ltr"
+                    lang="en"
                     value={poQuantity}
-                    onChange={(e) => setPoQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono text-lg font-bold"
+                    onChange={(e) => {
+                      const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
+                      setPoQuantity(clean === '' ? 1 : Math.max(1, parseInt(clean, 10)));
+                    }}
+                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono text-base font-bold text-center"
                   />
-                  <div className="flex justify-between items-center text-[11px] text-white/70 mt-1.5 px-0.5">
+                  <div className="flex justify-between items-center text-[11px] text-white/70 px-0.5">
                     <span>
                       {isPerPiece
-                        ? 'يتم طلب هذا الصنف بالقطعة مباشرة (1 حبة = 1 وحدة استهلاك)'
+                        ? 'يتم طلب هذا الصنف بالقطعة مباشرة (1:1)'
                         : `ما يعادل: ${toEnglishDigits(totalUnits)} وحدة (${toEnglishDigits(cartonSize)} وحدة/كرتون)`}
                     </span>
-                    <span className="text-white/50 font-mono">
+                    <span className="text-white/50 font-mono" dir="ltr" lang="en">
                       سعر الوحدة: {toEnglishDigits(unitCost)} ريال
                     </span>
                   </div>
@@ -1112,17 +1254,17 @@ export default function InventoryClient({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2.5 pt-2">
+              <div className="flex gap-2.5 pt-2 border-t border-white/10">
                 <button
                   onClick={handleCreatePO}
-                  className="flex-1 bg-emerald-600/80 hover:bg-emerald-500 active:scale-95 text-white font-bold py-3 rounded-xl transition-all text-sm cursor-pointer shadow-lg border border-emerald-400/30 flex items-center justify-center gap-2"
+                  className="flex-1 bg-emerald-600/40 hover:bg-emerald-600/55 active:scale-95 text-white font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer shadow-lg border border-emerald-400/35 flex items-center justify-center gap-2"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{t('inventory.modalConfirmPOBtn')}</span>
                 </button>
                 <button
                   onClick={() => setSelectedItemForPO(null)}
-                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3 rounded-xl border border-white/20 transition-all text-sm cursor-pointer"
+                  className="px-6 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/20 transition-all text-xs sm:text-sm cursor-pointer"
                 >
                   {t('inventory.modalCancelBtn')}
                 </button>
@@ -1184,9 +1326,14 @@ export default function InventoryClient({
                   type="number"
                   min="1"
                   step="50"
+                  dir="ltr"
+                  lang="en"
                   value={invoiceSimQty}
-                  onChange={(e) => setInvoiceSimQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono text-base font-bold"
+                  onChange={(e) => {
+                    const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
+                    setInvoiceSimQty(clean === '' ? 1 : Math.max(1, parseInt(clean, 10)));
+                  }}
+                  className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono text-base font-bold text-center"
                 />
                 <span className="text-[10px] text-white/60 block mt-1">
                   سيتم خصم هذه الكمية فوراً من الرصيد الحالي وإضافتها لعداد الاستهلاك غير المعوَّض.
@@ -1218,23 +1365,35 @@ export default function InventoryClient({
         </div>
       )}
 
-      {/* Modal: Receive Stock & Upload Invoice */}
+      {/* Modal: Receive Stock & Multi-Item Supplier Invoice */}
       {isReceiveModalOpen && (() => {
         const selectedReceivePO = purchaseOrders.find(p => p.id === receivePoId);
+        const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
+        const totalUnits = receivedItems.reduce((acc, i) => {
+          const cCode = i.itemCode.toUpperCase();
+          const cSize = CARTON_SIZES[cCode] || 1;
+          return acc + ((Number(i.quantityCartons) || 0) * cSize);
+        }, 0);
+        const isFormValid =
+          receivedItems.length > 0 &&
+          receivedItems.every(i => i.itemCode.trim() && i.quantityCartons && Number(i.quantityCartons) > 0) &&
+          Boolean(invoiceFile) &&
+          Boolean(receiverSignature.trim());
+
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-            <div className="font-sans bg-white/[0.08] backdrop-blur-md rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-6 sm:p-7 space-y-4 text-white border border-white/25 shadow-[0_16px_48px_0_rgba(0,0,0,0.3)] relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="font-sans bg-black/75 backdrop-blur-2xl rounded-3xl w-full max-w-5xl lg:max-w-6xl max-h-[96vh] overflow-y-auto p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-3.5 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
               {/* Modal Header */}
-              <div className="flex justify-between items-start border-b border-white/20 pb-3.5">
+              <div className="flex justify-between items-center border-b border-white/15 pb-2.5">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-white/15 border border-white/25 rounded-2xl text-white shrink-0">
+                  <div className="p-2 bg-white/10 border border-white/25 rounded-xl text-emerald-300 shrink-0 shadow-inner">
                     <PackageCheck className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
                       <span>{t('inventory.modalReceiveTitle')}</span>
                     </h3>
-                    <p className="text-xs text-white/70 mt-0.5 font-medium">
+                    <p className="text-[11px] text-white/70 font-medium">
                       {t('inventory.modalReceiveSubtitle')}
                     </p>
                   </div>
@@ -1244,7 +1403,7 @@ export default function InventoryClient({
                     if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
                   }}
                   disabled={isSubmittingReceipt}
-                  className="text-white/65 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                  className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
                   aria-label={t('common.close')}
                 >
                   <X className="w-4 h-4" />
@@ -1253,191 +1412,202 @@ export default function InventoryClient({
 
               {/* Error Banner */}
               {receiptError && (
-                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 flex items-center gap-2.5 text-xs text-rose-200">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-300" />
+                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-2.5 flex items-center gap-2 text-xs text-rose-200">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-300" />
                   <span>{receiptError}</span>
                 </div>
               )}
 
-              <div className="space-y-4">
+              {/* Top Controls: Link to Active PO (Optional) & Receiver Signature */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-xl p-2.5 sm:p-3">
                 {/* 1. Dropdown: Select Purchase Order */}
                 <div>
-                  <label className="block text-xs font-bold text-white mb-1.5">
-                    {t('inventory.selectPO')}
+                  <label className="block text-[11px] font-bold text-white mb-1 flex items-center justify-between">
+                    <span>{t('inventory.selectPO')}</span>
+                    <span className="text-[10px] text-white/50">(اختياري / ربط بأمر شراء نشط)</span>
                   </label>
                   <GlassSelect
                     value={receivePoId}
                     onChange={(e) => handleSelectPO(e.target.value)}
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25"
+                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
                   >
-                    <option value="" disabled>
-                      {activePOs.length === 0
-                        ? (lang === 'en' ? 'No pending active orders' : 'لا توجد أوامر شراء نشطة بانتظار الاستلام')
-                        : t('inventory.selectPOPlaceholder')}
+                    <option value="" className="bg-slate-900 text-white">
+                      {lang === 'ar' ? 'بدون أمر شراء مسبق (استلام مباشر بالفاتورة)' : 'Direct invoice receipt (No prior PO)'}
                     </option>
                     {activePOs.map(po => (
-                      <option key={po.id} value={po.id}>
+                      <option key={po.id} value={po.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
                         {po.id} ({po.itemId || '—'}) - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')})
                       </option>
                     ))}
                   </GlassSelect>
                 </div>
 
-                {/* Selected PO Details Card */}
-                {selectedReceivePO && (
-                  <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3.5 space-y-2 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white/70">{t('inventory.selectedPODetails')}</span>
-                      <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-lg border border-white/20" dir="ltr">
-                        {selectedReceivePO.id}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-white/90">
-                      <span className="text-white/70">{t('inventory.supplierNameLabel')}</span>
-                      <span className="font-bold">{selectedReceivePO.supplierName}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-white/90">
-                      <span className="text-white/70">{t('inventory.orderedQuantity')}</span>
-                      <span className="font-mono font-bold">{toEnglishDigits(selectedReceivePO.quantity)} {t('common.unit')}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-white/70">{t('inventory.modalCurrentStatus')}</span>
-                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
-                        selectedReceivePO.status === 'تم الاستلام'
-                          ? 'bg-white/15 text-white border-white/25'
-                          : 'bg-amber-500/20 text-amber-200 border-amber-400/40'
-                      }`}>
-                        {selectedReceivePO.status === 'تم الاستلام' ? t('inventory.poStatusReceived') : selectedReceivePO.status}
-                      </span>
-                    </div>
-                    {selectedReceivePO.receiverSignature && (
-                      <div className="flex justify-between items-center text-white/90">
-                        <span className="text-white/70">{t('inventory.receiverSignatureLabel')}</span>
-                        <span className="font-bold text-white">{selectedReceivePO.receiverSignature}</span>
-                      </div>
-                    )}
-                    {selectedReceivePO.invoiceUrl && (
-                      <div className="flex justify-between items-center pt-1.5 border-t border-white/10">
-                        <span className="text-white font-medium">{t('inventory.invoiceUploadedBadge')}</span>
-                        <a
-                          href={selectedReceivePO.invoiceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download
-                          className="text-white hover:text-white/80 underline font-bold flex items-center gap-1"
-                        >
-                          <span>{t('inventory.viewInvoice')}</span>
-                          <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 1.5 Item Code (Golden Key): receipt by code adds stock and deducts the unreplenished counter */}
+                {/* Receiver Signature / ID */}
                 <div>
-                  <div className="flex justify-between items-baseline mb-1.5">
-                    <label className="block text-xs font-bold text-white">
-                      رمز الصنف (Item Code - e.g., P1, P2)
-                    </label>
-                    <span className="text-[10px] text-white/70 font-mono">
-                      الرموز القياسية: P1..P10
-                    </span>
-                  </div>
+                  <label className="block text-[11px] font-bold text-white mb-1">
+                    {t('inventory.receiverSignatureLabel')} <span className="text-rose-400">*</span>
+                  </label>
                   <input
                     type="text"
-                    dir="ltr"
-                    list="standard-codes-list"
-                    value={receiveItemCode}
+                    value={receiverSignature}
                     onChange={(e) => {
-                      setReceiveItemCode(e.target.value.toUpperCase());
+                      setReceiverSignature(e.target.value);
                       if (receiptError) setReceiptError(null);
                     }}
-                    placeholder="P1"
-                    className="w-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl p-3 text-sm text-white font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40 text-left rtl:text-right"
+                    placeholder={t('inventory.receiverSignaturePlaceholder')}
+                    required
+                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40"
                   />
-                  <datalist id="standard-codes-list">
-                    {[...STANDARD_ITEM_CODES]
-                      .sort((a, b) => compareItemCodes(a.code, b.code))
-                      .map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.code} - {c.nameAr}
-                        </option>
-                      ))}
-                  </datalist>
-                  <p className="text-[11px] text-white/65 mt-1.5 leading-relaxed">
-                    إدخال رمز الصنف سيقوم تلقائياً بزيادة الرصيد وتصفير عداد الاستهلاك العكسي لهذا الصنف.
-                  </p>
+                </div>
+              </div>
+
+              {/* Selected PO Details Badge (if linked) */}
+              {selectedReceivePO && (
+                <div className="bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/70 text-[11px]">أمر الشراء المرتبط:</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded border border-white/20 text-xs" dir="ltr" lang="en">
+                      {selectedReceivePO.id}
+                    </span>
+                    <span className="text-white/90 font-bold text-xs">• {selectedReceivePO.supplierName}</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs">
+                    <span className="text-white/70 font-mono text-[11px]" dir="ltr" lang="en">
+                      الكمية المطلوبة: {toEnglishDigits(selectedReceivePO.quantity)} وحدة
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-500/20 text-amber-200 border-amber-400/40">
+                      {selectedReceivePO.status}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Dynamic Multiple Items Table / Rows Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                    <span>📦 بنود وأصناف الفاتورة المستلمة</span>
+                    <span className="text-[11px] bg-white/10 border border-white/20 px-2 py-0.5 rounded-full font-mono text-teal-300" dir="ltr" lang="en">
+                      {toEnglishDigits(receivedItems.length)} {receivedItems.length === 1 ? 'صنف' : 'أصناف'}
+                    </span>
+                  </h4>
                 </div>
 
-                {/* 2. Input (Number): Actual Quantity Received (in Cartons) */}
-                <div>
-                  <div className="flex justify-between items-baseline mb-1.5">
-                    <label className="text-xs font-bold text-white">
-                      {lang === 'ar' ? 'الكمية المستلمة (بالكرتون)' : t('inventory.actualQuantityReceived')}
-                    </label>
-                    {receiveItemCode && (
-                      <span className="text-[11px] text-emerald-400 font-mono font-bold">
-                        {(() => {
-                          const cCode = receiveItemCode.toUpperCase();
-                          const cSize = CARTON_SIZES[cCode] || 1;
-                          const inputCartons = Number(receivedQty) || 0;
-                          const convertedUnits = inputCartons * cSize;
-                          return cSize === 1
-                            ? `يتم الاستلام بالقطعة (${toEnglishDigits(convertedUnits)} حبة)`
-                            : `ما يعادل: ${toEnglishDigits(convertedUnits)} وحدة (${toEnglishDigits(cSize)} حبة/كرتون)`;
-                        })()}
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    dir="ltr"
-                    value={receivedQty}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
-                      setReceivedQty(val === '' ? '' : Number(val));
-                    }}
-                    onPaste={(e) => {
-                      const pasted = e.clipboardData.getData('text');
-                      if (pasted) {
-                        e.preventDefault();
-                        const val = pasted.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
-                        setReceivedQty(val === '' ? '' : Number(val));
-                      }
-                    }}
-                    placeholder="0"
-                    style={{ direction: 'ltr', fontVariantNumeric: 'lining-nums tabular-nums' }}
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 font-mono text-left rtl:text-right [unicode-bidi:plaintext]"
-                  />
-                  <p className="text-[11px] text-white/60 mt-1">
-                    يتم تحويل عدد الكراتين تلقائياً إلى وحدات فعلية في المخزون وخصمها من عداد الاستهلاك.
-                  </p>
+                {/* Rows Header for Desktop */}
+                <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1 text-[11px] font-bold text-white/60 border-b border-white/10">
+                  <div className="col-span-1 text-center">#</div>
+                  <div className="col-span-6">الصنف (الرمز القياسي ومواصفات الكرتون)</div>
+                  <div className="col-span-2 text-center">الكمية (بالكرتون)</div>
+                  <div className="col-span-2 text-center">المعادل بالوحدات</div>
+                  <div className="col-span-1 text-center">إجراء</div>
                 </div>
 
-                {/* Storage Bucket Setup Alert Notice */}
-                {storageNotice && (
-                  <div className="p-3 bg-amber-500/20 border border-amber-400/50 rounded-xl text-amber-200 text-xs flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
-                      <span className="font-bold">{storageNotice}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setStorageNotice(null)}
-                      className="text-white/60 hover:text-white p-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
+                {/* Scrollable Rows Container */}
+                <div className="space-y-1.5 max-h-40 sm:max-h-48 overflow-y-auto pr-1">
+                  {receivedItems.map((row, index) => {
+                    const code = row.itemCode.toUpperCase();
+                    const cartonSize = CARTON_SIZES[code] || 1;
+                    const cartons = Number(row.quantityCartons) || 0;
+                    const unitsEquivalent = cartons * cartonSize;
 
-                {/* 3. File Upload (Input type="file"): Upload Invoice Copy */}
-                <div>
-                  <label className="block text-xs font-bold text-white mb-1.5">
-                    {t('inventory.uploadInvoiceLabel')}
+                    return (
+                      <div
+                        key={row.id}
+                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 rounded-xl px-2.5 py-1.5 transition-colors"
+                      >
+                        {/* Row Index */}
+                        <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
+                          <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr" lang="en">
+                            {toEnglishDigits(index + 1)}
+                          </span>
+                          <span className="sm:hidden text-xs text-white/60 font-bold">بند رقم {toEnglishDigits(index + 1)}</span>
+                        </div>
+
+                        {/* Item Select Dropdown */}
+                        <div className="sm:col-span-6">
+                          <label className="text-[10px] text-white/60 sm:hidden block mb-1">الصنف</label>
+                          <select
+                            value={row.itemCode}
+                            onChange={(e) => handleUpdateReceivedItemRow(row.id, 'itemCode', e.target.value)}
+                            className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
+                          >
+                            <option value="" disabled className="bg-slate-900 text-white/60">
+                              اختر الصنف من القائمة...
+                            </option>
+                            {[...STANDARD_ITEM_CODES]
+                              .sort((a, b) => compareItemCodes(a.code, b.code))
+                              .map((c) => (
+                                <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
+                                  {c.code} - {c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code])} حبة/كرتون`})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        {/* Quantity in Cartons Input */}
+                        <div className="sm:col-span-2">
+                          <label className="text-[10px] text-white/60 sm:hidden block mb-1">الكمية بالكرتون</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              dir="ltr"
+                              lang="en"
+                              value={row.quantityCartons}
+                              onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
+                              placeholder="1"
+                              className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-white/25"
+                            />
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
+                              {cartonSize === 1 ? 'حبة' : 'كرتون'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Equivalent Units */}
+                        <div className="sm:col-span-2 flex items-center justify-center">
+                          <div className="w-full py-1 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
+                            {toEnglishDigits(unitsEquivalent)} <span className="font-sans text-[11px]">{t('common.unit')}</span>
+                          </div>
+                        </div>
+
+                        {/* Remove Row Button */}
+                        <div className="sm:col-span-1 flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveReceivedItemRow(row.id)}
+                            disabled={receivedItems.length === 1 && index === 0}
+                            className="p-1 text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-rose-400 border border-transparent hover:border-rose-400/30 rounded-lg transition-all cursor-pointer shrink-0"
+                            title="حذف هذا الصنف من الفاتورة"
+                            aria-label="حذف الصنف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add Another Item Button */}
+                <button
+                  type="button"
+                  onClick={handleAddReceivedItemRow}
+                  className="w-full py-1.5 px-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/25 hover:border-white/40 rounded-lg text-xs font-bold text-teal-200 hover:text-teal-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>➕ إضافة صنف للفاتورة</span>
+                </button>
+              </div>
+
+              {/* Lower Landscape Row: 3. File Upload Box + 4. Overall Batch Summary Strip side-by-side */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                {/* 3. Streamlined File Upload Box */}
+                <div className="flex flex-col justify-between">
+                  <label className="block text-[11px] font-bold text-white mb-1 flex items-center justify-between">
+                    <span>{t('inventory.uploadInvoiceLabel')} <span className="text-rose-400">*</span></span>
+                    <span className="text-[10px] text-white/50">صورة أو PDF</span>
                   </label>
                   <input
                     type="file"
@@ -1449,24 +1619,24 @@ export default function InventoryClient({
                   />
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
+                    className={`border-2 border-dashed rounded-xl px-3 py-2 cursor-pointer transition-all flex items-center justify-between gap-2.5 h-[52px] ${
                       invoiceFile
-                        ? 'border-white/25 bg-white/15'
+                        ? 'border-emerald-400/40 bg-emerald-500/10'
                         : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'
                     }`}
                   >
                     {invoiceFile ? (
-                      <div className="flex items-center justify-between gap-3 text-left rtl:text-right">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="p-2 bg-white/15 rounded-xl text-white shrink-0">
-                            <FileText className="w-5 h-5" />
+                      <>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="p-1.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg text-emerald-300 shrink-0">
+                            <FileText className="w-4 h-4" />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-xs font-bold text-white truncate max-w-[240px]">
+                            <p className="text-xs font-bold text-white truncate max-w-[200px] sm:max-w-[280px]">
                               {invoiceFile.name}
                             </p>
-                            <p className="text-[10px] text-white font-mono mt-0.5">
-                              {(invoiceFile.size / 1024).toFixed(1)} KB • data
+                            <p className="text-[10px] text-white/60 font-mono" dir="ltr" lang="en">
+                              {toEnglishDigits((invoiceFile.size / 1024).toFixed(1))} KB • جاهز للأرشفة
                             </p>
                           </div>
                         </div>
@@ -1477,46 +1647,52 @@ export default function InventoryClient({
                             setInvoiceFile(null);
                             if (fileInputRef.current) fileInputRef.current.value = '';
                           }}
-                          className="text-white/70 hover:text-white text-xs px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg shrink-0 cursor-pointer border border-white/20"
+                          className="text-white/80 hover:text-white text-[11px] px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-md shrink-0 cursor-pointer border border-white/20"
                         >
                           {t('common.edit')}
                         </button>
-                      </div>
+                      </>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-2 text-white/80">
-                        <UploadCloud className="w-7 h-7 text-white mb-2 animate-bounce" />
-                        <p className="text-xs font-bold text-white">انقر لاختيار ملف الفاتورة (صورة أو PDF)</p>
-                        <p className="text-[10px] text-white/50 mt-1">{t('inventory.uploadInvoiceHint')}</p>
+                      <div className="flex items-center justify-center gap-2 text-white/80 w-full py-1">
+                        <UploadCloud className="w-4 h-4 text-white/70 shrink-0" />
+                        <span className="text-xs font-bold text-white">انقر لرفع ملف الفاتورة المجمعة (صورة أو PDF)</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* 4. Receiver Signature / ID */}
-                <div>
-                  <label className="block text-xs font-bold text-white mb-1.5">
-                    {t('inventory.receiverSignatureLabel')}
-                  </label>
-                  <input
-                    type="text"
-                    value={receiverSignature}
-                    onChange={(e) => {
-                      setReceiverSignature(e.target.value);
-                      if (receiptError) setReceiptError(null);
-                    }}
-                    placeholder={t('inventory.receiverSignaturePlaceholder')}
-                    required
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40"
-                  />
+                {/* 4. Overall Batch Summary Strip (Retained at bottom intact) */}
+                <div className="flex flex-col justify-between">
+                  <div className="text-[11px] font-bold text-white mb-1">ملخص الشحنة الإجمالي</div>
+                  <div className="grid grid-cols-3 gap-2 p-2 bg-white/[0.04] border border-white/15 rounded-xl text-center h-[52px] items-center">
+                    <div>
+                      <div className="text-[10px] text-white/60">الأصناف</div>
+                      <div className="text-xs sm:text-sm font-bold font-mono text-white mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(receivedItems.length)} <span className="font-sans text-[10px]">{receivedItems.length === 1 ? 'صنف' : 'أصناف'}</span>
+                      </div>
+                    </div>
+                    <div className="border-x border-white/10 px-1">
+                      <div className="text-[10px] text-white/60">الكراتين</div>
+                      <div className="text-xs sm:text-sm font-bold font-mono text-teal-300 mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(totalCartons)} <span className="font-sans text-[10px]">كرتون</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/60">الوحدات الفعلية</div>
+                      <div className="text-xs sm:text-sm font-bold font-mono text-emerald-300 mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(totalUnits)} <span className="font-sans text-[10px]">وحدة</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* 5. Action Buttons */}
-              <div className="flex gap-2.5 pt-2">
+              <div className="flex gap-2.5 pt-1">
                 <button
                   onClick={handleConfirmReceipt}
-                  disabled={isSubmittingReceipt || !receivePoId || !invoiceFile || !receivedQty || !receiverSignature.trim() || !receiveItemCode.trim()}
-                  className="flex-1 bg-white/20 hover:bg-white/30 border border-white/30 active:scale-95 text-white font-extrabold py-3.5 rounded-xl transition-all text-sm cursor-pointer shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                  disabled={isSubmittingReceipt || !isFormValid}
+                  className="flex-1 bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 active:scale-95 text-white font-extrabold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isSubmittingReceipt ? (
                     <>
@@ -1535,7 +1711,7 @@ export default function InventoryClient({
                     if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
                   }}
                   disabled={isSubmittingReceipt}
-                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3.5 rounded-xl border border-white/20 transition-all text-sm cursor-pointer disabled:opacity-50"
+                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/20 transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-50"
                 >
                   {t('inventory.modalCancelBtn')}
                 </button>
