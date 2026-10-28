@@ -389,11 +389,6 @@ export default function AIAssistantWidget() {
                 <h4 className="font-extrabold text-base text-white">
                   Zahi Agent
                 </h4>
-                <p className="text-xs text-white/60 mt-1.5 max-w-[270px] leading-relaxed">
-                  {lang === 'en'
-                    ? 'Ask questions about live inventory, speak with your voice, or attach invoice screenshots for instant analysis.'
-                    : 'اسأل عن النواقص وأوامر الشراء، أو تحدث بالصوت، أو أرفق لقطات الفواتير والمطبخ للفحص الفوري.'}
-                </p>
               </div>
 
               {/* Quick Action Chips */}

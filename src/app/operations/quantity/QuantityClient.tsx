@@ -681,17 +681,6 @@ export default function QuantityClient() {
               />
             </div>
 
-            {/* AI Vision Import Button next to Search */}
-            <button
-              type="button"
-              onClick={() => setIsTikrarModalOpen(true)}
-              className="bg-white/10 hover:bg-white/20 active:scale-[0.98] text-white border border-white/25 backdrop-blur-md shadow-sm font-bold px-3.5 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs whitespace-nowrap"
-              title="إضافة فاتورة الكمية يدوياً"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-teal-300 animate-pulse" />
-              <span>إضافة فاتورة الكمية يدوياً</span>
-            </button>
-
             <button
               type="button"
               onClick={() => handleExport('excel')}

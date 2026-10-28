@@ -923,31 +923,13 @@ export default function InventoryClient({
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving */}
           {isAuthorized && (
-            <>
-              <button
-                onClick={() => {
-                  const defaultItem = items[0] || (supabaseMenuItems[0] ? {
-                    item_code: supabaseMenuItems[0].meal_code,
-                    item_name_ar: supabaseMenuItems[0].meal_name_ar,
-                    current_stock: 0,
-                    reorder_level: 0,
-                  } : null);
-                  if (defaultItem) handleOpenPO(defaultItem);
-                }}
-                className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4 shrink-0 text-teal-300" />
-                <span>{lang === 'en' ? 'New Purchase Order' : 'أمر شراء جديد'}</span>
-              </button>
-
-              <button
+            <button
                 onClick={() => openReceiveModal()}
                 className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <PackageCheck className="w-4 h-4 shrink-0 text-white" />
                 <span>{lang === 'en' ? 'Receive Inventory' : 'استلام مخزون'}</span>
               </button>
-            </>
           )}
 
           <Link

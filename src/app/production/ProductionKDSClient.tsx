@@ -58,7 +58,7 @@ const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday
 
 /**
  * Computes the operational day badge text based on Zahi's schedule:
- * - Wednesday (index 3): Kitchen Off -> "إجازة المطبخ (Off)"
+ * - Wednesday (index 3): Kitchen Off -> "إجازة (Off)"
  * - Any other cooking day: "إنتاج يوم: [اليوم]" (e.g., "إنتاج يوم: الخميس")
  */
 function getOperationalScheduleBadge() {
@@ -73,7 +73,7 @@ function getOperationalScheduleBadge() {
     if (validIdx === 3) {
       return {
         isOffDay: true,
-        labelAr: 'إجازة المطبخ (Off)',
+        labelAr: 'إجازة (Off)',
         labelEn: 'Kitchen Off (Wed)',
       };
     }
