@@ -1,23 +1,20 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ChefHat,
   Flame,
   PackageCheck,
   CheckCircle2,
   ListOrdered,
-  Plus,
   Search,
   Filter,
   Clock,
   User,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
   AlertCircle,
-  X,
   RotateCcw,
   UtensilsCrossed,
   Timer,
@@ -26,8 +23,6 @@ import {
   Check,
   Truck,
   CheckCircle,
-  Database,
-  RefreshCw,
   Box,
   Layers3
 } from 'lucide-react';
@@ -41,17 +36,11 @@ import {
   getKdsBatches,
   saveKdsBatches,
   moveKdsBatch as storeMoveBatch,
-  addKdsBatch as storeAddBatch,
   calculateKdsCompletion,
   getMasterPlan,
   saveMasterPlan,
   normalizeCategory,
 } from '@/lib/kdsProductionStore';
-import {
-  fetchMealsWithPackaging,
-  MealWithPackaging,
-  calculatePackagingDemand,
-} from '@/lib/supabaseService';
 
 const toEnglishDigits = (val?: string | number | null): string => {
   if (val === null || val === undefined) return '';
@@ -69,32 +58,6 @@ export default function ProductionKDSClient() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<KDSColumnId | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-
-  // Real Supabase Data State
-  const [realMeals, setRealMeals] = useState<MealWithPackaging[]>([]);
-  const [isLoadingMeals, setIsLoadingMeals] = useState(false);
-  const [dbStatus, setDbStatus] = useState<{ count: number; bomCount: number }>({ count: 176, bomCount: 586 });
-
-  const loadRealSupabaseMeals = async () => {
-    setIsLoadingMeals(true);
-    try {
-      const data = await fetchMealsWithPackaging();
-      if (data && data.length > 0) {
-        setRealMeals(data);
-        const totalBom = data.reduce((acc, m) => acc + (m.packaging?.length || 0), 0);
-        setDbStatus({ count: data.length, bomCount: totalBom });
-      }
-    } catch (err) {
-      console.error('Failed to load real meals from Supabase:', err);
-    } finally {
-      setIsLoadingMeals(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRealSupabaseMeals();
-  }, []);
 
   // Sync with store events
   useEffect(() => {
@@ -113,39 +76,6 @@ export default function ProductionKDSClient() {
       window.removeEventListener('storage', handleSync);
     };
   }, []);
-
-  // New Batch Form State
-  const [newBatch, setNewBatch] = useState<{
-    meal_code: string;
-    name: string;
-    name_en: string;
-    category: string;
-    target_quantity: number;
-    station: string;
-    chef: string;
-    prep_time: string;
-    priority: 'HIGH' | 'MEDIUM' | 'NORMAL';
-    dietNotes: string;
-    calories: number;
-    packaging?: Array<{
-      item_code: string;
-      item_name_ar: string;
-      quantity_used: number;
-    }>;
-  }>({
-    meal_code: '',
-    name: '',
-    name_en: '',
-    category: 'وجبات رئيسية',
-    target_quantity: 30,
-    station: 'محطة الشوايات والأفران',
-    chef: 'الشيف طارق',
-    prep_time: '25 دقيقة',
-    priority: 'HIGH',
-    dietNotes: 'وجبة صحية متوازنة',
-    calories: 450,
-    packaging: [],
-  });
 
   const columnsMeta: Record<
     KDSColumnId,
@@ -283,49 +213,6 @@ export default function ProductionKDSClient() {
     setDragOverColumn(null);
   };
 
-  const handleCreateNewBatch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBatch.name.trim()) return;
-
-    const id = `BATCH-${Math.floor(100 + Math.random() * 900)}`;
-    const created: BatchProductionItem = {
-      id,
-      meal_code: newBatch.meal_code || undefined,
-      menuId: newBatch.meal_code || undefined,
-      name: newBatch.name,
-      name_en: newBatch.name_en || newBatch.name,
-      category: newBatch.category,
-      target_quantity: Number(newBatch.target_quantity) || 20,
-      completed_quantity: 0,
-      station: newBatch.station,
-      chef: newBatch.chef,
-      prep_time: newBatch.prep_time,
-      priority: newBatch.priority,
-      column: 'IN_PROGRESS',
-      dietNotes: newBatch.dietNotes,
-      calories: Number(newBatch.calories) || 350,
-      packaging: newBatch.packaging,
-    };
-
-    const updated = storeAddBatch(created);
-    setBatches(updated);
-    setIsAddModalOpen(false);
-    setNewBatch({
-      meal_code: '',
-      name: '',
-      name_en: '',
-      category: 'وجبات رئيسية',
-      target_quantity: 30,
-      station: 'محطة الشوايات والأفران',
-      chef: 'الشيف طارق',
-      prep_time: '25 دقيقة',
-      priority: 'HIGH',
-      dietNotes: 'وجبة صحية متوازنة',
-      calories: 450,
-      packaging: [],
-    });
-  };
-
   const categories = ['ALL', 'فطور', 'وجبات رئيسية', 'سلطات', 'حلى'];
 
   return (
@@ -345,8 +232,8 @@ export default function ProductionKDSClient() {
           </div>
         </div>
 
-        {/* Live Batch Metric Indicators & Add Batch Button */}
-        <div className="flex items-center gap-4 flex-wrap">
+        {/* Live Batch Metric Indicators */}
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
           <div className="bg-white/[0.05] border border-white/20 rounded-xl px-4 py-2 flex items-center gap-3 text-xs">
             <div>
               <span className="text-white/60 block">{lang === 'en' ? 'Total Target' : 'المستهدف الإجمالي'}</span>
@@ -362,20 +249,11 @@ export default function ProductionKDSClient() {
               </span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{lang === 'en' ? 'Add Production Batch' : 'إضافة دفعة إنتاج'}</span>
-          </button>
         </div>
       </header>
 
-      {/* 2. Category Filter & Search Bar (Aligned to the right side directly next to each other) */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 bg-white/[0.04] border border-white/15 p-3 rounded-2xl">
+      {/* 2. Category Filter & Search Bar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white/[0.04] border border-white/15 p-3 rounded-2xl">
         {/* Category Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {categories.map((cat) => (
@@ -394,7 +272,7 @@ export default function ProductionKDSClient() {
           ))}
         </div>
 
-        {/* Search Bar Placed Directly Next to Categories */}
+        {/* Search Bar */}
         <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 text-white/50 absolute top-1/2 -translate-y-1/2 start-3" />
           <input
@@ -420,32 +298,9 @@ export default function ProductionKDSClient() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Live Supabase Database Connection Badge */}
-            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-400/25 px-3 py-1.5 rounded-xl text-xs backdrop-blur-md shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <Database className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="text-emerald-200 font-bold hidden sm:inline">
-                {lang === 'en' ? 'Live Supabase Menu & BOM' : 'قاعدة البيانات الحية'}
-              </span>
-              <span className="text-white/60 font-mono text-[11px]" dir="ltr">
-                ({toEnglishDigits(dbStatus.count)} {lang === 'en' ? 'meals' : 'وجبة'} • {toEnglishDigits(dbStatus.bomCount)} BOM)
-              </span>
-              <button
-                type="button"
-                onClick={loadRealSupabaseMeals}
-                disabled={isLoadingMeals}
-                title={lang === 'en' ? 'Sync from Supabase' : 'تحديث من قاعدة البيانات'}
-                className="p-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMeals ? 'animate-spin text-teal-300' : ''}`} />
-              </button>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-3 text-[10px] text-white/60 font-medium">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" />{lang === 'en' ? 'Ready' : 'جاهز'}</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />{lang === 'en' ? 'In kitchen' : 'قيد التنفيذ'}</span>
-            </div>
+          <div className="flex items-center gap-3 text-[10px] text-white/60 font-medium">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" />{lang === 'en' ? 'Ready' : 'جاهز'}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />{lang === 'en' ? 'In kitchen' : 'قيد التنفيذ'}</span>
           </div>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
@@ -662,256 +517,6 @@ export default function ProductionKDSClient() {
           );
         })}
       </div>
-
-      {/* 4. Add New Production Batch Modal */}
-      <AnimatePresence>
-        {isAddModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-slate-950/85 backdrop-blur-2xl border border-white/25 rounded-3xl p-6 sm:p-8 shadow-2xl text-white space-y-4"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-white/15">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-teal-500/20 border border-teal-400/30 rounded-xl text-teal-300">
-                    <ChefHat className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">
-                      {lang === 'en' ? 'Add New Healthy Diet Batch' : 'إضافة دفعة إنتاج وجبة جديدة'}
-                    </h3>
-                    <p className="text-xs text-white/60">
-                      {lang === 'en' ? 'Schedule a new batch to the kitchen In-Progress swimlane' : 'جدولة دفعة جديدة وإدراجها ضمن مرحلة قيد التحضير'}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/15 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateNewBatch} className="space-y-4 text-xs">
-                {/* 1. Pick from Real Supabase Menu Dropdown */}
-                <div className="space-y-1.5 p-3 rounded-2xl bg-teal-500/10 border border-teal-400/25">
-                  <label className="font-bold text-teal-200 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Database className="w-3.5 h-3.5 text-teal-300" />
-                      <span>{lang === 'en' ? 'Select Meal from Supabase Menu:' : 'اختر الوجبة من قاعدة بيانات زاهي الحية:'}</span>
-                    </span>
-                    <span className="text-[10px] text-teal-300/80 font-mono">BOM Auto-link</span>
-                  </label>
-                  <select
-                    value={newBatch.meal_code}
-                    onChange={(e) => {
-                      const code = e.target.value;
-                      const meal = realMeals.find((m) => m.meal_code === code);
-                      if (meal) {
-                        setNewBatch({
-                          ...newBatch,
-                          meal_code: meal.meal_code,
-                          name: meal.meal_name_ar,
-                          name_en: meal.meal_name_en || meal.meal_name_ar,
-                          category: normalizeCategory(meal.category_ar),
-                          packaging: (meal.packaging || []).map((p) => ({
-                            item_code: p.inventory_item_code,
-                            item_name_ar: p.inventory_item?.item_name_ar || p.inventory_item_code,
-                            quantity_used: p.quantity_used,
-                          })),
-                        });
-                      } else {
-                        setNewBatch({ ...newBatch, meal_code: '' });
-                      }
-                    }}
-                    className="w-full bg-slate-900 border border-teal-400/30 rounded-xl p-2.5 text-xs text-white focus:outline-none cursor-pointer"
-                  >
-                    <option value="">-- {lang === 'en' ? 'Choose from 176 seeded meals or enter manually' : 'اختر من 176 وجبة محقونة أو أدخل يدوياً'} --</option>
-                    {realMeals.map((m) => (
-                      <option key={m.meal_code} value={m.meal_code}>
-                        [{m.meal_code}] {m.meal_name_ar} {m.category_ar ? `• ${m.category_ar}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {newBatch.packaging && newBatch.packaging.length > 0 && (
-                    <div className="pt-1.5 flex flex-wrap gap-1 items-center">
-                      <span className="text-[10px] text-teal-200/80 font-medium">{lang === 'en' ? 'Joined Packaging:' : 'مواد التغليف المرتبطة:'}</span>
-                      {newBatch.packaging.map((pkg, idx) => (
-                        <span key={idx} className="text-[10px] bg-teal-500/20 text-teal-200 border border-teal-400/30 px-1.5 py-0.5 rounded font-mono">
-                          {pkg.item_code} {pkg.item_name_ar}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-white block">
-                    {lang === 'en' ? 'Meal Name (Arabic):' : 'اسم الوجبة (عربي):'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: فاهيتا لحم بقري دايت مع الأرز البري"
-                    value={newBatch.name}
-                    onChange={(e) => setNewBatch({ ...newBatch, name: e.target.value })}
-                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white block">
-                      {lang === 'en' ? 'Meal Name (English):' : 'اسم الوجبة (إنجليزي):'}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Diet Beef Fajita with Wild Rice"
-                      value={newBatch.name_en}
-                      onChange={(e) => setNewBatch({ ...newBatch, name_en: e.target.value })}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white block">
-                      {lang === 'en' ? 'Category:' : 'التصنيف:'}
-                    </label>
-                    <select
-                      value={newBatch.category}
-                      onChange={(e) => setNewBatch({ ...newBatch, category: e.target.value })}
-                      className="w-full bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    >
-                      <option value="فطور">فطور</option>
-                      <option value="وجبات رئيسية">وجبات رئيسية</option>
-                      <option value="سلطات">سلطات</option>
-                      <option value="حلى">حلى</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white flex justify-between">
-                      <span>{lang === 'en' ? 'Target Units:' : 'الكمية المستهدفة:'}</span>
-                      <span className="text-[10px] text-white/50 font-mono">0-9</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      dir="ltr"
-                      lang="en"
-                      required
-                      value={newBatch.target_quantity}
-                      onChange={(e) => {
-                        const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
-                        setNewBatch({ ...newBatch, target_quantity: clean === '' ? 0 : Number(clean) });
-                      }}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none font-mono text-center font-bold"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white flex justify-between">
-                      <span>{lang === 'en' ? 'Calories (kcal):' : 'السعرات:'}</span>
-                      <span className="text-[10px] text-white/50 font-mono">0-9</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      dir="ltr"
-                      lang="en"
-                      value={newBatch.calories}
-                      onChange={(e) => {
-                        const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString()).replace(/[^0-9]/g, '');
-                        setNewBatch({ ...newBatch, calories: clean === '' ? 0 : Number(clean) });
-                      }}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none font-mono text-center font-bold"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white block">
-                      {lang === 'en' ? 'Priority:' : 'الأولوية:'}
-                    </label>
-                    <select
-                      value={newBatch.priority}
-                      onChange={(e) => setNewBatch({ ...newBatch, priority: e.target.value as any })}
-                      className="w-full bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    >
-                      <option value="HIGH">أولوية قصوى</option>
-                      <option value="MEDIUM">متوسطة</option>
-                      <option value="NORMAL">عادية</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white block">
-                      {lang === 'en' ? 'Kitchen Station:' : 'محطة التحضير بالمطبخ:'}
-                    </label>
-                    <input
-                      type="text"
-                      value={newBatch.station}
-                      onChange={(e) => setNewBatch({ ...newBatch, station: e.target.value })}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-white block">
-                      {lang === 'en' ? 'Assigned Chef:' : 'الشيف المسؤول:'}
-                    </label>
-                    <input
-                      type="text"
-                      value={newBatch.chef}
-                      onChange={(e) => setNewBatch({ ...newBatch, chef: e.target.value })}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-white block">
-                    {lang === 'en' ? 'Dietary Notes & Allergens:' : 'ملاحظات الحمية ومسببات الحساسية:'}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="مثال: خالٍ من الغلوتين • بدون مكسرات"
-                    value={newBatch.dietNotes}
-                    onChange={(e) => setNewBatch({ ...newBatch, dietNotes: e.target.value })}
-                    className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                  />
-                </div>
-
-                <div className="pt-3 border-t border-white/15 flex gap-3">
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{lang === 'en' ? 'Confirm & Add to Schedule' : 'تأكيد وإدراج الدفعة'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all cursor-pointer"
-                  >
-                    {lang === 'en' ? 'Cancel' : 'إلغاء'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 }
