@@ -29,6 +29,33 @@ import {
   type OperationSchedule,
 } from '@/lib/supabase';
 
+/**
+ * Single source of truth for mock production metrics.
+ * Designed for 1-step replacement with live Supabase logs.
+ */
+export const MOCK_PRODUCTION_DATA = {
+  dailyTarget: 450,
+  overallCompletedEquivalent: 380,
+  overallCompletionPct: 85,
+  maxKitchenCapacity: 1000,
+  capacityUtilizationPct: 45,
+  slaStatus: 'on_track' as const, // 'on_track' | 'delayed' | 'critical'
+  lines: {
+    portioning: {
+      completed: 400,
+      target: 450,
+    },
+    packaging: {
+      completed: 150,
+      target: 450,
+    },
+    bagging: {
+      completed: 110,
+      target: 450,
+    },
+  },
+};
+
 interface ShiftStep {
   id: number;
   titleAr: string;
@@ -50,12 +77,6 @@ interface AssemblyLineProgress {
   innerRadius: number;
   outerRadius: number;
 }
-
-const DAILY_TARGET = 450;
-const OVERALL_COMPLETED_EQUIVALENT = 380;
-const OVERALL_COMPLETION_PCT = 85;
-const MAX_KITCHEN_CAPACITY = 1000;
-const CAPACITY_UTILIZATION_PCT = 45;
 
 const SHIFT_STEPS: ShiftStep[] = [
   {
@@ -95,9 +116,11 @@ const ASSEMBLY_LINES: AssemblyLineProgress[] = [
     nameEn: 'Portioning',
     shortAr: 'الغرف',
     shortEn: 'Portioning',
-    completed: 400,
-    target: DAILY_TARGET,
-    pct: Math.round((400 / DAILY_TARGET) * 100), // 89%
+    completed: MOCK_PRODUCTION_DATA.lines.portioning.completed,
+    target: MOCK_PRODUCTION_DATA.lines.portioning.target,
+    pct: Math.round(
+      (MOCK_PRODUCTION_DATA.lines.portioning.completed / MOCK_PRODUCTION_DATA.lines.portioning.target) * 100
+    ),
     color: '#34d399', // emerald-400
     innerRadius: 78,
     outerRadius: 92,
@@ -108,9 +131,11 @@ const ASSEMBLY_LINES: AssemblyLineProgress[] = [
     nameEn: 'Packaging',
     shortAr: 'التغليف',
     shortEn: 'Packaging',
-    completed: 150,
-    target: DAILY_TARGET,
-    pct: Math.round((150 / DAILY_TARGET) * 100), // 33%
+    completed: MOCK_PRODUCTION_DATA.lines.packaging.completed,
+    target: MOCK_PRODUCTION_DATA.lines.packaging.target,
+    pct: Math.round(
+      (MOCK_PRODUCTION_DATA.lines.packaging.completed / MOCK_PRODUCTION_DATA.lines.packaging.target) * 100
+    ),
     color: '#14b8a6', // teal-500
     innerRadius: 58,
     outerRadius: 72,
@@ -121,9 +146,11 @@ const ASSEMBLY_LINES: AssemblyLineProgress[] = [
     nameEn: 'Bagging',
     shortAr: 'التكييس',
     shortEn: 'Bagging',
-    completed: 110,
-    target: DAILY_TARGET,
-    pct: Math.round((110 / DAILY_TARGET) * 100), // 24%
+    completed: MOCK_PRODUCTION_DATA.lines.bagging.completed,
+    target: MOCK_PRODUCTION_DATA.lines.bagging.target,
+    pct: Math.round(
+      (MOCK_PRODUCTION_DATA.lines.bagging.completed / MOCK_PRODUCTION_DATA.lines.bagging.target) * 100
+    ),
     color: '#38bdf8', // sky-400
     innerRadius: 38,
     outerRadius: 52,
@@ -430,7 +457,7 @@ export default function ProductionKDSClient() {
               {/* Center Telemetry Readout */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-4">
                 <span className="text-xl font-extrabold font-mono text-white leading-none" dir="ltr">
-                  {activeLine ? `${activeLine.pct}%` : `${OVERALL_COMPLETION_PCT}%`}
+                  {activeLine ? `${activeLine.pct}%` : `${MOCK_PRODUCTION_DATA.overallCompletionPct}%`}
                 </span>
                 <span className="text-[10px] font-bold text-white/70 mt-1 truncate max-w-[72px]">
                   {activeLine
@@ -454,8 +481,8 @@ export default function ProductionKDSClient() {
                 </h3>
                 <p className="text-[11px] text-white/65 mt-0.5">
                   {lang === 'en'
-                    ? 'Percentage completed out of 450 daily target meals'
-                    : 'نسبة الإنجاز الفعلي لكل خط من إجمالي الهدف اليومي (450 وجبة)'}
+                    ? `Percentage completed out of ${MOCK_PRODUCTION_DATA.dailyTarget} daily target meals`
+                    : `نسبة الإنجاز الفعلي لكل خط من إجمالي الهدف اليومي (${MOCK_PRODUCTION_DATA.dailyTarget} وجبة)`}
                 </p>
               </div>
 
@@ -516,7 +543,7 @@ export default function ProductionKDSClient() {
                 {lang === 'en' ? 'Executive Pulse Indicators' : 'المؤشرات التشغيلية المدمجة'}
               </span>
               <span className="text-[11px] font-mono text-white/60" dir="ltr">
-                {DAILY_TARGET} {lang === 'en' ? 'Meals Plan' : 'وجبة'}
+                {MOCK_PRODUCTION_DATA.dailyTarget} {lang === 'en' ? 'Meals Plan' : 'وجبة'}
               </span>
             </div>
 
@@ -529,17 +556,17 @@ export default function ProductionKDSClient() {
                 </div>
                 <div className="flex items-baseline gap-2 font-mono" dir="ltr">
                   <span className="text-base font-extrabold text-emerald-300">
-                    {OVERALL_COMPLETION_PCT}%
+                    {MOCK_PRODUCTION_DATA.overallCompletionPct}%
                   </span>
                   <span className="text-[11px] text-white/65">
-                    ({OVERALL_COMPLETED_EQUIVALENT}/{DAILY_TARGET})
+                    ({MOCK_PRODUCTION_DATA.overallCompletedEquivalent}/{MOCK_PRODUCTION_DATA.dailyTarget})
                   </span>
                 </div>
               </div>
               <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-400"
-                  style={{ width: `${OVERALL_COMPLETION_PCT}%` }}
+                  style={{ width: `${MOCK_PRODUCTION_DATA.overallCompletionPct}%` }}
                 />
               </div>
             </div>
@@ -571,17 +598,17 @@ export default function ProductionKDSClient() {
                 </div>
                 <div className="flex items-baseline gap-2 font-mono" dir="ltr">
                   <span className="text-base font-extrabold text-sky-300">
-                    {CAPACITY_UTILIZATION_PCT}%
+                    {MOCK_PRODUCTION_DATA.capacityUtilizationPct}%
                   </span>
                   <span className="text-[11px] text-white/65">
-                    ({DAILY_TARGET}/{MAX_KITCHEN_CAPACITY.toLocaleString('en-US')})
+                    ({MOCK_PRODUCTION_DATA.dailyTarget}/{MOCK_PRODUCTION_DATA.maxKitchenCapacity.toLocaleString('en-US')})
                   </span>
                 </div>
               </div>
               <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-teal-400 to-sky-400"
-                  style={{ width: `${CAPACITY_UTILIZATION_PCT}%` }}
+                  style={{ width: `${MOCK_PRODUCTION_DATA.capacityUtilizationPct}%` }}
                 />
               </div>
             </div>

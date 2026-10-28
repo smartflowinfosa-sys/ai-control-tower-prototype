@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import ProductionKDSClient from './ProductionKDSClient';
+import ProductionLoading from './loading';
 
 export const metadata = {
   title: 'لوحة التحكم للإنتاج | Zahi Control Tower',
@@ -8,13 +9,7 @@ export const metadata = {
 
 export default function ProductionPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-[60vh] items-center justify-center text-white/80 font-bold">
-          جاري تحميل لوحة التحكم للإنتاج...
-        </div>
-      }
-    >
+    <Suspense fallback={<ProductionLoading />}>
       <ProductionKDSClient />
     </Suspense>
   );
