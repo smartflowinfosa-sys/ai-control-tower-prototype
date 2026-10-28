@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   PieChart,
   Pie,
@@ -21,8 +21,13 @@ import {
   Gauge,
   CalendarClock,
   Activity,
+  Loader2,
 } from 'lucide-react';
 import { useLanguage } from '@/components/common/LanguageContext';
+import {
+  supabase,
+  type OperationSchedule,
+} from '@/lib/supabase';
 
 interface ShiftStep {
   id: number;
@@ -51,46 +56,6 @@ const OVERALL_COMPLETED_EQUIVALENT = 380;
 const OVERALL_COMPLETION_PCT = 85;
 const MAX_KITCHEN_CAPACITY = 1000;
 const CAPACITY_UTILIZATION_PCT = 45;
-
-const WEEKDAYS_SHORT_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-const DAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
-const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
-
-/**
- * Computes the operational day badge text based on Zahi's schedule:
- * - Wednesday (index 3): Kitchen Off -> "إجازة (Off)"
- * - Any other cooking day: "إنتاج يوم: [اليوم]" (e.g., "إنتاج يوم: الخميس")
- */
-function getOperationalScheduleBadge() {
-  try {
-    const shortDay = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Riyadh',
-      weekday: 'short',
-    }).format(new Date());
-    const dayIdx = WEEKDAYS_SHORT_EN.indexOf(shortDay as (typeof WEEKDAYS_SHORT_EN)[number]);
-    const validIdx = dayIdx >= 0 ? dayIdx : 4;
-
-    if (validIdx === 3) {
-      return {
-        isOffDay: true,
-        labelAr: 'إجازة (Off)',
-        labelEn: 'Kitchen Off (Wed)',
-      };
-    }
-
-    return {
-      isOffDay: false,
-      labelAr: `إنتاج يوم: ${DAYS_AR[validIdx]}`,
-      labelEn: `Production Day: ${DAYS_EN[validIdx]}`,
-    };
-  } catch {
-    return {
-      isOffDay: false,
-      labelAr: 'إنتاج يوم: الخميس',
-      labelEn: 'Production Day: Thursday',
-    };
-  }
-}
 
 const SHIFT_STEPS: ShiftStep[] = [
   {
@@ -175,12 +140,91 @@ export default function ProductionKDSClient() {
     () => false
   );
   const [hoveredLineId, setHoveredLineId] = useState<AssemblyLineProgress['id'] | null>(null);
+  const [todaySchedule, setTodaySchedule] = useState<OperationSchedule | null>(null);
+  const [isScheduleLoading, setIsScheduleLoading] = useState<boolean>(true);
 
-  const scheduleBadge = getOperationalScheduleBadge();
+  useEffect(() => {
+    let isActive = true;
+
+    async function fetchScheduleForToday() {
+      try {
+        const currentDay = new Date().getDay(); // 0 = Sunday, 3 = Wednesday, ..., 6 = Saturday
+        const { data, error } = await supabase
+          .from('operation_schedule')
+          .select('day_of_week, day_name_ar, cooking_day_ar, delivery_day_ar, is_off')
+          .eq('day_of_week', currentDay)
+          .maybeSingle();
+
+        if (!isActive) return;
+
+        if (error) {
+          console.error('[ProductionKDSClient] Error fetching operation_schedule:', error.message);
+        } else {
+          setTodaySchedule((data as OperationSchedule | null) ?? null);
+        }
+      } catch (err) {
+        console.error('[ProductionKDSClient] Unexpected error fetching schedule:', err);
+      } finally {
+        if (isActive) {
+          setIsScheduleLoading(false);
+        }
+      }
+    }
+
+    fetchScheduleForToday();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const activeLine = hoveredLineId
     ? ASSEMBLY_LINES.find((l) => l.id === hoveredLineId) || null
     : null;
+
+  const renderScheduleBadgeContent = () => {
+    if (isScheduleLoading) {
+      return (
+        <>
+          <Loader2 className="w-4 h-4 shrink-0 text-emerald-300 animate-spin" />
+          <span className="text-xs sm:text-sm font-bold text-white/80 whitespace-nowrap">
+            جاري التحقق من الجدول...
+          </span>
+        </>
+      );
+    }
+
+    if (!todaySchedule) {
+      return (
+        <>
+          <CalendarClock className="w-4 h-4 shrink-0 text-white/50" />
+          <span className="text-xs sm:text-sm font-bold text-white/70 whitespace-nowrap">
+            تعذر جلب الجدول
+          </span>
+        </>
+      );
+    }
+
+    if (todaySchedule.is_off) {
+      return (
+        <>
+          <CalendarClock className="w-4 h-4 shrink-0 text-amber-300" />
+          <span className="text-xs sm:text-sm font-bold text-white whitespace-nowrap">
+            إجازة (Off)
+          </span>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <CalendarClock className="w-4 h-4 shrink-0 text-emerald-300" />
+        <span className="text-xs sm:text-sm font-bold text-white whitespace-nowrap">
+          {`إنتاج يوم: ${todaySchedule.cooking_day_ar} | تسليم: ${todaySchedule.delivery_day_ar}`}
+        </span>
+      </>
+    );
+  };
 
   return (
     <div className="page-shell w-full mx-auto space-y-5 font-sans">
@@ -195,16 +239,12 @@ export default function ProductionKDSClient() {
           </h1>
         </div>
 
-        {/* Dynamic Operational Day Schedule Badge (Top Left in RTL) */}
-        <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl px-4 py-2.5 flex items-center gap-2.5 self-start sm:self-center">
-          <CalendarClock
-            className={`w-4 h-4 shrink-0 ${
-              scheduleBadge.isOffDay ? 'text-amber-300' : 'text-emerald-300'
-            }`}
-          />
-          <span className="text-xs sm:text-sm font-bold text-white">
-            {lang === 'en' ? scheduleBadge.labelEn : scheduleBadge.labelAr}
-          </span>
+        {/* Live Supabase Operational Day Schedule Badge (Top Left in RTL) */}
+        <div
+          aria-live="polite"
+          className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl px-4 py-2.5 min-h-[42px] min-w-[180px] flex items-center justify-center sm:justify-start gap-2.5 self-start sm:self-center transition-all"
+        >
+          {renderScheduleBadgeContent()}
         </div>
       </header>
 
