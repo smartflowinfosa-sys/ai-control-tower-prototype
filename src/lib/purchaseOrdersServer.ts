@@ -24,71 +24,70 @@ export async function resolveCreatorNamesByIds(userIds: string[]): Promise<Map<s
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // 1. Check `profiles.full_name` if `profiles` table exists in Supabase
-  try {
-    const { data: profilesData, error: profilesErr } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', uniqueIds);
-
-    if (!profilesErr && Array.isArray(profilesData)) {
-      for (const row of profilesData as Array<{ id: string; full_name?: string | null }>) {
-        const clean = sanitizeCreatorName(row.full_name);
-        if (row.id && clean) {
-          result.set(row.id, clean);
-        }
-      }
-    }
-  } catch {
-    // `profiles` table is optional if users reside in `app_users` or `auth.users`
-  }
-
-  // 2. Check `app_users` for any IDs not yet resolved
-  const remainingForAppUsers = uniqueIds.filter(id => !result.has(id));
-  if (remainingForAppUsers.length > 0) {
-    try {
-      const { data: appUsersData, error: appUsersErr } = await supabaseAdmin
+  // 1. Query `app_users` and `profiles` concurrently via Promise.all
+  const [appUsersRes, profilesRes] = await Promise.all([
+    Promise.resolve(
+      supabaseAdmin
         .from('app_users')
         .select('id, name_en, name_ar, username')
-        .in('id', remainingForAppUsers);
+        .in('id', uniqueIds)
+    ).catch(() => ({ data: null, error: null })),
+    Promise.resolve(
+      supabaseAdmin
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', uniqueIds)
+    ).catch(() => ({ data: null, error: null })),
+  ]);
 
-      if (!appUsersErr && Array.isArray(appUsersData)) {
-        for (const u of appUsersData as Array<{
-          id: string;
-          name_en?: string | null;
-          name_ar?: string | null;
-          username?: string | null;
-        }>) {
-          const clean = sanitizeCreatorName(u.name_en || u.name_ar || u.username);
-          if (u.id && clean) {
-            result.set(u.id, clean);
-          }
-        }
+  if (!profilesRes.error && Array.isArray(profilesRes.data)) {
+    for (const row of profilesRes.data as Array<{ id: string; full_name?: string | null }>) {
+      const clean = sanitizeCreatorName(row.full_name);
+      if (row.id && clean) {
+        result.set(row.id, clean);
       }
-    } catch {
-      // Ignore if unavailable
     }
   }
 
-  // 3. Check Supabase Auth `user.user_metadata.full_name` for any remaining unresolved IDs
-  const remainingForAuth = uniqueIds.filter(id => !result.has(id));
-  for (const uid of remainingForAuth) {
-    try {
-      const { data, error } = await supabaseAdmin.auth.admin.getUserById(uid);
-      if (!error && data?.user) {
-        const metaName =
-          (data.user.user_metadata?.full_name as string | undefined) ||
-          (data.user.user_metadata?.name as string | undefined) ||
-          data.user.email ||
-          '';
-        const clean = sanitizeCreatorName(metaName);
-        if (clean) {
-          result.set(uid, clean);
+  if (!appUsersRes.error && Array.isArray(appUsersRes.data)) {
+    for (const u of appUsersRes.data as Array<{
+      id: string;
+      name_en?: string | null;
+      name_ar?: string | null;
+      username?: string | null;
+    }>) {
+      if (!result.has(u.id)) {
+        const clean = sanitizeCreatorName(u.name_en || u.name_ar || u.username);
+        if (u.id && clean) {
+          result.set(u.id, clean);
         }
       }
-    } catch {
-      // Ignore individual lookup errors
     }
+  }
+
+  // 2. Check Supabase Auth `user.user_metadata.full_name` concurrently for any remaining unresolved IDs
+  const remainingForAuth = uniqueIds.filter(id => !result.has(id));
+  if (remainingForAuth.length > 0) {
+    await Promise.all(
+      remainingForAuth.map(async uid => {
+        try {
+          const { data, error } = await supabaseAdmin.auth.admin.getUserById(uid);
+          if (!error && data?.user) {
+            const metaName =
+              (data.user.user_metadata?.full_name as string | undefined) ||
+              (data.user.user_metadata?.name as string | undefined) ||
+              data.user.email ||
+              '';
+            const clean = sanitizeCreatorName(metaName);
+            if (clean) {
+              result.set(uid, clean);
+            }
+          }
+        } catch {
+          // Ignore individual lookup errors
+        }
+      })
+    );
   }
 
   return result;

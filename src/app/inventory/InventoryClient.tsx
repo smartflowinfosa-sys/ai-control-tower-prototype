@@ -359,7 +359,7 @@ export default function InventoryClient({
   useEffect(() => {
     const syncDemand = () => {
       const kdsBatches = getKdsBatches();
-      calculatePackagingDemand(kdsBatches).then(res => {
+      calculatePackagingDemand(kdsBatches, items).then(res => {
         setBomDemand(res);
       }).catch(err => console.error('Error fetching BOM demand:', err));
     };
@@ -424,16 +424,18 @@ export default function InventoryClient({
     window.addEventListener('ai_purchase_order_updated', handleUpdatePO);
     window.addEventListener('purchase_order_received', handlePOReceived);
 
-    // Fetch latest purchase orders directly from Supabase
-    fetchPurchaseOrders()
-      .then(pos => {
-        if (pos && pos.length > 0) {
-          setPurchaseOrders(pos as unknown as PurchaseOrder[]);
-        }
-      })
-      .catch(err => {
-        console.warn('Background PO refresh warning:', err);
-      });
+    // Only fetch purchase orders on client mount if SSR cache did not already supply them
+    if (!initialPurchaseOrders || initialPurchaseOrders.length === 0) {
+      fetchPurchaseOrders()
+        .then(pos => {
+          if (pos && pos.length > 0) {
+            setPurchaseOrders(pos as unknown as PurchaseOrder[]);
+          }
+        })
+        .catch(err => {
+          console.warn('Background PO refresh warning:', err);
+        });
+    }
 
     return () => {
       window.removeEventListener('ai_purchase_order_created', handleNewAiPO);
@@ -950,21 +952,21 @@ export default function InventoryClient({
 
     setPoQuantity(Math.max(1, defaultCartons));
 
-    // Dynamic approved suppliers mapping fetched from Supabase supplier_items table
+    // Use joined supplier mappings from SSR cache directly (eliminating N+1 query per item)
     const cached = itemSuppliers[code];
     if (cached && cached.length > 0) {
       setSelectedSupplier(cached[0].name);
-    } else {
-      setSelectedSupplier('');
+      return;
     }
 
+    setSelectedSupplier('');
     setIsLoadingSuppliers(true);
     try {
       const dbSuppliers = await fetchSuppliersForItem(code);
       if (dbSuppliers && dbSuppliers.length > 0) {
         setItemSuppliers(prev => ({ ...prev, [code]: dbSuppliers }));
         setSelectedSupplier(dbSuppliers[0].name);
-      } else if (!cached || cached.length === 0) {
+      } else {
         setSelectedSupplier('');
       }
     } catch (err) {
@@ -1521,6 +1523,11 @@ export default function InventoryClient({
                             cost_per_unit: 0.45,
                           });
                         }
+                      }
+                      const cachedSuppliers = itemSuppliers[newCode];
+                      if (cachedSuppliers && cachedSuppliers.length > 0) {
+                        setSelectedSupplier(cachedSuppliers[0].name);
+                        return;
                       }
                       setIsLoadingSuppliers(true);
                       try {

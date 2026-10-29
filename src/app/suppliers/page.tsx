@@ -1,5 +1,14 @@
 import dynamic from 'next/dynamic';
-import { fetchSuppliers, fetchInventoryItems, fetchAllSupplierItems, SupabaseSupplier, SupabaseInventoryItem, SupabasePurchaseOrder, SupabaseSupplierItem } from '@/lib/supabaseService';
+import { unstable_cache } from 'next/cache';
+import {
+  fetchSuppliers,
+  fetchInventoryItems,
+  fetchAllSupplierItems,
+  SupabaseSupplier,
+  SupabaseInventoryItem,
+  SupabasePurchaseOrder,
+  SupabaseSupplierItem,
+} from '@/lib/supabaseService';
 import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
 
 const SuppliersClient = dynamic(() => import('./SuppliersClient'), {
@@ -12,7 +21,29 @@ const SuppliersClient = dynamic(() => import('./SuppliersClient'), {
   ),
 });
 
-export const instant = false;
+const getCachedSuppliers = unstable_cache(
+  async () => fetchSuppliers(),
+  ['suppliers-list'],
+  { revalidate: 60, tags: ['suppliers'] }
+);
+
+const getCachedInventoryItems = unstable_cache(
+  async () => fetchInventoryItems(),
+  ['inventory-items-with-suppliers'],
+  { revalidate: 60, tags: ['inventory-items', 'supplier-items'] }
+);
+
+const getCachedPurchaseOrders = unstable_cache(
+  async () => fetchPurchaseOrdersServer(),
+  ['purchase-orders-list'],
+  { revalidate: 60, tags: ['purchase-orders'] }
+);
+
+const getCachedSupplierItems = unstable_cache(
+  async () => fetchAllSupplierItems(),
+  ['all-supplier-items'],
+  { revalidate: 60, tags: ['supplier-items'] }
+);
 
 export default async function SuppliersPage() {
   let initialSuppliers: SupabaseSupplier[] = [];
@@ -23,10 +54,10 @@ export default async function SuppliersPage() {
 
   try {
     const [sups, items, pos, supplierItems] = await Promise.all([
-      fetchSuppliers(),
-      fetchInventoryItems().catch(() => []),
-      fetchPurchaseOrdersServer().catch(() => []),
-      fetchAllSupplierItems().catch(() => []),
+      getCachedSuppliers(),
+      getCachedInventoryItems().catch(() => []),
+      getCachedPurchaseOrders().catch(() => []),
+      getCachedSupplierItems().catch(() => []),
     ]);
     initialSuppliers = sups;
     initialInventoryItems = items;

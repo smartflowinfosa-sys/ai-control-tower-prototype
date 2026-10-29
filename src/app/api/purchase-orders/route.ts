@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -77,6 +78,7 @@ export async function POST(req: Request) {
       fallbackName
     );
 
+    revalidateTag('purchase-orders', 'max');
     return NextResponse.json({ purchaseOrder });
   } catch (error: unknown) {
     console.error('[POST /api/purchase-orders] Error:', error);

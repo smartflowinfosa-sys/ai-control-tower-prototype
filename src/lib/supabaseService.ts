@@ -20,6 +20,15 @@ export interface SupabaseInventoryItem {
   cost_per_unit?: number;
   supplier_id?: string | null;
   created_at?: string;
+  supplier_items?: Array<{
+    supplier_id: string;
+    price?: number;
+    is_available?: boolean;
+    suppliers?:
+      | { id: string; name_ar?: string; name_en?: string }
+      | Array<{ id: string; name_ar?: string; name_en?: string }>
+      | null;
+  }>;
 }
 
 export interface InventoryItem {
@@ -134,13 +143,41 @@ export function sortSuppliersByDefault(list: SupabaseSupplier[]): SupabaseSuppli
 }
 
 /**
- * Fetch all inventory items from the Supabase database
+ * Fetch all inventory items from the Supabase database with joined supplier mappings in a single query
  */
 export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('inventory_items')
-    .select('item_code, item_name_ar, item_name_en, current_stock, reorder_level, cost_per_unit, category_ar, category_en')
+    .select(`
+      item_code,
+      item_name_ar,
+      item_name_en,
+      current_stock,
+      reorder_level,
+      cost_per_unit,
+      category_ar,
+      category_en,
+      supplier_items (
+        supplier_id,
+        price,
+        is_available,
+        suppliers (
+          id,
+          name_ar,
+          name_en
+        )
+      )
+    `)
     .order('item_code', { ascending: true });
+
+  if (error) {
+    const fallback = await supabase
+      .from('inventory_items')
+      .select('item_code, item_name_ar, item_name_en, current_stock, reorder_level, cost_per_unit, category_ar, category_en')
+      .order('item_code', { ascending: true });
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error('Error in fetchInventoryItems from Supabase:', error.message);
@@ -148,7 +185,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
   }
 
   // DB values win when present; otherwise fall back to the real-world policy constants.
-  const items = ((data as SupabaseInventoryItem[]) || []).map(row => {
+  const items = ((data as unknown as SupabaseInventoryItem[]) || []).map(row => {
     const policy = getStockPolicy(row.item_code);
     return {
       ...row,
@@ -1199,10 +1236,15 @@ export async function fetchMenuItems(): Promise<SupabaseMenuItem[]> {
   }
 }
 
+let cachedBomPackaging: SupabaseBomPackaging[] | null = null;
+
 /**
  * Fetch all BOM packaging relationships from Supabase (313+ relationships)
  */
 export async function fetchBomPackaging(): Promise<SupabaseBomPackaging[]> {
+  if (cachedBomPackaging && cachedBomPackaging.length > 0) {
+    return cachedBomPackaging;
+  }
   try {
     const { data, error } = await supabase
       .from('bom_packaging')
@@ -1213,7 +1255,8 @@ export async function fetchBomPackaging(): Promise<SupabaseBomPackaging[]> {
       return [];
     }
 
-    return (data || []) as SupabaseBomPackaging[];
+    cachedBomPackaging = (data || []) as SupabaseBomPackaging[];
+    return cachedBomPackaging;
   } catch (err) {
     console.error('Unexpected error in fetchBomPackaging:', err);
     return [];
@@ -1263,7 +1306,8 @@ export async function fetchMealsWithPackaging(): Promise<MealWithPackaging[]> {
  * Returns a map of inventory item code to total required units
  */
 export async function calculatePackagingDemand(
-  batches: Array<{ meal_code?: string; target_quantity: number }>
+  batches: Array<{ meal_code?: string; target_quantity: number }>,
+  existingInventoryItems?: SupabaseInventoryItem[]
 ): Promise<Array<{
   item_code: string;
   item_name_ar: string;
@@ -1275,7 +1319,9 @@ export async function calculatePackagingDemand(
   try {
     const [bom, inv] = await Promise.all([
       fetchBomPackaging(),
-      fetchInventoryItems(),
+      existingInventoryItems && existingInventoryItems.length > 0
+        ? Promise.resolve(existingInventoryItems)
+        : fetchInventoryItems(),
     ]);
 
     const invMap = new Map<string, SupabaseInventoryItem>();

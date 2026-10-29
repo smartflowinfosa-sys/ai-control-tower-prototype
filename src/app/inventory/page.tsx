@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic';
-import { fetchInventoryItems, fetchAllSupplierItems, SupabaseInventoryItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { unstable_cache } from 'next/cache';
+import { fetchInventoryItems, SupabaseInventoryItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
 
 const InventoryClient = dynamic(() => import('./InventoryClient'), {
@@ -16,7 +17,17 @@ const InventoryClient = dynamic(() => import('./InventoryClient'), {
   ),
 });
 
-export const instant = false;
+const getCachedInventoryItems = unstable_cache(
+  async () => fetchInventoryItems(),
+  ['inventory-items-with-suppliers'],
+  { revalidate: 60, tags: ['inventory-items', 'supplier-items'] }
+);
+
+const getCachedPurchaseOrders = unstable_cache(
+  async () => fetchPurchaseOrdersServer(),
+  ['purchase-orders-list'],
+  { revalidate: 60, tags: ['purchase-orders'] }
+);
 
 export default async function InventoryPage() {
   let initialItems: SupabaseInventoryItem[] = [];
@@ -25,30 +36,28 @@ export default async function InventoryPage() {
   let fetchError: string | null = null;
 
   try {
-    const [items, pos, supplierItems] = await Promise.all([
-      fetchInventoryItems(),
-      fetchPurchaseOrdersServer().catch(err => {
+    const [items, pos] = await Promise.all([
+      getCachedInventoryItems(),
+      getCachedPurchaseOrders().catch(err => {
         console.warn('Failed to fetch purchase orders from Supabase:', err);
-        return [];
-      }),
-      fetchAllSupplierItems().catch(err => {
-        console.warn('Failed to fetch supplier_items from Supabase:', err);
         return [];
       }),
     ]);
     initialItems = items;
     initialPurchaseOrders = pos;
 
-    if (supplierItems && supplierItems.length > 0) {
-      for (const row of supplierItems) {
-        const code = String(row.inventory_item_code || '').trim().toUpperCase();
-        const sup = row.suppliers;
-        if (code && sup) {
-          const name = (sup.name_ar || sup.name_en || '').trim();
-          if (!initialSupplierMappings[code]) initialSupplierMappings[code] = [];
-          if (name && !initialSupplierMappings[code].some(x => x.name === name)) {
-            initialSupplierMappings[code].push({ id: sup.id, name });
-          }
+    // Extract supplier names directly from the joined `supplier_items -> suppliers` on each inventory item (zero N+1 queries)
+    for (const item of items) {
+      const code = String(item.item_code || '').trim().toUpperCase();
+      if (!code || !Array.isArray(item.supplier_items)) continue;
+      for (const rel of item.supplier_items) {
+        const sup = Array.isArray(rel.suppliers) ? rel.suppliers[0] : rel.suppliers;
+        if (!sup) continue;
+        const name = (sup.name_ar || sup.name_en || '').trim();
+        if (!name) continue;
+        if (!initialSupplierMappings[code]) initialSupplierMappings[code] = [];
+        if (!initialSupplierMappings[code].some(x => x.name === name)) {
+          initialSupplierMappings[code].push({ id: sup.id, name });
         }
       }
     }

@@ -148,24 +148,28 @@ export default function SuppliersClient({
     }
   }, [initialSupplierItems]);
 
-  // Ensure single true state of the database with unique IDs on mount
+  // Only fetch on client mount when SSR cache did not already provide initial data
   useEffect(() => {
-    fetchPurchaseOrders()
-      .then(pos => {
-        if (pos && pos.length > 0) {
-          setPurchaseOrders(pos as unknown as PurchaseOrder[]);
-        }
-      })
-      .catch(console.warn);
+    if (!initialPurchaseOrders || initialPurchaseOrders.length === 0) {
+      fetchPurchaseOrders()
+        .then(pos => {
+          if (pos && pos.length > 0) {
+            setPurchaseOrders(pos as unknown as PurchaseOrder[]);
+          }
+        })
+        .catch(console.warn);
+    }
 
-    fetchAllSupplierItems()
-      .then(items => {
-        if (items && items.length > 0) {
-          setAllSupplierItems(items);
-        }
-      })
-      .catch(console.warn);
-  }, []);
+    if (!initialSupplierItems || initialSupplierItems.length === 0) {
+      fetchAllSupplierItems()
+        .then(items => {
+          if (items && items.length > 0) {
+            setAllSupplierItems(items);
+          }
+        })
+        .catch(console.warn);
+    }
+  }, [initialPurchaseOrders, initialSupplierItems]);
 
   useEffect(() => {
     if (availableItems && availableItems.length > 0 && !analyzingItemId) {
