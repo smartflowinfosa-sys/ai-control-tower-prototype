@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const urlError = searchParams?.get("error");
 
@@ -38,33 +39,24 @@ function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!username.trim() || !password) {
-      setError("يرجى إدخال اسم المستخدم وكلمة المرور للمتابعة");
-      return;
-    }
-
     setIsLoading(true);
     setError("");
 
     try {
       const res = await signIn("credentials", {
-        username: username.trim(),
+        username,
         password,
-        redirect: true,
-        callbackUrl: "/",
+        redirect: false,
       });
 
       if (res?.error) {
-        if (res.error === "CredentialsSignin") {
-          setError("اسم المستخدم أو كلمة المرور غير صحيحة");
-        } else {
-          setError(res.error);
-        }
-        setIsLoading(false);
+        setError("بيانات الاعتماد غير صحيحة، يرجى التحقق وإعادة المحاولة.");
+      } else if (res?.ok) {
+        router.push("/dashboard");
       }
-    } catch (err: any) {
-      setError(err?.message || "حدث خطأ غير متوقع أثناء تسجيل الدخول");
+    } catch (err) {
+      setError("تعذر الاتصال بالخادم حالياً، يرجى المحاولة لاحقاً.");
+    } finally {
       setIsLoading(false);
     }
   };
