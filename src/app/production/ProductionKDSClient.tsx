@@ -262,7 +262,7 @@ export default function ProductionKDSClient() {
             <ChefHat className="w-5 h-5" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            {lang === 'en' ? 'Production Control Panel' : 'لوحة التحكم للإنتاج'}
+            {lang === 'en' ? 'Production Dashboard' : 'لوحة الإنتاج'}
           </h1>
         </div>
 

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { getSessionPurchaseOrders, updateSessionPurchaseOrder } from './mockInventoryData';
 import { compareItemCodes, getStockPolicy, CARTON_SIZES } from '@/constants/inventoryCodes';
+import { isUuidString, sanitizeCreatorName } from '@/lib/poAuth';
 
 export interface SupabaseInventoryItem {
   item_code: string;
@@ -464,7 +465,7 @@ export async function receivePurchaseOrder(
     receivedQuantity: Number(receivedQty),
     invoiceUrl,
     receiverSignature: actualSignature,
-    receivedAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+    receivedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     ...(supplierId ? { supplier_id: supplierId, supplierId } : {}),
   });
 
@@ -600,11 +601,10 @@ export async function batchReceiveInventory(
         .from('purchase_orders')
         .update({
           status: 'تم الاستلام',
-          received_quantity: receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0),
-          receiver_signature: signature,
-          invoice_url: invoiceUrl,
+          receiver_signature: signature || null,
+          invoice_url: invoiceUrl || null,
         })
-        .eq('id', poNumber);
+        .eq('po_number', poNumber);
     } catch (poErr) {
       console.warn('purchase_orders table update exception:', poErr);
     }
@@ -613,7 +613,7 @@ export async function batchReceiveInventory(
       status: 'تم الاستلام',
       invoiceUrl: invoiceUrl || undefined,
       receiverSignature: signature,
-      receivedAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+      receivedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     });
 
     if (typeof window !== 'undefined') {
@@ -635,11 +635,18 @@ export async function batchReceiveInventory(
 /**
  * Purchase Orders Model & Dynamic Fetching from Supabase
  */
+export interface SupabasePurchaseOrderItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+}
+
 export interface SupabasePurchaseOrder {
   id: string; // mapped from po_number
   po_number: string;
   itemId: string; // mapped from inventory_item_code
   itemName: string;
+  items?: SupabasePurchaseOrderItem[];
   supplierName: string;
   supplier_id: string;
   supplierId: string;
@@ -647,7 +654,8 @@ export interface SupabasePurchaseOrder {
   totalCost: number;
   status: string;
   createdAt: string;
-  createdBy: 'AI_AGENT' | 'HUMAN';
+  createdBy: string;
+  createdById?: string;
   invoiceUrl?: string;
   invoice_url?: string;
   receiverSignature?: string;
@@ -657,9 +665,24 @@ export interface SupabasePurchaseOrder {
 }
 
 /**
- * Fetch all purchase orders directly from Supabase with joins to suppliers and inventory_items
+ * Fetch all purchase orders from Supabase with joins to suppliers, inventory_items,
+ * and resolved creator full names (`profiles.full_name` / `user_metadata.full_name` / `app_users`).
  */
 export async function fetchPurchaseOrders(): Promise<SupabasePurchaseOrder[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/purchase-orders', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.purchaseOrders)) {
+          return json.purchaseOrders;
+        }
+      }
+    } catch (apiErr) {
+      console.warn('Fallback to direct Supabase PO fetch:', apiErr);
+    }
+  }
+
   const { data, error } = await supabase
     .from('purchase_orders')
     .select(`
@@ -691,35 +714,130 @@ export async function fetchPurchaseOrders(): Promise<SupabasePurchaseOrder[]> {
     throw new Error(`خطأ في جلب أوامر الشراء من Supabase: ${error.message}`);
   }
 
-  return (data || []).map((row: any) => {
+  const rows = data || [];
+  const uuidList = Array.from(
+    new Set(
+      rows
+        .map((r: any) => String(r.created_by || '').trim())
+        .filter(v => isUuidString(v))
+    )
+  );
+
+  const profileNames = new Map<string, string>();
+  if (uuidList.length > 0) {
+    try {
+      const { data: profData, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', uuidList);
+      if (!profErr && Array.isArray(profData)) {
+        for (const p of profData as Array<{ id: string; full_name?: string | null }>) {
+          const clean = sanitizeCreatorName(p.full_name);
+          if (p.id && clean) profileNames.set(p.id, clean);
+        }
+      }
+    } catch {
+      // Optional `profiles` table lookup
+    }
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const authUser = authData?.user;
+      if (authUser?.id && !profileNames.has(authUser.id)) {
+        const metaFullName = sanitizeCreatorName(
+          (authUser.user_metadata?.full_name as string | undefined) ||
+          (authUser.user_metadata?.name as string | undefined)
+        );
+        if (metaFullName) {
+          profileNames.set(authUser.id, metaFullName);
+        }
+      }
+    } catch {
+      // Optional auth metadata lookup
+    }
+  }
+
+  const groupedMap = new Map<string, SupabasePurchaseOrder>();
+  const legacyTokens = new Set(['', 'human', 'ai_agent', 'ai agent', 'system user', 'مستخدم النظام', 'موظف المشتريات']);
+
+  for (const row of rows as any[]) {
     const sup = Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers;
     const inv = Array.isArray(row.inventory_items) ? row.inventory_items[0] : row.inventory_items;
     const supName = sup?.name_ar || sup?.name_en || 'المورد المعتمد';
-    const itemName = inv?.item_name_ar || row.inventory_item_code || 'صنف توريد';
+    const code = String(row.inventory_item_code || '').trim().toUpperCase();
+    const itemName = inv?.item_name_ar || code || 'صنف توريد';
+    const qty = Number(row.quantity) || 0;
+    const cost = Number(row.total_cost) || 0;
+    const poNum = String(row.po_number || '').trim();
+    if (!poNum) continue;
 
-    return {
-      id: row.po_number,
-      po_number: row.po_number,
-      itemId: row.inventory_item_code || '',
-      itemName,
-      supplierName: supName,
-      supplier_id: row.supplier_id,
-      supplierId: row.supplier_id,
-      quantity: Number(row.quantity) || 0,
-      totalCost: Number(row.total_cost) || 0,
-      status: row.status || 'pending',
-      createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('ar-SA') : '',
-      createdBy: (row.created_by as any) || 'HUMAN',
-      invoiceUrl: row.invoice_url || undefined,
-      invoice_url: row.invoice_url || undefined,
-      receiverSignature: row.receiver_signature || undefined,
-      receiver_signature: row.receiver_signature || undefined,
-    };
-  });
+    const rawCreatedBy = String(row.created_by || '').trim();
+    let normalizedCreatedBy = '';
+    let createdById: string | undefined = undefined;
+
+    if (isUuidString(rawCreatedBy)) {
+      createdById = rawCreatedBy;
+      normalizedCreatedBy = profileNames.get(rawCreatedBy) || rawCreatedBy;
+    } else {
+      const cleaned = sanitizeCreatorName(rawCreatedBy);
+      if (cleaned && !legacyTokens.has(cleaned.toLowerCase()) && !legacyTokens.has(rawCreatedBy.toLowerCase())) {
+        normalizedCreatedBy = cleaned;
+      }
+    }
+
+    const existing = groupedMap.get(poNum);
+    if (!existing) {
+      groupedMap.set(poNum, {
+        id: poNum,
+        po_number: poNum,
+        itemId: code,
+        itemName,
+        items: code ? [{ itemId: code, itemName, quantity: qty }] : [],
+        supplierName: supName,
+        supplier_id: row.supplier_id,
+        supplierId: row.supplier_id,
+        quantity: qty,
+        totalCost: cost,
+        status: row.status || 'PENDING_APPROVAL',
+        createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('en-US') : '',
+        createdBy: normalizedCreatedBy,
+        createdById,
+        invoiceUrl: row.invoice_url || undefined,
+        invoice_url: row.invoice_url || undefined,
+        receiverSignature: row.receiver_signature || undefined,
+        receiver_signature: row.receiver_signature || undefined,
+      });
+    } else {
+      existing.quantity += qty;
+      existing.totalCost = Number((existing.totalCost + cost).toFixed(2));
+      if (code) {
+        const currentItems = existing.items || [];
+        const matchIdx = currentItems.findIndex(it => it.itemId === code);
+        if (matchIdx >= 0) {
+          currentItems[matchIdx].quantity += qty;
+        } else {
+          currentItems.push({ itemId: code, itemName, quantity: qty });
+        }
+        existing.items = currentItems;
+        if (currentItems.length > 1) {
+          existing.itemName = `${currentItems[0].itemName} (+${currentItems.length - 1})`;
+        }
+      }
+      if (!existing.createdBy && normalizedCreatedBy) {
+        existing.createdBy = normalizedCreatedBy;
+      }
+      if (!existing.createdById && createdById) {
+        existing.createdById = createdById;
+      }
+    }
+  }
+
+  return Array.from(groupedMap.values());
 }
 
 /**
- * Create and insert a new Purchase Order into Supabase `purchase_orders` table
+ * Create and insert a new Purchase Order into Supabase `purchase_orders` table.
+ * Links `created_by` strictly to the authenticated Supabase user ID (`user.id`).
  */
 export async function createPurchaseOrder(poData: {
   po_number?: string;
@@ -728,24 +846,30 @@ export async function createPurchaseOrder(poData: {
   quantity: number;
   total_cost: number;
   status?: string;
-  created_by?: 'AI_AGENT' | 'HUMAN';
+  created_by: string;
 }): Promise<SupabasePurchaseOrder> {
+  const creatorUserId = (poData.created_by || '').trim();
+  if (!creatorUserId) {
+    throw new Error('لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة (Missing user.id)');
+  }
+
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/purchase-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(poData),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.error || 'تعذر حفظ أمر الشراء في قاعدة البيانات');
+    }
+    if (json?.purchaseOrder) {
+      return json.purchaseOrder as SupabasePurchaseOrder;
+    }
+  }
+
   const poNumber = poData.po_number || `PO-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  const payload = {
-    po_number: poNumber,
-    supplier_id: poData.supplier_id || null,
-    inventory_item_code: poData.inventory_item_code,
-    quantity: poData.quantity,
-    total_cost: poData.total_cost,
-    status: poData.status || 'PENDING_APPROVAL',
-    created_by: poData.created_by || 'HUMAN',
-  };
-
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .insert([payload])
-    .select(`
+  const selectColumns = `
       po_number,
       supplier_id,
       inventory_item_code,
@@ -766,31 +890,73 @@ export async function createPurchaseOrder(poData: {
         item_name_ar,
         category_ar
       )
-    `)
+    `;
+
+  const basePayload = {
+    po_number: poNumber,
+    supplier_id: poData.supplier_id || null,
+    inventory_item_code: poData.inventory_item_code,
+    quantity: poData.quantity,
+    total_cost: poData.total_cost,
+    status: poData.status || 'PENDING_APPROVAL',
+    created_by: creatorUserId,
+  };
+
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .insert([basePayload])
+    .select(selectColumns)
     .single();
 
-  if (error) {
+  if (error || !data) {
     console.error('Failed to insert purchase order into Supabase:', error);
-    throw new Error(`تعذر حفظ أمر الشراء في Supabase: ${error.message}`);
+    throw new Error(`تعذر حفظ أمر الشراء في Supabase: ${error?.message || 'Unknown error'}`);
   }
 
-  const sup = Array.isArray(data.suppliers) ? data.suppliers[0] : data.suppliers;
-  const inv = Array.isArray(data.inventory_items) ? data.inventory_items[0] : data.inventory_items;
+  const rowData = data as any;
+  const sup = Array.isArray(rowData.suppliers) ? rowData.suppliers[0] : rowData.suppliers;
+  const inv = Array.isArray(rowData.inventory_items) ? rowData.inventory_items[0] : rowData.inventory_items;
+  const code = String(rowData.inventory_item_code || '').trim().toUpperCase();
+  const itemName = inv?.item_name_ar || code || 'صنف توريد';
+  const qty = Number(rowData.quantity) || 0;
 
   return {
-    id: data.po_number,
-    po_number: data.po_number,
-    itemId: data.inventory_item_code || '',
-    itemName: inv?.item_name_ar || data.inventory_item_code || 'صنف توريد',
+    id: rowData.po_number,
+    po_number: rowData.po_number,
+    itemId: code,
+    itemName,
+    items: code ? [{ itemId: code, itemName, quantity: qty }] : [],
     supplierName: sup?.name_ar || sup?.name_en || 'المورد المعتمد',
-    supplier_id: data.supplier_id,
-    supplierId: data.supplier_id,
-    quantity: Number(data.quantity) || 0,
-    totalCost: Number(data.total_cost) || 0,
-    status: data.status,
-    createdAt: data.created_at ? new Date(data.created_at).toLocaleDateString('ar-SA') : '',
-    createdBy: data.created_by,
+    supplier_id: rowData.supplier_id,
+    supplierId: rowData.supplier_id,
+    quantity: qty,
+    totalCost: Number(rowData.total_cost) || 0,
+    status: rowData.status,
+    createdAt: rowData.created_at ? new Date(rowData.created_at).toLocaleDateString('en-US') : '',
+    createdBy: '',
+    createdById: creatorUserId,
   };
+}
+
+/**
+ * Update the status of an existing Purchase Order in Supabase and local session store.
+ */
+export async function updatePurchaseOrderStatus(
+  poNumber: string,
+  nextStatus: string
+): Promise<void> {
+  updateSessionPurchaseOrder(poNumber, { status: nextStatus });
+  try {
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: nextStatus })
+      .eq('po_number', poNumber);
+    if (error) {
+      console.warn('Supabase PO status update notice:', error.message);
+    }
+  } catch (err) {
+    console.warn('Supabase PO status update exception:', err);
+  }
 }
 
 /**

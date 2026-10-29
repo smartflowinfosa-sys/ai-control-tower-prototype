@@ -110,10 +110,6 @@ export default function PackagingPage() {
               متابعة وتدقيق معايير التغليف، وتجهيز وجبات الاشتراكات والطلبات حسب خطوط التوزيع
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white/90">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-            <span>جاهز للربط (API Ready)</span>
-          </div>
         </div>
       </header>
 
@@ -248,6 +244,8 @@ export default function PackagingPage() {
               onChange={(e) => setBranch(e.target.value)}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/12 transition-colors"
             >
+              <option value="الكل">الكل</option>
+              <option value="بدون">بدون</option>
               <option value="الرياض (فرع التوصيل)">الرياض (فرع التوصيل)</option>
               <option value="مكة المكرمة (فرع التوصيل)">مكة المكرمة (فرع التوصيل)</option>
               <option value="جده (فرع التوصيل)">جده (فرع التوصيل)</option>

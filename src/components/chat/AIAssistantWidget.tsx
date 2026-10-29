@@ -9,6 +9,8 @@ import { mockOperationService } from '@/application/services/mockOperationServic
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage } from '@/components/common/LanguageContext';
 import { initialInventoryItems, addPurchaseOrderToSession, PurchaseOrder } from '@/lib/mockInventoryData';
+import { useSession } from 'next-auth/react';
+import { getAuthenticatedPOUser } from '@/lib/poAuth';
 
 interface AttachedImage {
   base64: string;
@@ -27,6 +29,7 @@ interface Message {
 
 export default function AIAssistantWidget() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   if (pathname === '/login') return null;
 
   const { lang, isRtl } = useLanguage();
@@ -267,30 +270,42 @@ export default function AIAssistantWidget() {
 
       let replyText = data.reply || data.text;
       if (isPOAction) {
-        const itemId = data.itemId || data.functionCall?.args?.itemId || 'أدوات المائدة والتغليف';
-        const supplierName = data.supplierName || data.functionCall?.args?.supplierName || 'مصنع البلاستيك الوطني';
-        const quantity = data.quantity || data.functionCall?.args?.quantity || 2000;
+        const authUser = getAuthenticatedPOUser(session, lang);
+        if (!authUser) {
+          replyText =
+            lang === 'en'
+              ? '⛔ Unauthorized: Cannot create a Purchase Order without an authenticated user session. Please sign in first.'
+              : '⛔ عذراً، لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.';
+        } else {
+          const itemId = data.itemId || data.functionCall?.args?.itemId || 'P7';
+          const supplierName = data.supplierName || data.functionCall?.args?.supplierName || 'مزايا';
+          const quantity = Number(data.quantity || data.functionCall?.args?.quantity || 2000);
 
-        const matchedItem = initialInventoryItems.find(
-          (item) => item.name.includes(itemId) || itemId.includes(item.name) || item.id === itemId
-        );
-        const unitCost = matchedItem ? matchedItem.unitCost : 0.48;
-        const totalCost = Number((quantity * unitCost).toFixed(2));
+          const matchedItem = initialInventoryItems.find(
+            (item) => item.name.includes(itemId) || itemId.includes(item.name) || item.id === itemId
+          );
+          const resolvedCode = matchedItem ? matchedItem.id : 'P7';
+          const resolvedName = matchedItem ? matchedItem.name : itemId;
+          const unitCost = matchedItem ? matchedItem.unitCost : 0.48;
+          const totalCost = Number((quantity * unitCost).toFixed(2));
 
-        const newAIPO: PurchaseOrder = {
-          id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
-          itemId: matchedItem ? matchedItem.id : 'inv-5',
-          itemName: matchedItem ? matchedItem.name : itemId,
-          supplierName: supplierName,
-          quantity: quantity,
-          totalCost: totalCost,
-          status: 'PENDING_APPROVAL',
-          createdAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
-          createdBy: 'AI_AGENT',
-        };
+          const newAIPO: PurchaseOrder = {
+            id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
+            itemId: resolvedCode,
+            itemName: resolvedName,
+            items: [{ itemId: resolvedCode, itemName: resolvedName, quantity }],
+            supplierName: supplierName,
+            quantity: quantity,
+            totalCost: totalCost,
+            status: 'PENDING_APPROVAL',
+            createdAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            createdBy: authUser.displayName,
+            createdById: authUser.id,
+          };
 
-        addPurchaseOrderToSession(newAIPO);
-        replyText = `✅ **إجراء آلي**: تم إنشاء أمر شراء **${newAIPO.id}** لعدد **${quantity}** من [${newAIPO.itemName}] من المورد [${supplierName}] بنجاح وهو مدرج في سجل المشتريات. 📦`;
+          addPurchaseOrderToSession(newAIPO);
+          replyText = `✅ **إجراء موثق (${authUser.displayName})**: تم إنشاء أمر شراء **${newAIPO.id}** لعدد **${quantity.toLocaleString('en-US')}** من [${newAIPO.itemName}] من المورد [${supplierName}] بنجاح وهو مدرج في لوحة تتبع أوامر الشراء. 📦`;
+        }
       }
 
       setMessages((prev) => [

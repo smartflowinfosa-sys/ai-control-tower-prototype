@@ -1,4 +1,5 @@
-import { fetchSuppliers, fetchInventoryItems, fetchPurchaseOrders, fetchAllSupplierItems, SupabaseSupplier, SupabaseInventoryItem, SupabasePurchaseOrder, SupabaseSupplierItem } from '@/lib/supabaseService';
+import { fetchSuppliers, fetchInventoryItems, fetchAllSupplierItems, SupabaseSupplier, SupabaseInventoryItem, SupabasePurchaseOrder, SupabaseSupplierItem } from '@/lib/supabaseService';
+import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
 import SuppliersClient from './SuppliersClient';
 
 export const instant = false;
@@ -14,7 +15,7 @@ export default async function SuppliersPage() {
     const [sups, items, pos, supplierItems] = await Promise.all([
       fetchSuppliers(),
       fetchInventoryItems().catch(() => []),
-      fetchPurchaseOrders().catch(() => []),
+      fetchPurchaseOrdersServer().catch(() => []),
       fetchAllSupplierItems().catch(() => []),
     ]);
     initialSuppliers = sups;

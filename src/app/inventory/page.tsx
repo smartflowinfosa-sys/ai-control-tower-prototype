@@ -1,4 +1,5 @@
-import { fetchInventoryItems, fetchPurchaseOrders, fetchAllSupplierItems, SupabaseInventoryItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { fetchInventoryItems, fetchAllSupplierItems, SupabaseInventoryItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
 import InventoryClient from './InventoryClient';
 
 export const instant = false;
@@ -6,13 +7,13 @@ export const instant = false;
 export default async function InventoryPage() {
   let initialItems: SupabaseInventoryItem[] = [];
   let initialPurchaseOrders: SupabasePurchaseOrder[] = [];
-  let initialSupplierMappings: Record<string, Array<{ id: string; name: string }>> = {};
+  const initialSupplierMappings: Record<string, Array<{ id: string; name: string }>> = {};
   let fetchError: string | null = null;
 
   try {
     const [items, pos, supplierItems] = await Promise.all([
       fetchInventoryItems(),
-      fetchPurchaseOrders().catch(err => {
+      fetchPurchaseOrdersServer().catch(err => {
         console.warn('Failed to fetch purchase orders from Supabase:', err);
         return [];
       }),
@@ -25,7 +26,7 @@ export default async function InventoryPage() {
     initialPurchaseOrders = pos;
 
     if (supplierItems && supplierItems.length > 0) {
-      for (const row of supplierItems as any[]) {
+      for (const row of supplierItems) {
         const code = String(row.inventory_item_code || '').trim().toUpperCase();
         const sup = row.suppliers;
         if (code && sup) {

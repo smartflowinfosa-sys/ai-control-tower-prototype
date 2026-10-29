@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { SupabaseInventoryItem, SupabaseMenuItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand, fetchMenuItems } from '@/lib/supabaseService';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { getKdsBatches } from '@/lib/kdsProductionStore';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
@@ -65,7 +66,11 @@ const getMinLevel = (item: SupabaseInventoryItem): number =>
 export interface ReceivedItemRow {
   id: string;
   itemCode: string;
+  itemName?: string;
+  requestedUnits?: number;
+  requestedCartons?: number;
   quantityCartons: number | '';
+  isFromPO?: boolean;
 }
 
 interface InventoryClientProps {
@@ -188,48 +193,40 @@ export default function InventoryClient({
       : getSessionPurchaseOrders()
   );
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [isCreatingPO, setIsCreatingPO] = useState<boolean>(false);
+
+  const showError = (msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(null), 4500);
+  };
 
   // Active Purchase Orders (dynamically filtered: received orders disappear immediately; strictly sorted by item code P1..P10)
-  const activePOs = purchaseOrders
-    .filter(po => {
-      const orig = (po.status || '').trim();
-      const lower = orig.toLowerCase();
-      return orig !== 'تم الاستلام' && orig !== 'تم الاستلام بنجاح' && lower !== 'received' && lower !== 'delivered';
-    })
-    .sort((a, b) => compareItemCodes(a.itemId, b.itemId));
+  const activePOs = useMemo(() => {
+    const seen = new Set<string>();
+    return purchaseOrders
+      .filter(po => {
+        if (!po?.id) return false;
+        const orig = (po.status || '').trim();
+        const lower = orig.toLowerCase();
+        const isNotReceived = orig !== 'تم الاستلام' && orig !== 'تم الاستلام بنجاح' && lower !== 'received' && lower !== 'delivered';
+        if (!isNotReceived) return false;
+        if (seen.has(po.id)) return false;
+        seen.add(po.id);
+        return true;
+      })
+      .sort((a, b) => compareItemCodes(a.itemId, b.itemId));
+  }, [purchaseOrders]);
 
-  // Role-Based Access Control (RBAC): Only Warehouse Managers, Operations Managers, or Admins can receive stock
-  const authorizedRoles = [
-    'warehouse manager',
-    'operations manager',
-    'operations & logistics control',
-    'admin',
-    'مدير العمليات',
-    'مدير المستودع',
-    'مسؤول المستودع',
-    'مشرف العمليات',
-  ];
+  // Strict Session Authentication: Only authenticated NextAuth sessions can create or execute POs
   const { data: session } = useSession();
-  const sessionRole = ((session?.user?.role || (session?.user as any)?.role || '') as string).toLowerCase();
-  const isSessionAdmin = sessionRole === 'admin' || sessionRole === 'superadmin';
-  const userRole = (currentUser?.role_en || currentUser?.role_ar || '').toLowerCase();
-
-  const isAuthorized = Boolean(
-    isSessionAdmin ||
-    (currentUser && (
-      authorizedRoles.some(r => userRole.includes(r)) ||
-      userRole.includes('manager') ||
-      userRole.includes('admin') ||
-      userRole.includes('ops')
-    ))
-  );
+  const authenticatedUser = useMemo(() => getAuthenticatedPOUser(session, lang), [session, lang]);
+  const isAuthorized = Boolean(authenticatedUser);
 
   // Receive Stock & Multi-Item Invoice Modal State
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
   const [receivePoId, setReceivePoId] = useState<string>('');
-  const [receivedItems, setReceivedItems] = useState<ReceivedItemRow[]>([
-    { id: 'row-1', itemCode: '', quantityCartons: 1 },
-  ]);
+  const [receivedItems, setReceivedItems] = useState<ReceivedItemRow[]>([]);
 
   /**
    * Consumption-Based Replenishment flow (mock UI state):
@@ -246,6 +243,44 @@ export default function InventoryClient({
   const [storageNotice, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Raw materials & inventory items list (BOM packaging, carton supplies, raw materials)
+  interface RawMaterialItem {
+    code: string;
+    nameAr: string;
+    nameEn?: string;
+    categoryAr?: string;
+  }
+
+  const rawMaterialsList: RawMaterialItem[] = useMemo(() => {
+    const map = new Map<string, { code: string; nameAr: string; nameEn?: string; categoryAr?: string }>();
+
+    // 1. From database inventory_items:
+    items.forEach(it => {
+      const code = it.item_code.toUpperCase();
+      map.set(code, {
+        code,
+        nameAr: it.item_name_ar,
+        nameEn: it.item_name_en,
+        categoryAr: it.category_ar,
+      });
+    });
+
+    // 2. From standard inventory codes (packaging, raw materials, operational items):
+    STANDARD_ITEM_CODES.forEach(std => {
+      const code = std.code.toUpperCase();
+      if (!map.has(code)) {
+        map.set(code, {
+          code,
+          nameAr: std.nameAr,
+          nameEn: std.nameEn,
+          categoryAr: 'مواد تغليف وتشغيل',
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => compareItemCodes(a.code, b.code));
+  }, [items]);
+
   // Real Supabase BOM Packaging Demand State for KDS
   const [bomDemand, setBomDemand] = useState<Array<{
     item_code: string;
@@ -257,28 +292,7 @@ export default function InventoryClient({
   }>>([]);
   const [showBomDemand, setShowBomDemand] = useState(false);
 
-  // Real Supabase Menu Items (109+ live items e.g. بان كيك جبنه قريش, تونه كلوب)
-  const [supabaseMenuItems, setSupabaseMenuItems] = useState<SupabaseMenuItem[]>([]);
-  const [isLoadingMenuItems, setIsLoadingMenuItems] = useState<boolean>(true);
 
-  useEffect(() => {
-    let isMounted = true;
-    setIsLoadingMenuItems(true);
-    fetchMenuItems()
-      .then((data) => {
-        if (isMounted) {
-          setSupabaseMenuItems(data || []);
-          setIsLoadingMenuItems(false);
-        }
-      })
-      .catch((err) => {
-        console.error('Error fetching Supabase menu items:', err);
-        if (isMounted) setIsLoadingMenuItems(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     const syncDemand = () => {
@@ -366,25 +380,80 @@ export default function InventoryClient({
     };
   }, []);
 
+  // Builds the complete pre-populated invoice rows array from all items associated with a specific PO
+  const buildInvoiceRowsFromPO = (poId: string): ReceivedItemRow[] => {
+    const matchingPOs = purchaseOrders.filter(p => p.id === poId);
+    if (matchingPOs.length === 0) return [];
+
+    const aggregated = new Map<string, { itemCode: string; itemName: string; quantityUnits: number }>();
+
+    matchingPOs.forEach(po => {
+      if (Array.isArray(po.items) && po.items.length > 0) {
+        po.items.forEach(line => {
+          const cCode = String(line.itemId || '').trim().toUpperCase();
+          if (!cCode) return;
+          const qty = Number(line.quantity) || 0;
+          const existing = aggregated.get(cCode);
+          if (existing) {
+            existing.quantityUnits += qty;
+          } else {
+            aggregated.set(cCode, {
+              itemCode: cCode,
+              itemName: line.itemName || cCode,
+              quantityUnits: qty,
+            });
+          }
+        });
+      } else if (po.itemId) {
+        const cCode = String(po.itemId).trim().toUpperCase();
+        const qty = Number(po.quantity) || 0;
+        const existing = aggregated.get(cCode);
+        if (existing) {
+          existing.quantityUnits += qty;
+        } else {
+          aggregated.set(cCode, {
+            itemCode: cCode,
+            itemName: po.itemName || cCode,
+            quantityUnits: qty,
+          });
+        }
+      }
+    });
+
+    return Array.from(aggregated.values())
+      .sort((a, b) => compareItemCodes(a.itemCode, b.itemCode))
+      .map((entry, idx) => {
+        const cSize = CARTON_SIZES[entry.itemCode] || 1;
+        const reqCartons = Math.max(1, Math.round(entry.quantityUnits / cSize));
+        return {
+          id: `po-row-${poId}-${entry.itemCode}-${idx}-${Date.now()}`,
+          itemCode: entry.itemCode,
+          itemName: entry.itemName,
+          requestedUnits: entry.quantityUnits,
+          requestedCartons: reqCartons,
+          quantityCartons: reqCartons,
+          isFromPO: true,
+        };
+      });
+  };
+
   const openReceiveModal = (defaultPoId?: string) => {
-    const targetId = defaultPoId || activePOs[0]?.id || '';
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Cannot execute or receive a Purchase Order without an authenticated user session.'
+          : 'عذراً، لا يمكن استلام شحنة أو تنفيذ أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
+    }
+
+    const targetId = defaultPoId || '';
     setReceivePoId(targetId);
-    const po = purchaseOrders.find(p => p.id === targetId);
-    if (po && po.itemId) {
-      const cCode = po.itemId.toUpperCase();
-      const cSize = CARTON_SIZES[cCode] || 1;
-      const initialCartons = Math.max(1, Math.round(po.quantity / cSize));
-      setReceivedItems([{
-        id: `row-${Date.now()}-1`,
-        itemCode: cCode,
-        quantityCartons: initialCartons,
-      }]);
+    if (targetId) {
+      setReceivedItems(buildInvoiceRowsFromPO(targetId));
     } else {
-      setReceivedItems([{
-        id: `row-${Date.now()}-1`,
-        itemCode: '',
-        quantityCartons: 1,
-      }]);
+      setReceivedItems([]);
     }
     setReceiverSignature('');
     setInvoiceFile(null);
@@ -394,39 +463,46 @@ export default function InventoryClient({
 
   const handleSelectPO = (poId: string) => {
     setReceivePoId(poId);
-    const po = purchaseOrders.find(p => p.id === poId);
-    if (po && po.itemId) {
-      const cCode = po.itemId.toUpperCase();
-      const cSize = CARTON_SIZES[cCode] || 1;
-      const initialCartons = Math.max(1, Math.round(po.quantity / cSize));
-      setReceivedItems(prev => {
-        if (prev.length === 1 && (!prev[0].itemCode || prev[0].itemCode === '')) {
-          return [{ id: prev[0].id, itemCode: cCode, quantityCartons: initialCartons }];
-        }
-        return [{ id: `row-${Date.now()}`, itemCode: cCode, quantityCartons: initialCartons }, ...prev.filter(r => r.itemCode !== cCode)];
-      });
+    if (!poId) {
+      setReceivedItems([]);
+      setReceiptError(null);
+      return;
     }
+
+    // Auto-populate the invoice items table with the complete array of items associated with this PO
+    const autoPopulatedRows = buildInvoiceRowsFromPO(poId);
+    setReceivedItems(autoPopulatedRows);
     setReceiptError(null);
   };
 
   const handleAddReceivedItemRow = () => {
+    if (!receivePoId) {
+      setReceiptError(
+        lang === 'ar'
+          ? 'الرجاء اختيار أمر الشراء أولاً قبل إضافة أصناف للفاتورة'
+          : 'Please select a Purchase Order first before adding invoice items'
+      );
+      return;
+    }
+
+    // Manual addition row: fetches options strictly from Raw Materials / Packaging inventory (e.g. [P1], [P2]...)
+    const existingCodes = new Set(receivedItems.map(r => r.itemCode.toUpperCase()));
+    const nextSuggestedRaw = rawMaterialsList.find(rm => !existingCodes.has(rm.code))?.code || rawMaterialsList[0]?.code || 'P1';
+
     setReceivedItems(prev => [
       ...prev,
       {
-        id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        itemCode: '',
+        id: `manual-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        itemCode: nextSuggestedRaw,
         quantityCartons: 1,
+        isFromPO: false,
       }
     ]);
+    if (receiptError) setReceiptError(null);
   };
 
   const handleRemoveReceivedItemRow = (id: string) => {
-    setReceivedItems(prev => {
-      if (prev.length <= 1) {
-        return [{ id: `row-${Date.now()}-1`, itemCode: '', quantityCartons: 1 }];
-      }
-      return prev.filter(row => row.id !== id);
-    });
+    setReceivedItems(prev => prev.filter(row => row.id !== id));
   };
 
   const handleUpdateReceivedItemRow = (id: string, field: 'itemCode' | 'quantityCartons', value: any) => {
@@ -454,6 +530,25 @@ export default function InventoryClient({
   };
 
   const handleConfirmReceipt = async () => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      const msg = lang === 'en'
+        ? 'Unauthorized: Cannot execute receipt without an authenticated user session.'
+        : 'عذراً، لا يمكن تأكيد الاستلام أو تنفيذ أمر الشراء بدون جلسة مستخدم موثقة.';
+      setReceiptError(msg);
+      showError(msg);
+      return;
+    }
+
+    if (!receivePoId) {
+      setReceiptError(
+        lang === 'ar'
+          ? 'الرجاء اختيار أمر الشراء المرتبط بهذه الشحنة أولاً'
+          : 'Please select the Purchase Order for this shipment first'
+      );
+      return;
+    }
+
     if (receivedItems.length === 0) {
       setReceiptError('الرجاء إضافة صنف واحد على الأقل للاستلام');
       return;
@@ -496,7 +591,7 @@ export default function InventoryClient({
       });
 
       // Upload invoice to Supabase Storage 'invoices' bucket
-      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, receivePoId || `multi-${Date.now()}`);
+      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, receivePoId);
 
       // Step 1.5: Trigger n8n Webhook for automated Google Drive archiving
       if (invoicePublicUrl) {
@@ -514,7 +609,7 @@ export default function InventoryClient({
               supplier_name: supplierName,
               invoice_date: invoiceDate,
               file_url: invoicePublicUrl,
-              po_number: receivePoId || null,
+              po_number: receivePoId,
               received_items: receivedItems.map(row => ({
                 code: row.itemCode,
                 cartons: Number(row.quantityCartons) || 0,
@@ -537,7 +632,7 @@ export default function InventoryClient({
 
       await batchReceiveInventory(
         batchPayload,
-        receivePoId || undefined,
+        receivePoId,
         invoicePublicUrl,
         receiverSignature.trim()
       );
@@ -578,22 +673,20 @@ export default function InventoryClient({
         return next;
       });
 
-      // Step 4: Update purchase orders state locally if linked
-      if (receivePoId) {
-        setPurchaseOrders(prev =>
-          prev.map(p =>
-            p.id === receivePoId
-              ? {
-                  ...p,
-                  status: 'تم الاستلام',
-                  receiverSignature: receiverSignature.trim(),
-                  invoiceUrl: invoicePublicUrl,
-                  receivedAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
-                }
-              : p
-          )
-        );
-      }
+      // Step 4: Update purchase orders state locally
+      setPurchaseOrders(prev =>
+        prev.map(p =>
+          p.id === receivePoId
+            ? {
+                ...p,
+                status: 'تم الاستلام',
+                receiverSignature: receiverSignature.trim(),
+                invoiceUrl: invoicePublicUrl,
+                receivedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+              }
+            : p
+        )
+      );
 
       // Background re-fetch to ensure complete sync with database
       try {
@@ -622,7 +715,7 @@ export default function InventoryClient({
       setIsReceiveModalOpen(false);
       setInvoiceFile(null);
       setReceivePoId('');
-      setReceivedItems([{ id: 'row-1', itemCode: '', quantityCartons: 1 }]);
+      setReceivedItems([]);
       setReceiverSignature('');
 
       setTimeout(() => {
@@ -796,6 +889,15 @@ export default function InventoryClient({
   }, []);
 
   const handleOpenPO = async (item: SupabaseInventoryItem, initialCartons?: number) => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Cannot create a Purchase Order without an authenticated user session.'
+          : 'عذراً، لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
+    }
     setSelectedItemForPO(item);
     const code = item.item_code.toUpperCase();
     const cartonSize = CARTON_SIZES[code] || 1;
@@ -833,8 +935,19 @@ export default function InventoryClient({
     }
   };
 
-  const handleCreatePO = () => {
-    if (!selectedItemForPO) return;
+  const handleCreatePO = async () => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Cannot create a Purchase Order without an authenticated user session.'
+          : 'عذراً، لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
+    }
+
+    if (!selectedItemForPO || isCreatingPO) return;
+    setIsCreatingPO(true);
 
     const code = selectedItemForPO.item_code.toUpperCase();
     const cartonSize = CARTON_SIZES[code] || 1;
@@ -842,26 +955,53 @@ export default function InventoryClient({
     const totalUnits = isPerPiece ? poQuantity : poQuantity * cartonSize;
     const unitCost = selectedItemForPO.cost_per_unit || 0.45;
     const totalCost = Number((totalUnits * unitCost).toFixed(2));
+    const poNum = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const supplierCandidates = itemSuppliers[code] || [];
+    const matchedSup =
+      supplierCandidates.find(s => s.name === selectedSupplier) ||
+      initialSuppliers.find(s => s.name === selectedSupplier);
+    const resolvedSupplierName = selectedSupplier || supplierCandidates[0]?.name || 'المورد المعتمد';
 
     const newPO: PurchaseOrder = {
-      id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
-      itemId: selectedItemForPO.item_code,
+      id: poNum,
+      itemId: code,
       itemName: selectedItemForPO.item_name_ar,
-      supplierName: selectedSupplier,
-      quantity: poQuantity, // In cartons (or pieces for P6)
+      items: [{ itemId: code, itemName: selectedItemForPO.item_name_ar, quantity: totalUnits }],
+      supplierName: resolvedSupplierName,
+      supplier_id: matchedSup?.id,
+      supplierId: matchedSup?.id,
+      quantity: totalUnits,
       totalCost,
       status: 'PENDING_APPROVAL',
-      createdAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
-      createdBy: 'HUMAN',
+      createdAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      createdBy: authUser.displayName,
+      createdById: authUser.id,
     };
 
+    try {
+      await createPurchaseOrder({
+        po_number: poNum,
+        supplier_id: matchedSup?.id,
+        inventory_item_code: code,
+        quantity: totalUnits,
+        total_cost: totalCost,
+        status: 'PENDING_APPROVAL',
+        created_by: authUser.id,
+      });
+    } catch (dbErr) {
+      console.warn('Supabase PO insert fallback to session store:', dbErr);
+    } finally {
+      setIsCreatingPO(false);
+    }
+
     addPurchaseOrderToSession(newPO);
-    setPurchaseOrders(prev => [newPO, ...prev]);
+    setPurchaseOrders(prev => [newPO, ...prev.filter(p => p.id !== poNum)]);
 
     const unitLabel = isPerPiece ? 'حبة' : 'كرتون';
     const msg = lang === 'ar'
-      ? `تم إنشاء أمر الشراء ${newPO.id} لعدد ${toEnglishDigits(poQuantity)} ${unitLabel} (${toEnglishDigits(totalUnits)} وحدة) من (${selectedSupplier}) بنجاح!`
-      : `Purchase order ${newPO.id} for ${toEnglishDigits(poQuantity)} ${isPerPiece ? 'pieces' : 'cartons'} from (${selectedSupplier}) created successfully!`;
+      ? `تم إنشاء أمر الشراء ${newPO.id} بواسطة (${authUser.displayName}) لعدد ${toEnglishDigits(poQuantity)} ${unitLabel} (${toEnglishDigits(totalUnits)} وحدة) من (${resolvedSupplierName}) بنجاح!`
+      : `Purchase order ${newPO.id} created by (${authUser.displayName}) for ${toEnglishDigits(poQuantity)} ${isPerPiece ? 'pieces' : 'cartons'} from (${resolvedSupplierName})!`;
     setSuccessToast(msg);
     setSelectedItemForPO(null);
 
@@ -889,6 +1029,14 @@ export default function InventoryClient({
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-black/80 border border-white/20 text-white px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-2xl">
           <span className="text-xl">✨</span>
           <span className="text-sm font-bold">{successToast}</span>
+        </div>
+      )}
+
+      {/* Auth / Validation Error Toast */}
+      {errorToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-950/95 border border-rose-400/50 text-rose-100 px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 shadow-2xl">
+          <AlertTriangle className="w-5 h-5 text-rose-300 shrink-0" />
+          <span className="text-sm font-bold">{errorToast}</span>
         </div>
       )}
 
@@ -1307,40 +1455,34 @@ export default function InventoryClient({
 
               {/* Landscape Multi-Column Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 0. Real Supabase Menu Item Selection Dropdown (109 items) */}
+                {/* 0. Raw Materials & Packaging Inventory Selection Dropdown */}
                 <div className="md:col-span-2 space-y-1.5">
                   <label className="block text-xs font-bold text-white flex justify-between items-center">
-                    <span>{lang === 'en' ? 'Select Meal / Item from Database:' : 'اختيار الصنف / الوجبة من قاعدة البيانات:'}</span>
-                    {isLoadingMenuItems ? (
-                      <span className="text-[11px] text-teal-300 flex items-center gap-1 font-sans">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {lang === 'en' ? 'Fetching 109 items from Supabase...' : 'جاري تحميل الـ 109 صنف من Supabase...'}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
-                        {toEnglishDigits(supabaseMenuItems.length)} {lang === 'en' ? 'real meals loaded' : 'صنف متصل بقاعدة البيانات'}
-                      </span>
-                    )}
+                    <span>{lang === 'en' ? 'Select Raw Material / Packaging Item:' : 'اختيار المادة الأولية / صنف التغليف من المخزون:'}</span>
+                    <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
+                      {toEnglishDigits(rawMaterialsList.length)} {lang === 'en' ? 'inventory items' : 'صنف مخزون وتغليف'}
+                    </span>
                   </label>
                   <GlassSelect
                     value={selectedItemForPO.item_code}
                     onChange={async (e) => {
-                      const newCode = e.target.value;
-                      const meal = supabaseMenuItems.find(m => m.meal_code === newCode);
-                      if (meal) {
-                        const updated: SupabaseInventoryItem = {
-                          item_code: meal.meal_code,
-                          item_name_ar: meal.meal_name_ar,
-                          item_name_en: meal.meal_name_en || meal.meal_name_ar,
-                          category_ar: meal.category_ar || 'عام',
-                          current_stock: 0,
-                          reorder_level: 0,
-                          cost_per_unit: 1.0,
-                        };
-                        setSelectedItemForPO(updated);
+                      const newCode = e.target.value.toUpperCase();
+                      const inv = items.find(i => i.item_code.toUpperCase() === newCode);
+                      if (inv) {
+                        setSelectedItemForPO(inv);
                       } else {
-                        const inv = items.find(i => i.item_code === newCode);
-                        if (inv) setSelectedItemForPO(inv);
+                        const raw = rawMaterialsList.find(r => r.code === newCode);
+                        if (raw) {
+                          setSelectedItemForPO({
+                            item_code: raw.code,
+                            item_name_ar: raw.nameAr,
+                            item_name_en: raw.nameEn || raw.nameAr,
+                            category_ar: raw.categoryAr || 'مواد تغليف وتشغيل',
+                            current_stock: REAL_INVENTORY_STOCK[raw.code] ?? 0,
+                            reorder_level: 2000,
+                            cost_per_unit: 0.45,
+                          });
+                        }
                       }
                       setIsLoadingSuppliers(true);
                       try {
@@ -1359,28 +1501,13 @@ export default function InventoryClient({
                     }}
                     className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none cursor-pointer"
                   >
-                    {isLoadingMenuItems ? (
-                      <option value="" className="bg-zinc-900 text-white">
-                        {lang === 'en' ? 'Loading menu items from Supabase...' : 'جاري تحميل الوجبات من قاعدة البيانات...'}
-                      </option>
-                    ) : (
-                      <>
-                        <optgroup label={lang === 'en' ? 'Real Menu Items (Supabase 109 items)' : 'قائمة الوجبات الحية (قاعدة بيانات Supabase)'}>
-                          {supabaseMenuItems.map((meal) => (
-                            <option key={meal.meal_code} value={meal.meal_code} className="bg-zinc-900 text-white py-1">
-                              [{meal.meal_code}] {meal.meal_name_ar} {meal.category_ar ? `• ${meal.category_ar}` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label={lang === 'en' ? 'Packaging & Operational Items' : 'أصناف التغليف ومواد التشغيل'}>
-                          {items.map((it) => (
-                            <option key={it.item_code} value={it.item_code} className="bg-zinc-900 text-white py-1">
-                              [{it.item_code}] {getItemDisplayName(it)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </>
-                    )}
+                    <optgroup label={lang === 'en' ? 'Raw Materials & Packaging Inventory' : 'المواد الأولية وأصناف التغليف والمخزون'}>
+                      {rawMaterialsList.map((rm) => (
+                        <option key={rm.code} value={rm.code} className="bg-zinc-900 text-white py-1">
+                          [{rm.code}] {lang === 'en' ? (rm.nameEn || rm.nameAr) : rm.nameAr}
+                        </option>
+                      ))}
+                    </optgroup>
                   </GlassSelect>
                 </div>
 
@@ -1580,6 +1707,7 @@ export default function InventoryClient({
           return acc + ((Number(i.quantityCartons) || 0) * cSize);
         }, 0);
         const isFormValid =
+          Boolean(receivePoId) &&
           receivedItems.length > 0 &&
           receivedItems.every(i => i.itemCode.trim() && i.quantityCartons && Number(i.quantityCartons) > 0) &&
           Boolean(invoiceFile) &&
@@ -1605,7 +1733,10 @@ export default function InventoryClient({
                 </div>
                 <button
                   onClick={() => {
-                    if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
+                    if (!isSubmittingReceipt) {
+                      setIsReceiveModalOpen(false);
+                      setReceiverSignature('');
+                    }
                   }}
                   disabled={isSubmittingReceipt}
                   className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
@@ -1623,27 +1754,29 @@ export default function InventoryClient({
                 </div>
               )}
 
-              {/* Top Controls: Link to Active PO (Optional) & Receiver Signature */}
+              {/* Top Controls: Link to Active PO (Required) & Receiver Signature */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-xl p-2.5 sm:p-3">
                 {/* 1. Dropdown: Select Purchase Order */}
                 <div>
-                  <label className="block text-[11px] font-bold text-white mb-1 flex items-center justify-between">
-                    <span>{t('inventory.selectPO')}</span>
-                    <span className="text-[10px] text-white/50">(اختياري / ربط بأمر شراء نشط)</span>
+                  <label className="block text-[11px] font-bold text-white mb-1">
+                    {t('inventory.selectPO')} <span className="text-rose-400">*</span>
                   </label>
                   <GlassSelect
                     value={receivePoId}
                     onChange={(e) => handleSelectPO(e.target.value)}
                     className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
                   >
-                    <option value="" className="bg-slate-900 text-white">
-                      {lang === 'ar' ? 'بدون أمر شراء مسبق (استلام مباشر بالفاتورة)' : 'Direct invoice receipt (No prior PO)'}
+                    <option value="" className="bg-slate-900 text-white/60">
+                      {lang === 'ar' ? '-- اختر أمر الشراء --' : '-- Select Purchase Order --'}
                     </option>
-                    {activePOs.map(po => (
-                      <option key={po.id} value={po.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
-                        {po.id} ({po.itemId || '—'}) - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')})
-                      </option>
-                    ))}
+                    {activePOs.map(po => {
+                      const poItemsCount = Array.isArray(po.items) && po.items.length > 0 ? po.items.length : 1;
+                      return (
+                        <option key={po.id} value={po.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
+                          {po.id} ({poItemsCount > 1 ? `${toEnglishDigits(poItemsCount)} items` : (po.itemId || '—')}) - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')})
+                        </option>
+                      );
+                    })}
                   </GlassSelect>
                 </div>
 
@@ -1660,6 +1793,7 @@ export default function InventoryClient({
                       if (receiptError) setReceiptError(null);
                     }}
                     placeholder={t('inventory.receiverSignaturePlaceholder')}
+                    autoComplete="off"
                     required
                     className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40"
                   />
@@ -1669,16 +1803,19 @@ export default function InventoryClient({
               {/* Selected PO Details Badge (if linked) */}
               {selectedReceivePO && (
                 <div className="bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white/70 text-[11px]">أمر الشراء المرتبط:</span>
                     <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded border border-white/20 text-xs" dir="ltr" lang="en">
                       {selectedReceivePO.id}
                     </span>
                     <span className="text-white/90 font-bold text-xs">• {selectedReceivePO.supplierName}</span>
+                    <span className="text-[11px] text-emerald-300 bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 rounded-full font-bold">
+                      تم تعبئة أصناف الطلب تلقائياً للمطابقة ✓
+                    </span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs">
                     <span className="text-white/70 font-mono text-[11px]" dir="ltr" lang="en">
-                      الكمية المطلوبة: {toEnglishDigits(selectedReceivePO.quantity)} وحدة
+                      إجمالي المطلوب: {toEnglishDigits(selectedReceivePO.quantity)} وحدة
                     </span>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-500/20 text-amber-200 border-amber-400/40">
                       {selectedReceivePO.status}
@@ -1701,123 +1838,169 @@ export default function InventoryClient({
                 {/* Rows Header for Desktop */}
                 <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1 text-[11px] font-bold text-white/60 border-b border-white/10">
                   <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-6">الصنف (الرمز القياسي ومواصفات الكرتون)</div>
-                  <div className="col-span-2 text-center">الكمية (بالكرتون)</div>
-                  <div className="col-span-2 text-center">المعادل بالوحدات</div>
+                  <div className="col-span-4">الصنف (المواد الأولية والتغليف)</div>
+                  <div className="col-span-2 text-center">المطلوب (PO)</div>
+                  <div className="col-span-2 text-center">الكمية المستلمة</div>
+                  <div className="col-span-2 text-center">المعادل والمطابقة</div>
                   <div className="col-span-1 text-center">إجراء</div>
                 </div>
 
                 {/* Scrollable Rows Container */}
-                <div className="space-y-1.5 max-h-40 sm:max-h-48 overflow-y-auto pr-1">
-                  {receivedItems.map((row, index) => {
-                    const code = row.itemCode.toUpperCase();
-                    const cartonSize = CARTON_SIZES[code] || 1;
-                    const cartons = Number(row.quantityCartons) || 0;
-                    const unitsEquivalent = cartons * cartonSize;
+                {receivedItems.length === 0 ? (
+                  <div className="bg-white/[0.03] border border-dashed border-white/15 rounded-xl p-5 text-center space-y-1">
+                    <p className="text-xs font-bold text-white/85">
+                      {lang === 'ar'
+                        ? 'الرجاء اختيار أمر الشراء من الأعلى لتعبئة بنوده وكمياته المطلوبة تلقائياً للمطابقة'
+                        : 'Select a Purchase Order above to auto-populate its requested items for verification'}
+                    </p>
+                    <p className="text-[11px] text-white/50">
+                      {lang === 'ar'
+                        ? 'وبعد اختيار أمر الشراء يمكنك الضغط على «إضافة صنف للفاتورة» لإدراج مواد أولية أو تغليف إضافية يدوياً عند الحاجة.'
+                        : 'After selecting a Purchase Order, you can click "Add Item to Invoice" to manually append extra raw materials / packaging items.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-44 sm:max-h-52 overflow-y-auto pr-1">
+                    {receivedItems.map((row, index) => {
+                      const code = row.itemCode.toUpperCase();
+                      const cartonSize = CARTON_SIZES[code] || 1;
+                      const cartons = Number(row.quantityCartons) || 0;
+                      const unitsEquivalent = cartons * cartonSize;
+                      const reqUnits = row.requestedUnits ?? 0;
+                      const reqCartons = row.requestedCartons ?? 0;
+                      const diffUnits = unitsEquivalent - reqUnits;
+                      const hasCodeInRawList = rawMaterialsList.some(rm => rm.code === code);
 
-                    return (
-                      <div
-                        key={row.id}
-                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 rounded-xl px-2.5 py-1.5 transition-colors"
-                      >
-                        {/* Row Index */}
-                        <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
-                          <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr" lang="en">
-                            {toEnglishDigits(index + 1)}
-                          </span>
-                          <span className="sm:hidden text-xs text-white/60 font-bold">بند رقم {toEnglishDigits(index + 1)}</span>
-                        </div>
+                      return (
+                        <div
+                          key={row.id}
+                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 rounded-xl px-2.5 py-1.5 transition-colors"
+                        >
+                          {/* Row Index */}
+                          <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
+                            <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr" lang="en">
+                              {toEnglishDigits(index + 1)}
+                            </span>
+                            <span className="sm:hidden text-xs text-white/60 font-bold">بند رقم {toEnglishDigits(index + 1)}</span>
+                          </div>
 
-                        {/* Item Select Dropdown */}
-                        <div className="sm:col-span-6">
-                          <label className="text-[10px] text-white/60 sm:hidden block mb-1">الصنف</label>
-                          <select
-                            value={row.itemCode}
-                            onChange={(e) => handleUpdateReceivedItemRow(row.id, 'itemCode', e.target.value)}
-                            className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
-                          >
-                            <option value="" disabled className="bg-slate-900 text-white/60">
-                              {isLoadingMenuItems
-                                ? (lang === 'en' ? '⏳ Loading menu items from Supabase...' : '⏳ جاري جلب قائمة الأصناف من قاعدة البيانات...')
-                                : (lang === 'en' ? 'Select meal / item from list...' : 'اختر الصنف / الوجبة من القائمة...')}
-                            </option>
-                            {isLoadingMenuItems && (
-                              <option disabled className="bg-slate-900 text-teal-300">
-                                {lang === 'en' ? 'Fetching 109 items from Supabase...' : 'جاري تحميل الـ 109 صنف من Supabase...'}
+                          {/* Item Select Dropdown (Strictly Raw Materials / Packaging Inventory [P1], [P2]...) */}
+                          <div className="sm:col-span-4">
+                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">الصنف</label>
+                            <select
+                              value={row.itemCode}
+                              onChange={(e) => handleUpdateReceivedItemRow(row.id, 'itemCode', e.target.value)}
+                              disabled={Boolean(row.isFromPO)}
+                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer disabled:opacity-90 disabled:cursor-default"
+                            >
+                              <option value="" disabled className="bg-slate-900 text-white/60">
+                                {lang === 'ar' ? '-- اختر المادة الأولية / صنف التغليف --' : '-- Select Raw Material / Packaging Item --'}
                               </option>
-                            )}
-                            {supabaseMenuItems.length > 0 && (
-                              <optgroup label={lang === 'en' ? 'Real Menu Items (Supabase 109 items)' : 'قائمة الوجبات الحية (قاعدة بيانات Supabase)'}>
-                                {supabaseMenuItems.map((meal) => (
-                                  <option key={meal.meal_code} value={meal.meal_code} className="bg-slate-900 text-white py-1">
-                                    [{meal.meal_code}] {meal.meal_name_ar} {meal.category_ar ? `• ${meal.category_ar}` : ''}
+                              {!hasCodeInRawList && code && (
+                                <option value={code} className="bg-slate-900 text-white py-1">
+                                  [{code}] {row.itemName || code}
+                                </option>
+                              )}
+                              <optgroup label={lang === 'ar' ? 'المواد الأولية وأصناف التغليف والمخزون' : 'Raw Materials & Packaging Inventory'}>
+                                {rawMaterialsList.map((c: RawMaterialItem) => (
+                                  <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
+                                    [{c.code}] {lang === 'en' ? (c.nameEn || c.nameAr) : c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code] || 1)} حبة/كرتون`})
                                   </option>
                                 ))}
                               </optgroup>
+                            </select>
+                          </div>
+
+                          {/* Requested Quantity from PO */}
+                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-center">
+                            <span className="text-[10px] text-white/60 sm:hidden">المطلوب:</span>
+                            {row.isFromPO ? (
+                              <div className="text-center font-mono leading-tight" dir="ltr" lang="en">
+                                <div className="text-xs font-bold text-white">
+                                  {toEnglishDigits(reqCartons)} <span className="font-sans text-[10px] text-white/70">{cartonSize === 1 ? 'حبة' : 'كرتون'}</span>
+                                </div>
+                                <div className="text-[10px] text-white/55">
+                                  ({toEnglishDigits(reqUnits)} {t('common.unit')})
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/15 border border-teal-400/30 text-teal-200">
+                                {lang === 'ar' ? 'إضافة يدوية' : 'Manual Add'}
+                              </span>
                             )}
-                            <optgroup label={lang === 'en' ? 'Operational & Packaging Materials' : 'مواد التغليف والتوريد'}>
-                              {[...STANDARD_ITEM_CODES]
-                                .sort((a, b) => compareItemCodes(a.code, b.code))
-                                .map((c) => (
-                                  <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
-                                    [{c.code}] {c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code])} حبة/كرتون`})
-                                  </option>
-                                ))}
-                            </optgroup>
-                          </select>
-                        </div>
+                          </div>
 
-                        {/* Quantity in Cartons Input */}
-                        <div className="sm:col-span-2">
-                          <label className="text-[10px] text-white/60 sm:hidden block mb-1">الكمية بالكرتون</label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="1"
-                              step="1"
-                              dir="ltr"
-                              lang="en"
-                              value={row.quantityCartons}
-                              onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
-                              placeholder="1"
-                              className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-white/25"
-                            />
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
-                              {cartonSize === 1 ? 'حبة' : 'كرتون'}
-                            </span>
+                          {/* Received Quantity in Cartons Input */}
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">الكمية المستلمة</label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                dir="ltr"
+                                lang="en"
+                                value={row.quantityCartons}
+                                onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
+                                placeholder="1"
+                                className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-white/25"
+                              />
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
+                                {cartonSize === 1 ? 'حبة' : 'كرتون'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Equivalent Units + Requested vs Received Match Indicator */}
+                          <div className="sm:col-span-2 flex flex-col items-center justify-center gap-0.5">
+                            <div className="w-full py-0.5 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
+                              {toEnglishDigits(unitsEquivalent)} <span className="font-sans text-[10px]">{t('common.unit')}</span>
+                            </div>
+                            {row.isFromPO && reqUnits > 0 && (
+                              <span
+                                className={`text-[10px] font-bold font-mono ${
+                                  diffUnits === 0
+                                    ? 'text-emerald-300'
+                                    : diffUnits < 0
+                                    ? 'text-amber-300'
+                                    : 'text-teal-300'
+                                }`}
+                                dir="ltr"
+                                lang="en"
+                              >
+                                {diffUnits === 0
+                                  ? 'مطابق للطلب ✓'
+                                  : diffUnits < 0
+                                  ? `نقص (${toEnglishDigits(diffUnits)})`
+                                  : `زيادة (+${toEnglishDigits(diffUnits)})`}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Remove Row Button */}
+                          <div className="sm:col-span-1 flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveReceivedItemRow(row.id)}
+                              className="p-1 text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 border border-transparent hover:border-rose-400/30 rounded-lg transition-all cursor-pointer shrink-0"
+                              title="حذف هذا الصنف من الفاتورة"
+                              aria-label="حذف الصنف"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-
-                        {/* Equivalent Units */}
-                        <div className="sm:col-span-2 flex items-center justify-center">
-                          <div className="w-full py-1 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
-                            {toEnglishDigits(unitsEquivalent)} <span className="font-sans text-[11px]">{t('common.unit')}</span>
-                          </div>
-                        </div>
-
-                        {/* Remove Row Button */}
-                        <div className="sm:col-span-1 flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveReceivedItemRow(row.id)}
-                            disabled={receivedItems.length === 1 && index === 0}
-                            className="p-1 text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-rose-400 border border-transparent hover:border-rose-400/30 rounded-lg transition-all cursor-pointer shrink-0"
-                            title="حذف هذا الصنف من الفاتورة"
-                            aria-label="حذف الصنف"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Add Another Item Button */}
                 <button
                   type="button"
                   onClick={handleAddReceivedItemRow}
-                  className="w-full py-1.5 px-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/25 hover:border-white/40 rounded-lg text-xs font-bold text-teal-200 hover:text-teal-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  disabled={!receivePoId}
+                  className="w-full py-1.5 px-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/25 hover:border-white/40 rounded-lg text-xs font-bold text-teal-200 hover:text-teal-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-400" />
                   <span>➕ إضافة صنف للفاتورة</span>
@@ -1931,7 +2114,10 @@ export default function InventoryClient({
                 </button>
                 <button
                   onClick={() => {
-                    if (!isSubmittingReceipt) setIsReceiveModalOpen(false);
+                    if (!isSubmittingReceipt) {
+                      setIsReceiveModalOpen(false);
+                      setReceiverSignature('');
+                    }
                   }}
                   disabled={isSubmittingReceipt}
                   className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/20 transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-50"

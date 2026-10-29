@@ -66,16 +66,24 @@ export interface Supplier {
   };
 }
 
+export interface PurchaseOrderLineItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+}
+
 export interface PurchaseOrder {
   id: string;
   itemId: string;
   itemName: string;
+  items?: PurchaseOrderLineItem[];
   supplierName: string;
   quantity: number;
   totalCost: number;
   status: 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'IN_TRANSIT' | 'DELIVERED' | 'تم الاستلام' | 'RECEIVED' | string;
   createdAt: string;
-  createdBy: 'AI_AGENT' | 'HUMAN';
+  createdBy: string;
+  createdById?: string;
   supplier_id?: string;
   supplierId?: string;
   invoiceUrl?: string;
@@ -88,75 +96,89 @@ export const initialPurchaseOrders: PurchaseOrder[] = [
   {
     id: 'PO-9041',
     itemId: 'P7',
-    itemName: 'أدوات المائدة',
+    itemName: 'أدوات المائدة مطبوع',
+    items: [
+      { itemId: 'P7', itemName: 'أدوات المائدة مطبوع', quantity: 2500 },
+    ],
     supplierName: 'مزايا',
     supplier_id: '22222222-2222-2222-2222-222222222222',
     supplierId: '22222222-2222-2222-2222-222222222222',
     quantity: 2500,
     totalCost: 625,
     status: 'IN_TRANSIT',
-    createdAt: '10:30 ص',
-    createdBy: 'HUMAN',
+    createdAt: '10:30 AM',
+    createdBy: '',
   },
   {
     id: 'PO-8820',
     itemId: 'P3',
-    itemName: 'علبة الصوص',
+    itemName: 'علب الصوص',
+    items: [
+      { itemId: 'P3', itemName: 'علب الصوص', quantity: 4000 },
+      { itemId: 'P4', itemName: 'صحن السلطة', quantity: 960 },
+    ],
     supplierName: 'الصندوق المناسب',
     supplier_id: '11111111-1111-1111-1111-111111111111',
     supplierId: '11111111-1111-1111-1111-111111111111',
-    quantity: 5000,
+    quantity: 4960,
     totalCost: 400,
     status: 'SENT',
-    createdAt: '09:15 ص',
-    createdBy: 'HUMAN',
+    createdAt: '09:15 AM',
+    createdBy: '',
   },
   {
     id: 'PO-7640',
     itemId: 'P1',
-    itemName: 'صحن مقسم',
+    itemName: 'صحن مقسم 32',
+    items: [
+      { itemId: 'P1', itemName: 'صحن مقسم 32', quantity: 3000 },
+    ],
     supplierName: 'أمجاد كميت',
     supplier_id: '33333333-3333-3333-3333-333333333333',
     supplierId: '33333333-3333-3333-3333-333333333333',
     quantity: 3000,
     totalCost: 1500,
     status: 'PENDING_APPROVAL',
-    createdAt: 'أمس',
-    createdBy: 'HUMAN',
+    createdAt: '2026-10-28',
+    createdBy: '',
   },
   {
     id: 'PO-7110',
     itemId: 'P4',
     itemName: 'صحن السلطة',
+    items: [
+      { itemId: 'P4', itemName: 'صحن السلطة', quantity: 3840 },
+    ],
     supplierName: 'الصندوق المناسب',
     supplier_id: '11111111-1111-1111-1111-111111111111',
     supplierId: '11111111-1111-1111-1111-111111111111',
-    quantity: 4000,
+    quantity: 3840,
     totalCost: 1600,
     status: 'تم الاستلام',
-    createdAt: '2026-10-14 02:30 م',
-    createdBy: 'AI_AGENT',
-    receivedQuantity: 4000,
-    receivedAt: '2026-10-15 11:20 ص',
+    createdAt: '2026-10-14 02:30 PM',
+    createdBy: '',
+    receivedQuantity: 3840,
+    receivedAt: '2026-10-15 11:20 AM',
     invoiceUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
-    receiverSignature: 'مهندس المستودع - خالد',
   },
   {
     id: 'PO-6520',
     itemId: 'P7',
-    itemName: 'أدوات المائدة',
+    itemName: 'أدوات المائدة مطبوع',
+    items: [
+      { itemId: 'P7', itemName: 'أدوات المائدة مطبوع', quantity: 3500 },
+    ],
     supplierName: 'مزايا',
     supplier_id: '22222222-2222-2222-2222-222222222222',
     supplierId: '22222222-2222-2222-2222-222222222222',
     quantity: 3500,
     totalCost: 875,
     status: 'تم الاستلام',
-    createdAt: '2026-10-12 09:00 ص',
-    createdBy: 'HUMAN',
+    createdAt: '2026-10-12 09:00 AM',
+    createdBy: '',
     receivedQuantity: 3500,
-    receivedAt: '2026-10-13 04:15 م',
+    receivedAt: '2026-10-13 04:15 PM',
     invoiceUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=600&q=80',
-    receiverSignature: 'مشرف العمليات - أحمد',
   },
 ];
 

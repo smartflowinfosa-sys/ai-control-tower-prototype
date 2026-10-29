@@ -24,11 +24,14 @@ import {
   SupplierItemRecord,
   fetchPurchaseOrders,
   createPurchaseOrder,
+  updatePurchaseOrderStatus,
   fetchAllSupplierItems,
   fetchSuppliersForItem,
   SupabasePurchaseOrder,
   SupabaseSupplierItem
 } from '@/lib/supabaseService';
+import { getAuthenticatedPOUser, formatPOCreatorDisplay } from '@/lib/poAuth';
+import { useSession } from 'next-auth/react';
 import { compareItemCodes } from '@/constants/inventoryCodes';
 import {
   Clock,
@@ -93,6 +96,8 @@ export default function SuppliersClient({
   fetchError
 }: SuppliersClientProps) {
   const { lang, t } = useLanguage();
+  const { data: session } = useSession();
+  const authenticatedUser = useMemo(() => getAuthenticatedPOUser(session, lang), [session, lang]);
 
   // Resolve inventory items from database, strictly sorted alphanumerically (P1, P2... P9, P10)
   const rawAvailableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
@@ -120,6 +125,7 @@ export default function SuppliersClient({
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const [isSavingSupplier, setIsSavingSupplier] = useState<boolean>(false);
   const [isSubmittingQuickOrder, setIsSubmittingQuickOrder] = useState<boolean>(false);
 
@@ -367,7 +373,24 @@ export default function SuppliersClient({
     setAnalyzingItemId(itemId);
   };
 
+  const showError = (msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => {
+      setErrorToast(null);
+    }, 4500);
+  };
+
   const handleQuickOrder = async (supplierName: string, itemName: string, unitPrice?: number) => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Cannot create a Purchase Order without an authenticated user session.'
+          : 'عذراً، لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
+    }
+
     if (isSubmittingQuickOrder) return;
     setIsSubmittingQuickOrder(true);
 
@@ -383,35 +406,49 @@ export default function SuppliersClient({
       const quantity = 2500;
       const totalCost = Number((quantity * unitCost).toFixed(2));
       const itemCode = matchedItem?.item_code || analyzingItemId || 'P1';
+      const resolvedItemName = matchedItem?.item_name_ar || itemName || itemCode;
 
       // 1. Generate unique PO Number
       const poNum = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // 2. Insert into Supabase purchase_orders table
-      await createPurchaseOrder({
+      // 2. Insert into Supabase purchase_orders table linking created_by strictly to authenticated user.id
+      const createdFromDB = await createPurchaseOrder({
         po_number: poNum,
         supplier_id: supplierId,
         inventory_item_code: itemCode,
         quantity,
         total_cost: totalCost,
         status: 'PENDING_APPROVAL',
-        created_by: 'HUMAN',
+        created_by: authUser.id,
       });
+
+      const createdPO: PurchaseOrder = {
+        ...createdFromDB,
+        createdBy: createdFromDB.createdBy || authUser.displayName,
+        createdById: authUser.id,
+        items: [{ itemId: itemCode, itemName: resolvedItemName, quantity }],
+      };
+      addPurchaseOrderToSession(createdPO);
 
       // 3. RE-FETCH the entire PO list from Supabase (strictly ensuring tracking table reflects single true state)
       const freshPOs = await fetchPurchaseOrders();
       if (freshPOs && freshPOs.length > 0) {
-        setPurchaseOrders(freshPOs as unknown as PurchaseOrder[]);
+        const merged = (freshPOs as unknown as PurchaseOrder[]).map(p =>
+          p.id === poNum ? { ...p, createdBy: p.createdBy || authUser.displayName, createdById: p.createdById || authUser.id } : p
+        );
+        setPurchaseOrders(merged);
+      } else {
+        setPurchaseOrders(prev => [createdPO, ...prev.filter(p => p.id !== poNum)]);
       }
 
       showToast(
         lang === 'en'
-          ? `New purchase order (${poNum}) issued via AI for supplier (${supplierName}) successfully!`
-          : `تم إصدار أمر شراء جديد (${poNum}) عبر الـ AI للمورد (${supplierName}) بنجاح!`
+          ? `New purchase order (${poNum}) issued by (${authUser.displayName}) for supplier (${supplierName})!`
+          : `تم إصدار أمر شراء جديد (${poNum}) بواسطة (${authUser.displayName}) للمورد (${supplierName}) بنجاح!`
       );
     } catch (err: any) {
       console.error('Failed to create purchase order in Supabase:', err);
-      showToast(
+      showError(
         lang === 'en'
           ? `Failed to issue purchase order: ${err?.message || 'Database error'}`
           : `تعذر إصدار أمر الشراء: ${err?.message || 'خطأ في قاعدة البيانات'}`
@@ -422,24 +459,42 @@ export default function SuppliersClient({
   };
 
   const handleUpdatePOStatus = (poId: string, nextStatus: PurchaseOrder['status']) => {
-    setPurchaseOrders(prev =>
-      prev.map(p => (p.id === poId ? { ...p, status: nextStatus } : p))
-    );
-    const existing = getSessionPurchaseOrders().find(p => p.id === poId);
-    if (existing) {
-      existing.status = nextStatus;
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Cannot execute or update a Purchase Order without an authenticated user session.'
+          : 'عذراً، لا يمكن تنفيذ أو تحديث أمر الشراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
     }
+
+    const dbStatus = nextStatus === 'DELIVERED' ? 'تم الاستلام' : nextStatus;
+    setPurchaseOrders(prev =>
+      prev.map(p => (p.id === poId ? { ...p, status: dbStatus } : p))
+    );
+    updatePurchaseOrderStatus(poId, dbStatus).catch(console.warn);
+
     if (selectedPO && selectedPO.id === poId) {
-      setSelectedPO({ ...selectedPO, status: nextStatus });
+      setSelectedPO({ ...selectedPO, status: dbStatus });
     }
     showToast(
       lang === 'en'
-        ? `Purchase order status (${poId}) updated successfully`
-        : `تم تحديث حالة أمر الشراء (${poId}) بنجاح`
+        ? `Purchase order (${poId}) executed by ${authUser.displayName} successfully`
+        : `تم تحديث وتنفيذ أمر الشراء (${poId}) بواسطة (${authUser.displayName}) بنجاح`
     );
   };
 
   const handleOpenEditPO = async () => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Sign in required to modify Purchase Orders.'
+          : 'عذراً، يجب تسجيل الدخول أولاً لتعديل أوامر الشراء.'
+      );
+      return;
+    }
     if (!selectedPO) return;
     setEditPOQuantity(selectedPO.quantity);
     setEditPOSupplier(selectedPO.supplierName);
@@ -507,6 +562,15 @@ export default function SuppliersClient({
   };
 
   const handleSavePOEdit = () => {
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Sign in required to save Purchase Order changes.'
+          : 'عذراً، يجب تسجيل الدخول أولاً لحفظ تعديلات أمر الشراء.'
+      );
+      return;
+    }
     if (!selectedPO) return;
 
     const matchedItem = availableItems.find(i => i.item_name_ar === selectedPO.itemName || i.item_code === selectedPO.itemId);
@@ -789,6 +853,14 @@ export default function SuppliersClient({
         </div>
       )}
 
+      {/* Auth / Error Toast Notification */}
+      {errorToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-950/95 border border-rose-400/50 shadow-2xl text-rose-100 px-6 py-3.5 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
+          <AlertTriangle className="w-5 h-5 text-rose-300 shrink-0" />
+          <span className="text-sm font-bold">{errorToast}</span>
+        </div>
+      )}
+
       {/* Database Status Alert Banner */}
       {fetchError && (
         <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm flex items-center gap-3">
@@ -1052,20 +1124,13 @@ export default function SuppliersClient({
                             <span className="text-xs font-normal text-white/70">{lang === 'en' ? 'SAR' : 'ر.س'}</span>
                           </td>
 
-                          {/* Created By */}
+                          {/* Created By (Clean Authenticated User Display Name Only) */}
                           <td className="px-4 py-3.5 text-center">
                             <div className="flex items-center justify-center">
-                              {po.createdBy === 'AI_AGENT' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-teal-600/15 border border-teal-300/30 text-teal-100">
-                                  <Bot className="w-3.5 h-3.5 text-white" />
-                                  <span>{lang === 'en' ? 'AI Agent' : 'وكيل الذكاء الاصطناعي'}</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-medium bg-white/10 backdrop-blur-md border border-white/20 text-white/90">
-                                  <User className="w-3.5 h-3.5 text-white/80" />
-                                  <span>{lang === 'en' ? 'System User' : 'مستخدم النظام'}</span>
-                                </span>
-                              )}
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] text-xs font-bold bg-white/10 backdrop-blur-md border border-white/20 text-white">
+                                <User className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                                <span>{formatPOCreatorDisplay(po.createdBy, authenticatedUser)}</span>
+                              </span>
                             </div>
                           </td>
 
@@ -2341,19 +2406,10 @@ export default function SuppliersClient({
 
                   {/* 7. Creator */}
                   <div className="bg-white/[0.04] border border-white/15 rounded-xl p-3 flex flex-col items-center justify-center text-center">
-                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Origin' : 'جهة الإصدار'}</span>
-                    <span className="text-[11px] font-bold text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/20 flex items-center justify-center gap-1.5 mt-1">
-                      {selectedPO.createdBy === 'AI_AGENT' ? (
-                        <>
-                          <Bot className="w-3.5 h-3.5 text-teal-300" />
-                          <span>{lang === 'en' ? 'AI Agent' : 'الذكاء الاصطناعي'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <User className="w-3.5 h-3.5 text-white/80" />
-                          <span>{lang === 'en' ? 'System User' : 'مستخدم النظام'}</span>
-                        </>
-                      )}
+                    <span className="text-white/60 text-[11px] font-medium">{lang === 'en' ? 'Created By' : 'المُنشئ'}</span>
+                    <span className="text-[11px] font-bold text-white bg-white/10 px-2.5 py-0.5 rounded-md border border-white/20 flex items-center justify-center gap-1.5 mt-1 max-w-full">
+                      <User className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                      <span className="truncate">{formatPOCreatorDisplay(selectedPO.createdBy, authenticatedUser)}</span>
                     </span>
                   </div>
 

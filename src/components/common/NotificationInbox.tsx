@@ -51,7 +51,7 @@ export default function NotificationInbox() {
                         {alert.riskLevel}
                       </span>
                       <span className="text-xs text-white/65 font-medium">
-                        {alert.timestamp.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                        {alert.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                     <h4 className="font-bold text-white mb-1">{alert.title}</h4>

@@ -24,8 +24,12 @@ import {
   TrendingUp,
   Hash,
   SlidersHorizontal,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight,
+  PackageCheck
 } from 'lucide-react';
+import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
 import TikrarSmartReaderModal from '@/components/production/TikrarSmartReaderModal';
 import {
@@ -69,6 +73,10 @@ export default function QuantityClient() {
   const [isFiltered, setIsFiltered] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isTikrarModalOpen, setIsTikrarModalOpen] = useState(false);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   useEffect(() => {
     // Client-safe default date initialization to Oct 20 - 24, 2026
@@ -124,6 +132,24 @@ export default function QuantityClient() {
     return filteredRows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   }, [filteredRows]);
 
+  // Pagination Calculations
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const paginatedRows = useMemo(() => {
+    if (pageSize === -1) return filteredRows;
+    const start = (safePage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, safePage, pageSize]);
+
+  // Adjust pagination page when filters change (React recommended pattern)
+  const filterKey = `${searchQuery}-${selectedPackaging}-${dateFrom}-${dateTo}-${city}-${branch}-${status}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setCurrentPage(1);
+  }
+
   const handleFilter = () => {
     setIsFiltering(true);
     setTimeout(() => {
@@ -148,6 +174,7 @@ export default function QuantityClient() {
     setShowCategory(true);
     setGroupByReference(false);
     setGroupBySize(false);
+    setCurrentPage(1);
     setIsFiltered(false);
     showToast('تمت إعادة ضبط معايير التصفية وفلتر التغليف');
   };
@@ -285,6 +312,7 @@ export default function QuantityClient() {
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
               <option value="الكل">الكل</option>
+              <option value="بدون">بدون</option>
               <option value="الرياض (فرع التوصيل)">الرياض (فرع التوصيل)</option>
               <option value="مكة المكرمة (فرع التوصيل)">مكة المكرمة (فرع التوصيل)</option>
               <option value="جدة (فرع التوصيل)">جدة (فرع التوصيل)</option>
@@ -723,8 +751,56 @@ export default function QuantityClient() {
           </div>
         </div>
 
-        {/* The Table Structure */}
-        <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+        {/* Prominent Summary Metrics: إجمالي الوجبات & تقرير التغليف */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* 1. إجمالي الوجبات (Total Meals) */}
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-white/70 uppercase tracking-wide">
+                ملخص الإنتاج
+              </span>
+              <h3 className="text-base sm:text-lg font-black text-white">
+                إجمالي الوجبات
+              </h3>
+              <p className="text-xs text-white/60">
+                إجمالي كميات الوجبات المحضرة للفترة المحددة
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="font-mono text-2xl sm:text-3xl font-black text-emerald-300 block">
+                {totalConsumption.toLocaleString('en-US')}
+              </span>
+              <span className="text-[11px] font-bold text-white/60">وجبة محضرة</span>
+            </div>
+          </div>
+
+          {/* 2. تقرير التغليف (Packaging Report) */}
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-white/70 uppercase tracking-wide">
+                استهلاك مواد التشغيل
+              </span>
+              <h3 className="text-base sm:text-lg font-black text-white">
+                تقرير التغليف
+              </h3>
+              <p className="text-xs text-white/60">
+                {selectedPackaging !== 'none'
+                  ? `فلتر التغليف: ${selectedProduct.name}`
+                  : 'تتبع استهلاك العلب والملاعق ومواد التغليف (BOM)'}
+              </p>
+            </div>
+            <Link
+              href="/operations/packaging"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-sm shrink-0"
+            >
+              <PackageCheck className="w-4 h-4 text-teal-300" />
+              <span>تقرير التغليف</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Dynamic Height Table Container */}
+        <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5 h-auto min-h-full w-full">
           <table className="w-full text-center border-collapse">
             <thead>
               <tr className="bg-white/5 border-b border-white/10 text-white font-extrabold text-sm">
@@ -751,14 +827,14 @@ export default function QuantityClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filteredRows.length > 0 ? (
-                filteredRows.map((row, idx) => (
+              {paginatedRows.length > 0 ? (
+                paginatedRows.map((row, idx) => (
                   <tr
                     key={row.id || `${row.mealCode}-${idx}`}
                     className="hover:bg-white/5 transition-colors border-b border-white/5"
                   >
                     <td className="py-3 px-3 text-xs font-mono text-white/60 text-center">
-                      {idx + 1}
+                      {(pageSize === -1 ? 0 : (safePage - 1) * pageSize) + idx + 1}
                     </td>
                     <td className="py-3 px-3 text-xs font-mono font-bold text-white text-center">
                       <span className="bg-white/10 border border-white/20 px-2 py-0.5 rounded-lg inline-block">
@@ -810,8 +886,109 @@ export default function QuantityClient() {
                 </tr>
               )}
             </tbody>
+            {filteredRows.length > 0 && (
+              <tfoot>
+                <tr className="bg-white/10 border-t-2 border-white/20 font-bold text-white">
+                  <td colSpan={showCategory ? 5 : 4} className="py-3.5 px-4 text-right">
+                    <span className="font-extrabold text-sm sm:text-base">إجمالي الوجبات (Total Meals)</span>
+                  </td>
+                  <td className="py-3.5 px-4 text-center font-mono font-black text-base sm:text-lg text-emerald-300">
+                    {totalConsumption.toLocaleString('en-US')}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {filteredRows.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-white/80">
+            <div className="flex items-center gap-2">
+              <span>
+                عرض{' '}
+                <strong className="font-mono text-white">
+                  {filteredRows.length === 0 ? 0 : (pageSize === -1 ? 1 : (safePage - 1) * pageSize + 1)}
+                </strong>{' '}
+                -{' '}
+                <strong className="font-mono text-white">
+                  {pageSize === -1 ? filteredRows.length : Math.min(safePage * pageSize, filteredRows.length)}
+                </strong>{' '}
+                من أصل{' '}
+                <strong className="font-mono text-white">{filteredRows.length.toLocaleString('en-US')}</strong>{' '}
+                سجل
+              </span>
+
+              <div className="border-r border-white/20 pr-2 mr-2 flex items-center gap-1.5">
+                <span>لكل صفحة:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-xs text-white font-mono outline-none cursor-pointer focus:ring-1 focus:ring-white/30"
+                >
+                  <option value={10} className="bg-slate-900 text-white">10</option>
+                  <option value={15} className="bg-slate-900 text-white">15</option>
+                  <option value={25} className="bg-slate-900 text-white">25</option>
+                  <option value={50} className="bg-slate-900 text-white">50</option>
+                  <option value={-1} className="bg-slate-900 text-white">الكل</option>
+                </select>
+              </div>
+            </div>
+
+            {pageSize !== -1 && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:pointer-events-none border border-white/15 text-white transition-all flex items-center gap-1 cursor-pointer font-bold"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                  <span>السابق</span>
+                </button>
+
+                <div className="flex items-center gap-1 font-mono">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                    .map((p, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      return (
+                        <React.Fragment key={p}>
+                          {prev && p - prev > 1 && (
+                            <span className="px-1 text-white/40">...</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              safePage === p
+                                ? 'bg-white/25 text-white border border-white/40 shadow-sm'
+                                : 'bg-white/5 hover:bg-white/15 text-white/70 border border-white/10'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:pointer-events-none border border-white/15 text-white transition-all flex items-center gap-1 cursor-pointer font-bold"
+                >
+                  <span>التالي</span>
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tikrar Smart Reader AI Vision Modal */}
