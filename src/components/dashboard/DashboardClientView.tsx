@@ -1,29 +1,46 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   AlertTriangle,
   Truck,
   ChefHat,
-  CheckCircle2,
   ArrowUpRight,
   Sparkles,
   Layers,
-  Activity,
-  Flame,
-  Package,
-  Mic,
-  ShieldCheck,
   ChevronRight
 } from 'lucide-react';
-import AIAutonomyControl from '@/components/dashboard/AIAutonomyControl';
-import ControlTowerCharts from '@/components/dashboard/ControlTowerCharts';
 import { useLanguage } from '@/components/common/LanguageContext';
+
+const ControlTowerCharts = dynamic(
+  () => import('@/components/dashboard/ControlTowerCharts'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 animate-pulse">
+        <div className="h-72 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 p-5" />
+        <div className="h-72 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 p-5" />
+      </div>
+    ),
+  }
+);
+
+const AIAutonomyControl = dynamic(
+  () => import('@/components/dashboard/AIAutonomyControl'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-44 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 p-5 animate-pulse" />
+    ),
+  }
+);
 import { initialInventoryItems, getSessionPurchaseOrders } from '@/lib/mockInventoryData';
 import { fetchInventoryItems, fetchPurchaseOrders } from '@/lib/supabaseService';
 import {
   TOTAL_PRODUCTION_TARGET,
+  initialKdsBatches,
   getKdsBatches,
   calculateKdsCompletion,
 } from '@/lib/kdsProductionStore';
@@ -51,9 +68,9 @@ export default function DashboardClientView() {
     }).length || 3;
   });
 
-  // Dynamically reactive to KDS Kanban board state
+  // Dynamically reactive to KDS Kanban board state (initialized deterministically with initialKdsBatches for SSR/CSR hydration parity)
   const [kdsStats, setKdsStats] = useState(() => {
-    return calculateKdsCompletion(getKdsBatches(), TOTAL_PRODUCTION_TARGET);
+    return calculateKdsCompletion(initialKdsBatches, TOTAL_PRODUCTION_TARGET);
   });
 
   useEffect(() => {

@@ -561,6 +561,7 @@ export async function batchReceiveInventory(
   for (const item of receivedItems) {
     const code = item.itemCode.toUpperCase();
     const cartons = Number(item.quantityCartons) || 0;
+    if (cartons <= 0) continue;
     const cSize = CARTON_SIZES[code] || 1;
     const addedUnits = cartons * cSize;
 

@@ -3,10 +3,15 @@
 import { useState, useRef, useEffect, type FocusEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { useNotification } from '@/components/common/NotificationContext';
-import { useLanguage } from '@/components/common/LanguageContext';
-import UserProfileModal from '@/components/common/UserProfileModal';
+import { useLanguage, DEFAULT_USER_PROFILE, translations } from '@/components/common/LanguageContext';
+
+const UserProfileModal = dynamic(
+  () => import('@/components/common/UserProfileModal'),
+  { ssr: false }
+);
 import {
   Menu,
   X,
@@ -41,7 +46,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { notifications } = useNotification();
-  const { lang, currentUser, t, isRtl } = useLanguage();
+  const { lang: contextLang, currentUser: contextUser, t: contextT, isRtl: contextIsRtl } = useLanguage();
+  const [isMounted, setIsMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -50,7 +56,18 @@ export default function Sidebar() {
   const [tooltip, setTooltip] = useState<{ label: string; top: number; right?: number; left?: number } | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const pendingCount = notifications.filter(n => n.status === 'pending').length;
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Ensure SSR and initial CSR hydration match 100% before applying client-only session/language state
+  const lang = isMounted ? contextLang : 'ar';
+  const isRtl = isMounted ? contextIsRtl : true;
+  const currentUser = isMounted ? contextUser : DEFAULT_USER_PROFILE;
+  const activeSession = isMounted ? session : null;
+  const t = (key: string) => (isMounted ? contextT(key) : (translations.ar[key] ?? key));
+  const pendingCount = isMounted ? notifications.filter(n => n.status === 'pending').length : 0;
 
   // Auto-expand operations submenu when user is on any operations page
   useEffect(() => {
@@ -59,13 +76,13 @@ export default function Sidebar() {
     }
   }, [pathname]);
 
-  // Check if current user has admin privileges or is staff
-  const userRole = (session?.user?.role || (session?.user as any)?.role || '').toUpperCase();
+  // Check if current user has admin privileges or is staff (strictly after mount to avoid SSR/CSR mismatch)
+  const userRole = (activeSession?.user?.role || (activeSession?.user as { role?: string } | undefined)?.role || '').toUpperCase();
   const isStaff = userRole === 'STAFF';
   const isSuperAdminOrAdmin = userRole === 'SUPERADMIN' || userRole === 'ADMIN';
 
   // Simplified role display: strictly Admin or Staff
-  const userRoleDisplay = session?.user?.role
+  const userRoleDisplay = activeSession?.user?.role
     ? (isSuperAdminOrAdmin ? 'Admin' : 'Staff')
     : null;
 
@@ -140,7 +157,7 @@ export default function Sidebar() {
       {/* Mobile Navigation Drawer */}
       <div
         id="mobile-navigation"
-        inert={!isOpen}
+        inert={isMounted && !isOpen ? true : undefined}
         aria-hidden={!isOpen}
         onTransitionEnd={(event) => {
           if (isOpen && event.target === event.currentTarget && (event.propertyName === "right" || event.propertyName === "left")) {
@@ -288,12 +305,12 @@ export default function Sidebar() {
               className="flex items-center gap-2.5 text-xs text-white hover:text-white/80 transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs">
-                {session?.user?.name
-                  ? session.user.name.slice(0, 2).toUpperCase()
+                {activeSession?.user?.name
+                  ? activeSession.user.name.slice(0, 2).toUpperCase()
                   : currentUser.avatar}
               </div>
               <div className={isRtl ? 'text-right' : 'text-left'}>
-                <div className="font-bold">{session?.user?.name || currentDisplayName}</div>
+                <div className="font-bold">{activeSession?.user?.name || currentDisplayName}</div>
                 <div className="text-[10px] text-white/80 font-semibold">
                   {userRoleDisplay ? `الدور: ${userRoleDisplay}` : t('sidebar.userProfile')}
                 </div>
@@ -338,10 +355,10 @@ signOut({ callbackUrl: "/login" });
               {!isCollapsed && (
                 <div>
                   <h3 className="font-extrabold text-sm leading-tight text-white">Zahi Control System</h3>
-                  <p className="text-[10px] text-white/65 font-semibold mt-1 flex items-center gap-1">
+                  <div className="text-[10px] text-white/65 font-semibold mt-1 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
-                    {t('brand.subtitle')}
-                  </p>
+                    <span>{t('brand.subtitle')}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -558,14 +575,14 @@ signOut({ callbackUrl: "/login" });
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-full border border-white/30 bg-white/10 flex items-center justify-center font-bold text-xs shrink-0 text-white">
-                {session?.user?.name
-                  ? session.user.name.slice(0, 2).toUpperCase()
+                {activeSession?.user?.name
+                  ? activeSession.user.name.slice(0, 2).toUpperCase()
                   : currentUser.avatar}
               </div>
               {!isCollapsed && (
                 <div className={isRtl ? 'text-right' : 'text-left'}>
                   <div className="text-xs font-extrabold text-white truncate max-w-[130px]">
-                    {session?.user?.name || currentDisplayName}
+                    {activeSession?.user?.name || currentDisplayName}
                   </div>
                   <div className="text-[10px] font-semibold text-white/80 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -582,7 +599,8 @@ signOut({ callbackUrl: "/login" });
       </aside>
 
       {/* Tooltip Portal */}
-      {tooltip &&
+      {isMounted &&
+        tooltip &&
         createPortal(
           <div
             role="tooltip"

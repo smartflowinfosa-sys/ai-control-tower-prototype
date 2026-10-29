@@ -20,7 +20,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, Trash2, Plus, ArrowUpDown, ChevronDown, Layers3, Box } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to ensure all digits are strictly English / Western (0-9)
@@ -201,22 +201,84 @@ export default function InventoryClient({
     setTimeout(() => setErrorToast(null), 4500);
   };
 
-  // Active Purchase Orders (dynamically filtered: received orders disappear immediately; strictly sorted by item code P1..P10)
-  const activePOs = useMemo(() => {
-    const seen = new Set<string>();
-    return purchaseOrders
-      .filter(po => {
-        if (!po?.id) return false;
-        const orig = (po.status || '').trim();
-        const lower = orig.toLowerCase();
-        const isNotReceived = orig !== 'تم الاستلام' && orig !== 'تم الاستلام بنجاح' && lower !== 'received' && lower !== 'delivered';
-        if (!isNotReceived) return false;
-        if (seen.has(po.id)) return false;
-        seen.add(po.id);
-        return true;
-      })
-      .sort((a, b) => compareItemCodes(a.itemId, b.itemId));
-  }, [purchaseOrders]);
+  interface ConsolidatedOrder {
+    id: string;
+    itemId: string;
+    supplierName: string;
+    status: string;
+    items: Array<{ itemId: string; itemName: string; quantity: number }>;
+    distinctItemsCount: number;
+    totalQuantity: number;
+  }
+
+  // Active Consolidated Orders (grouped strictly by unified Order ID / PO Number; received orders disappear immediately)
+  const activePOs: ConsolidatedOrder[] = useMemo(() => {
+    const orderMap = new Map<string, ConsolidatedOrder>();
+
+    for (const po of purchaseOrders) {
+      if (!po?.id) continue;
+      const orig = (po.status || '').trim();
+      const lower = orig.toLowerCase();
+      const isNotReceived =
+        orig !== 'تم الاستلام' &&
+        orig !== 'تم الاستلام بنجاح' &&
+        lower !== 'received' &&
+        lower !== 'delivered';
+      if (!isNotReceived) continue;
+
+      const orderId = po.id.trim();
+      let consolidated = orderMap.get(orderId);
+      if (!consolidated) {
+        consolidated = {
+          id: orderId,
+          itemId: String(po.itemId || '').trim().toUpperCase(),
+          supplierName: po.supplierName || (po as unknown as { supplier_name?: string }).supplier_name || 'المورد المعتمد',
+          status: orig || 'PENDING_APPROVAL',
+          items: [],
+          distinctItemsCount: 0,
+          totalQuantity: 0,
+        };
+        orderMap.set(orderId, consolidated);
+      }
+
+      const lineSource =
+        Array.isArray(po.items) && po.items.length > 0
+          ? po.items
+          : po.itemId
+          ? [{ itemId: po.itemId, itemName: po.itemName || po.itemId, quantity: Number(po.quantity) || 0 }]
+          : [];
+
+      for (const line of lineSource) {
+        const cCode = String(line.itemId || '').trim().toUpperCase();
+        if (!cCode) continue;
+        const qty = Number(line.quantity) || 0;
+        const existingItem = consolidated.items.find(it => it.itemId === cCode);
+        if (existingItem) {
+          existingItem.quantity += qty;
+        } else {
+          const catalogItem = items.find(i => i.item_code.toUpperCase() === cCode);
+          const stdInfo = getStandardCodeInfo(cCode);
+          const cleanLineName = (line.itemName || '').replace(/\s*\(\+\d+\)\s*$/, '').trim();
+          consolidated.items.push({
+            itemId: cCode,
+            itemName: catalogItem?.item_name_ar || stdInfo?.nameAr || cleanLineName || cCode,
+            quantity: qty,
+          });
+        }
+      }
+    }
+
+    return Array.from(orderMap.values()).map(order => {
+      const sortedItems = [...order.items].sort((a, b) => compareItemCodes(a.itemId, b.itemId));
+      return {
+        ...order,
+        itemId: sortedItems[0]?.itemId || order.itemId,
+        items: sortedItems,
+        distinctItemsCount: Math.max(1, sortedItems.length),
+        totalQuantity: sortedItems.reduce((sum, it) => sum + it.quantity, 0),
+      };
+    });
+  }, [purchaseOrders, items]);
 
   // Strict Session Authentication: Only authenticated NextAuth sessions can create or execute POs
   const { data: session } = useSession();
@@ -425,10 +487,13 @@ export default function InventoryClient({
       .map((entry, idx) => {
         const cSize = CARTON_SIZES[entry.itemCode] || 1;
         const reqCartons = Math.max(1, Math.round(entry.quantityUnits / cSize));
+        const catalogItem = items.find(i => i.item_code.toUpperCase() === entry.itemCode);
+        const stdInfo = getStandardCodeInfo(entry.itemCode);
+        const cleanEntryName = (entry.itemName || '').replace(/\s*\(\+\d+\)\s*$/, '').trim();
         return {
           id: `po-row-${poId}-${entry.itemCode}-${idx}-${Date.now()}`,
           itemCode: entry.itemCode,
-          itemName: entry.itemName,
+          itemName: catalogItem?.item_name_ar || stdInfo?.nameAr || cleanEntryName || entry.itemCode,
           requestedUnits: entry.quantityUnits,
           requestedCartons: reqCartons,
           quantityCartons: reqCartons,
@@ -469,43 +534,13 @@ export default function InventoryClient({
       return;
     }
 
-    // Auto-populate the invoice items table with the complete array of items associated with this PO
+    // Auto-populate the consolidated items table with ALL items in the selected Order ID
     const autoPopulatedRows = buildInvoiceRowsFromPO(poId);
     setReceivedItems(autoPopulatedRows);
     setReceiptError(null);
   };
 
-  const handleAddReceivedItemRow = () => {
-    if (!receivePoId) {
-      setReceiptError(
-        lang === 'ar'
-          ? 'الرجاء اختيار أمر الشراء أولاً قبل إضافة أصناف للفاتورة'
-          : 'Please select a Purchase Order first before adding invoice items'
-      );
-      return;
-    }
-
-    // Manual addition row: fetches options strictly from Raw Materials / Packaging inventory (e.g. [P1], [P2]...)
-    const existingCodes = new Set(receivedItems.map(r => r.itemCode.toUpperCase()));
-    const nextSuggestedRaw = rawMaterialsList.find(rm => !existingCodes.has(rm.code))?.code || rawMaterialsList[0]?.code || 'P1';
-
-    setReceivedItems(prev => [
-      ...prev,
-      {
-        id: `manual-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        itemCode: nextSuggestedRaw,
-        quantityCartons: 1,
-        isFromPO: false,
-      }
-    ]);
-    if (receiptError) setReceiptError(null);
-  };
-
-  const handleRemoveReceivedItemRow = (id: string) => {
-    setReceivedItems(prev => prev.filter(row => row.id !== id));
-  };
-
-  const handleUpdateReceivedItemRow = (id: string, field: 'itemCode' | 'quantityCartons', value: any) => {
+  const handleUpdateReceivedItemRow = (id: string, field: 'itemCode' | 'quantityCartons', value: string | number) => {
     setReceivedItems(prev => prev.map(row => {
       if (row.id !== id) return row;
       if (field === 'itemCode') {
@@ -543,26 +578,28 @@ export default function InventoryClient({
     if (!receivePoId) {
       setReceiptError(
         lang === 'ar'
-          ? 'الرجاء اختيار أمر الشراء المرتبط بهذه الشحنة أولاً'
-          : 'Please select the Purchase Order for this shipment first'
+          ? 'الرجاء اختيار رقم الطلب (Order ID / PO) أولاً'
+          : 'Please select an Order ID (PO) first'
       );
       return;
     }
 
     if (receivedItems.length === 0) {
-      setReceiptError('الرجاء إضافة صنف واحد على الأقل للاستلام');
+      setReceiptError('لا توجد أصناف مرتبطة بهذا الطلب للاستلام');
       return;
     }
 
-    const hasEmptyItem = receivedItems.some(i => !i.itemCode.trim());
-    if (hasEmptyItem) {
-      setReceiptError('الرجاء تحديد الصنف لجميع بنود الفاتورة');
+    const hasMissingInput = receivedItems.some(
+      i => !i.itemCode.trim() || i.quantityCartons === '' || Number(i.quantityCartons) < 0
+    );
+    if (hasMissingInput) {
+      setReceiptError('الرجاء إدخال الكمية المستلمة بالكرتون لكل بند من بنود الطلب');
       return;
     }
 
-    const hasInvalidQty = receivedItems.some(i => !i.quantityCartons || Number(i.quantityCartons) <= 0);
-    if (hasInvalidQty) {
-      setReceiptError('الرجاء التأكد من إدخال كميات صحيحة بالكرتون (أكبر من الصفر) لجميع البنود');
+    const totalSubmittedCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
+    if (totalSubmittedCartons <= 0) {
+      setReceiptError('الرجاء إدخال كمية مستلمة أكبر من الصفر لكرتون واحد على الأقل');
       return;
     }
 
@@ -643,6 +680,7 @@ export default function InventoryClient({
       receivedItems.forEach(row => {
         const code = row.itemCode.toUpperCase();
         const cartons = Number(row.quantityCartons) || 0;
+        if (cartons <= 0) return;
         const cSize = CARTON_SIZES[code] || 1;
         const units = cartons * cSize;
         addedUnitsMap[code] = (addedUnitsMap[code] || 0) + units;
@@ -706,10 +744,11 @@ export default function InventoryClient({
 
       const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
       const totalUnits = Object.values(addedUnitsMap).reduce((acc, u) => acc + u, 0);
+      const distinctReceivedCount = Object.keys(addedUnitsMap).length;
 
       const successMsg = lang === 'ar'
-        ? `تم استلام الفاتورة بنجاح: ${toEnglishDigits(receivedItems.length)} أصناف (${toEnglishDigits(totalCartons)} كرتون / ما يعادل ${toEnglishDigits(totalUnits)} وحدة) وتحديث المخزون وتصفير الاستهلاك ✨`
-        : `Invoice received successfully: ${toEnglishDigits(receivedItems.length)} items (${toEnglishDigits(totalCartons)} cartons / ${toEnglishDigits(totalUnits)} units) ✨`;
+        ? `تم استلام الطلب #${receivePoId} بنجاح: ${toEnglishDigits(distinctReceivedCount)} أصناف (${toEnglishDigits(totalCartons)} كرتون / ${toEnglishDigits(totalUnits)} وحدة) وتحديث المخزون ✨`
+        : `Order #${receivePoId} received successfully: ${toEnglishDigits(distinctReceivedCount)} items (${toEnglishDigits(totalCartons)} cartons / ${toEnglishDigits(totalUnits)} units) ✨`;
 
       setSuccessToast(successMsg);
       setIsReceiveModalOpen(false);
@@ -1301,7 +1340,11 @@ export default function InventoryClient({
                 const consumed = unreplenished[code] || 0;
                 const cartonSize = CARTON_SIZES[code] || 1;
                 const cartons = Math.ceil(consumed / cartonSize);
-                const pendingPOs = activePOs.filter(po => String(po.itemId).toUpperCase() === code).length;
+                const pendingPOs = activePOs.filter(po =>
+                  Array.isArray(po.items) && po.items.length > 0
+                    ? po.items.some(it => String(it.itemId).toUpperCase() === code)
+                    : String(po.itemId).toUpperCase() === code
+                ).length;
                 const isPerPiece = cartonSize === 1;
                 const minLevel = getMinLevel(item);
                 const isCritical = item.current_stock <= minLevel;
@@ -1329,11 +1372,6 @@ export default function InventoryClient({
                           </span>
                         )}
                         <span>{getItemDisplayName(item)}</span>
-                        {isCritical && (
-                          <span className="text-[10px] font-bold text-rose-200 bg-rose-500/20 border border-rose-400/40 px-2 py-0.5 rounded-full">
-                            مستوى حرج
-                          </span>
-                        )}
                       </div>
                       <div className="text-[11px] text-white/60 font-mono" dir="ltr">{std?.nameEn || item.item_name_en}</div>
                     </td>
@@ -1697,9 +1735,13 @@ export default function InventoryClient({
         </div>
       )}
 
-      {/* Modal: Receive Stock & Multi-Item Supplier Invoice */}
+      {/* Modal: Consolidated Order Receive Shipment & Invoice */}
       {isReceiveModalOpen && (() => {
-        const selectedReceivePO = purchaseOrders.find(p => p.id === receivePoId);
+        const distinctItemsCount = new Set(
+          receivedItems
+            .filter(i => i.itemCode.trim() && (Number(i.quantityCartons) || 0) > 0)
+            .map(i => i.itemCode.trim().toUpperCase())
+        ).size;
         const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
         const totalUnits = receivedItems.reduce((acc, i) => {
           const cCode = i.itemCode.toUpperCase();
@@ -1709,7 +1751,8 @@ export default function InventoryClient({
         const isFormValid =
           Boolean(receivePoId) &&
           receivedItems.length > 0 &&
-          receivedItems.every(i => i.itemCode.trim() && i.quantityCartons && Number(i.quantityCartons) > 0) &&
+          receivedItems.every(i => i.itemCode.trim() && i.quantityCartons !== '' && Number(i.quantityCartons) >= 0) &&
+          totalCartons > 0 &&
           Boolean(invoiceFile) &&
           Boolean(receiverSignature.trim());
 
@@ -1754,9 +1797,9 @@ export default function InventoryClient({
                 </div>
               )}
 
-              {/* Top Controls: Link to Active PO (Required) & Receiver Signature */}
+              {/* Top Controls: Consolidated Order ID Dropdown & Manual Receiver Signature */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-xl p-2.5 sm:p-3">
-                {/* 1. Dropdown: Select Purchase Order */}
+                {/* 1. Primary Dropdown: Select Consolidated Order ID (Order ID / PO) */}
                 <div>
                   <label className="block text-[11px] font-bold text-white mb-1">
                     {t('inventory.selectPO')} <span className="text-rose-400">*</span>
@@ -1767,20 +1810,21 @@ export default function InventoryClient({
                     className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
                   >
                     <option value="" className="bg-slate-900 text-white/60">
-                      {lang === 'ar' ? '-- اختر أمر الشراء --' : '-- Select Purchase Order --'}
+                      {t('inventory.selectPOPlaceholder')}
                     </option>
-                    {activePOs.map(po => {
-                      const poItemsCount = Array.isArray(po.items) && po.items.length > 0 ? po.items.length : 1;
+                    {activePOs.map(order => {
+                      const cleanOrderCode = order.id.replace(/^#/, '');
+                      const itemsWord = order.distinctItemsCount === 1 ? 'Item' : 'Items';
                       return (
-                        <option key={po.id} value={po.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
-                          {po.id} ({poItemsCount > 1 ? `${toEnglishDigits(poItemsCount)} items` : (po.itemId || '—')}) - {po.itemName} ({toEnglishDigits(po.quantity)} {t('common.unit')})
+                        <option key={order.id} value={order.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
+                          {`Order #${cleanOrderCode} (Supplier: ${order.supplierName} - ${toEnglishDigits(order.distinctItemsCount)} ${itemsWord})`}
                         </option>
                       );
                     })}
                   </GlassSelect>
                 </div>
 
-                {/* Receiver Signature / ID */}
+                {/* Receiver Signature / Name (Strictly Empty Initial State, Required Manual Input) */}
                 <div>
                   <label className="block text-[11px] font-bold text-white mb-1">
                     {t('inventory.receiverSignatureLabel')} <span className="text-rose-400">*</span>
@@ -1800,67 +1844,28 @@ export default function InventoryClient({
                 </div>
               </div>
 
-              {/* Selected PO Details Badge (if linked) */}
-              {selectedReceivePO && (
-                <div className="bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white/70 text-[11px]">أمر الشراء المرتبط:</span>
-                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded border border-white/20 text-xs" dir="ltr" lang="en">
-                      {selectedReceivePO.id}
-                    </span>
-                    <span className="text-white/90 font-bold text-xs">• {selectedReceivePO.supplierName}</span>
-                    <span className="text-[11px] text-emerald-300 bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 rounded-full font-bold">
-                      تم تعبئة أصناف الطلب تلقائياً للمطابقة ✓
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-xs">
-                    <span className="text-white/70 font-mono text-[11px]" dir="ltr" lang="en">
-                      إجمالي المطلوب: {toEnglishDigits(selectedReceivePO.quantity)} وحدة
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-500/20 text-amber-200 border-amber-400/40">
-                      {selectedReceivePO.status}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* 2. Dynamic Multiple Items Table / Rows Section */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                    <span>📦 بنود وأصناف الفاتورة المستلمة</span>
-                    <span className="text-[11px] bg-white/10 border border-white/20 px-2 py-0.5 rounded-full font-mono text-teal-300" dir="ltr" lang="en">
-                      {toEnglishDigits(receivedItems.length)} {receivedItems.length === 1 ? 'صنف' : 'أصناف'}
-                    </span>
-                  </h4>
-                </div>
-
-                {/* Rows Header for Desktop */}
-                <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1 text-[11px] font-bold text-white/60 border-b border-white/10">
+              {/* 2. Consolidated Order Items Matching Table */}
+              <div className="space-y-1.5">
+                {/* Table Column Headers for Desktop */}
+                <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1.5 text-[11px] font-bold text-white/60 border-b border-white/10">
                   <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-4">الصنف (المواد الأولية والتغليف)</div>
-                  <div className="col-span-2 text-center">المطلوب (PO)</div>
-                  <div className="col-span-2 text-center">الكمية المستلمة</div>
-                  <div className="col-span-2 text-center">المعادل والمطابقة</div>
-                  <div className="col-span-1 text-center">إجراء</div>
+                  <div className="col-span-4">{lang === 'ar' ? 'الصنف المتوقع بالطلب' : 'Expected Order Item'}</div>
+                  <div className="col-span-2 text-center">{lang === 'ar' ? 'الكمية المطلوبة' : 'Ordered Qty'}</div>
+                  <div className="col-span-3 text-center">{lang === 'ar' ? 'الكمية المستلمة الفعليّة (بالكرتون)' : 'Actual Cartons Received'}</div>
+                  <div className="col-span-2 text-center">{lang === 'ar' ? 'الوحدات الفعلية' : 'Calculated Units'}</div>
                 </div>
 
-                {/* Scrollable Rows Container */}
+                {/* Consolidated Order Items Rows */}
                 {receivedItems.length === 0 ? (
-                  <div className="bg-white/[0.03] border border-dashed border-white/15 rounded-xl p-5 text-center space-y-1">
-                    <p className="text-xs font-bold text-white/85">
+                  <div className="bg-white/[0.03] border border-dashed border-white/15 rounded-xl p-6 text-center">
+                    <p className="text-xs font-bold text-white/80">
                       {lang === 'ar'
-                        ? 'الرجاء اختيار أمر الشراء من الأعلى لتعبئة بنوده وكمياته المطلوبة تلقائياً للمطابقة'
-                        : 'Select a Purchase Order above to auto-populate its requested items for verification'}
-                    </p>
-                    <p className="text-[11px] text-white/50">
-                      {lang === 'ar'
-                        ? 'وبعد اختيار أمر الشراء يمكنك الضغط على «إضافة صنف للفاتورة» لإدراج مواد أولية أو تغليف إضافية يدوياً عند الحاجة.'
-                        : 'After selecting a Purchase Order, you can click "Add Item to Invoice" to manually append extra raw materials / packaging items.'}
+                        ? 'الرجاء اختيار رقم الطلب (Order ID / PO) من الأعلى لعرض جميع أصناف الطلب ومطابقة الكراتين المستلمة'
+                        : 'Select an Order ID (PO) above to auto-populate all order items and match received cartons'}
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-1.5 max-h-44 sm:max-h-52 overflow-y-auto pr-1">
+                  <div className="space-y-1.5 max-h-52 sm:max-h-60 overflow-y-auto pr-1">
                     {receivedItems.map((row, index) => {
                       const code = row.itemCode.toUpperCase();
                       const cartonSize = CARTON_SIZES[code] || 1;
@@ -1869,94 +1874,91 @@ export default function InventoryClient({
                       const reqUnits = row.requestedUnits ?? 0;
                       const reqCartons = row.requestedCartons ?? 0;
                       const diffUnits = unitsEquivalent - reqUnits;
-                      const hasCodeInRawList = rawMaterialsList.some(rm => rm.code === code);
+                      const rawInfo = rawMaterialsList.find(rm => rm.code === code);
+                      const displayName =
+                        lang === 'en'
+                          ? (rawInfo?.nameEn || ITEM_NAME_TRANSLATIONS[row.itemName || ''] || row.itemName || code)
+                          : (rawInfo?.nameAr || row.itemName || code);
 
                       return (
                         <div
                           key={row.id}
-                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 rounded-xl px-2.5 py-1.5 transition-colors"
+                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 rounded-xl px-3 py-2 transition-colors"
                         >
                           {/* Row Index */}
                           <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
                             <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr" lang="en">
                               {toEnglishDigits(index + 1)}
                             </span>
-                            <span className="sm:hidden text-xs text-white/60 font-bold">بند رقم {toEnglishDigits(index + 1)}</span>
+                            <span className="sm:hidden text-xs text-white/60 font-bold">
+                              #{toEnglishDigits(index + 1)}
+                            </span>
                           </div>
 
-                          {/* Item Select Dropdown (Strictly Raw Materials / Packaging Inventory [P1], [P2]...) */}
-                          <div className="sm:col-span-4">
-                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">الصنف</label>
-                            <select
-                              value={row.itemCode}
-                              onChange={(e) => handleUpdateReceivedItemRow(row.id, 'itemCode', e.target.value)}
-                              disabled={Boolean(row.isFromPO)}
-                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer disabled:opacity-90 disabled:cursor-default"
-                            >
-                              <option value="" disabled className="bg-slate-900 text-white/60">
-                                {lang === 'ar' ? '-- اختر المادة الأولية / صنف التغليف --' : '-- Select Raw Material / Packaging Item --'}
-                              </option>
-                              {!hasCodeInRawList && code && (
-                                <option value={code} className="bg-slate-900 text-white py-1">
-                                  [{code}] {row.itemName || code}
-                                </option>
-                              )}
-                              <optgroup label={lang === 'ar' ? 'المواد الأولية وأصناف التغليف والمخزون' : 'Raw Materials & Packaging Inventory'}>
-                                {rawMaterialsList.map((c: RawMaterialItem) => (
-                                  <option key={c.code} value={c.code} className="bg-slate-900 text-white py-1">
-                                    [{c.code}] {lang === 'en' ? (c.nameEn || c.nameAr) : c.nameAr} ({CARTON_SIZES[c.code] === 1 ? 'بالقطعة' : `${toEnglishDigits(CARTON_SIZES[c.code] || 1)} حبة/كرتون`})
-                                  </option>
-                                ))}
-                              </optgroup>
-                            </select>
-                          </div>
-
-                          {/* Requested Quantity from PO */}
-                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-center">
-                            <span className="text-[10px] text-white/60 sm:hidden">المطلوب:</span>
-                            {row.isFromPO ? (
-                              <div className="text-center font-mono leading-tight" dir="ltr" lang="en">
-                                <div className="text-xs font-bold text-white">
-                                  {toEnglishDigits(reqCartons)} <span className="font-sans text-[10px] text-white/70">{cartonSize === 1 ? 'حبة' : 'كرتون'}</span>
-                                </div>
-                                <div className="text-[10px] text-white/55">
-                                  ({toEnglishDigits(reqUnits)} {t('common.unit')})
-                                </div>
+                          {/* Expected Item Name & Pack Size */}
+                          <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-[11px] font-extrabold text-teal-200 bg-teal-500/15 border border-teal-400/30 px-2 py-0.5 rounded-md shrink-0" dir="ltr" lang="en">
+                              {code}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white truncate">
+                                {displayName}
                               </div>
-                            ) : (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/15 border border-teal-400/30 text-teal-200">
-                                {lang === 'ar' ? 'إضافة يدوية' : 'Manual Add'}
-                              </span>
-                            )}
+                              <div className="text-[10px] text-white/50 font-mono" dir="ltr" lang="en">
+                                {cartonSize === 1
+                                  ? (lang === 'ar' ? 'بالقطعة (1 وحدة)' : '1 unit / piece')
+                                  : `${toEnglishDigits(cartonSize)} ${lang === 'ar' ? 'حبة/كرتون' : 'units/carton'}`}
+                              </div>
+                            </div>
                           </div>
 
-                          {/* Received Quantity in Cartons Input */}
-                          <div className="sm:col-span-2">
-                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">الكمية المستلمة</label>
+                          {/* Requested Quantity from Order */}
+                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-center">
+                            <span className="text-[10px] text-white/60 sm:hidden">
+                              {lang === 'ar' ? 'المطلوب:' : 'Ordered:'}
+                            </span>
+                            <div className="text-center font-mono leading-tight" dir="ltr" lang="en">
+                              <div className="text-xs font-bold text-white">
+                                {toEnglishDigits(reqCartons)}{' '}
+                                <span className="font-sans text-[10px] text-white/70">
+                                  {cartonSize === 1 ? (lang === 'ar' ? 'حبة' : 'pcs') : (lang === 'ar' ? 'كرتون' : 'ctn')}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-white/50">
+                                ({toEnglishDigits(reqUnits)} {t('common.unit')})
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Actual Received Cartons Input */}
+                          <div className="sm:col-span-3">
+                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">
+                              {lang === 'ar' ? 'الكراتين المستلمة فعلياً' : 'Actual Cartons Received'}
+                            </label>
                             <div className="relative">
                               <input
                                 type="number"
-                                min="1"
+                                min="0"
                                 step="1"
                                 dir="ltr"
                                 lang="en"
                                 value={row.quantityCartons}
                                 onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
-                                placeholder="1"
-                                className="w-full bg-white/10 border border-white/20 rounded-lg py-1 px-2 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-white/25"
+                                placeholder="0"
+                                className="w-full bg-white/10 border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-teal-400/40"
                               />
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
-                                {cartonSize === 1 ? 'حبة' : 'كرتون'}
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
+                                {cartonSize === 1 ? (lang === 'ar' ? 'حبة' : 'pcs') : (lang === 'ar' ? 'كرتون' : 'ctn')}
                               </span>
                             </div>
                           </div>
 
-                          {/* Equivalent Units + Requested vs Received Match Indicator */}
+                          {/* Auto-Calculated Received Units + Match Status */}
                           <div className="sm:col-span-2 flex flex-col items-center justify-center gap-0.5">
-                            <div className="w-full py-0.5 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
-                              {toEnglishDigits(unitsEquivalent)} <span className="font-sans text-[10px]">{t('common.unit')}</span>
+                            <div className="w-full py-1 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
+                              {toEnglishDigits(unitsEquivalent)}
                             </div>
-                            {row.isFromPO && reqUnits > 0 && (
+                            {reqUnits > 0 && (
                               <span
                                 className={`text-[10px] font-bold font-mono ${
                                   diffUnits === 0
@@ -1969,45 +1971,21 @@ export default function InventoryClient({
                                 lang="en"
                               >
                                 {diffUnits === 0
-                                  ? 'مطابق للطلب ✓'
+                                  ? (lang === 'ar' ? 'مطابق ✓' : 'Matched ✓')
                                   : diffUnits < 0
-                                  ? `نقص (${toEnglishDigits(diffUnits)})`
-                                  : `زيادة (+${toEnglishDigits(diffUnits)})`}
+                                  ? `${lang === 'ar' ? 'نقص' : 'Short'} (${toEnglishDigits(diffUnits)})`
+                                  : `${lang === 'ar' ? 'زيادة' : 'Extra'} (+${toEnglishDigits(diffUnits)})`}
                               </span>
                             )}
-                          </div>
-
-                          {/* Remove Row Button */}
-                          <div className="sm:col-span-1 flex items-center justify-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveReceivedItemRow(row.id)}
-                              className="p-1 text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 border border-transparent hover:border-rose-400/30 rounded-lg transition-all cursor-pointer shrink-0"
-                              title="حذف هذا الصنف من الفاتورة"
-                              aria-label="حذف الصنف"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-
-                {/* Add Another Item Button */}
-                <button
-                  type="button"
-                  onClick={handleAddReceivedItemRow}
-                  disabled={!receivePoId}
-                  className="w-full py-1.5 px-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/25 hover:border-white/40 rounded-lg text-xs font-bold text-teal-200 hover:text-teal-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>➕ إضافة صنف للفاتورة</span>
-                </button>
               </div>
 
-              {/* Lower Landscape Row: 3. File Upload Box + 4. Overall Batch Summary Strip side-by-side */}
+              {/* Lower Landscape Row: 3. File Upload Box + 4. Streamlined Total Shipment Summary Footer */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
                 {/* 3. Streamlined File Upload Box */}
                 <div className="flex flex-col justify-between">
@@ -2067,26 +2045,26 @@ export default function InventoryClient({
                   </div>
                 </div>
 
-                {/* 4. Overall Batch Summary Strip (Retained at bottom intact) */}
+                {/* 4. Streamlined Total Shipment Summary Footer (Raw Aggregated Numbers Only) */}
                 <div className="flex flex-col justify-between">
                   <div className="text-[11px] font-bold text-white mb-1">ملخص الشحنة الإجمالي</div>
                   <div className="grid grid-cols-3 gap-2 p-2 bg-white/[0.04] border border-white/15 rounded-xl text-center h-[52px] items-center">
                     <div>
                       <div className="text-[10px] text-white/60">الأصناف</div>
-                      <div className="text-xs sm:text-sm font-bold font-mono text-white mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(receivedItems.length)} <span className="font-sans text-[10px]">{receivedItems.length === 1 ? 'صنف' : 'أصناف'}</span>
+                      <div className="text-sm font-extrabold font-mono text-white mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(distinctItemsCount)}
                       </div>
                     </div>
                     <div className="border-x border-white/10 px-1">
                       <div className="text-[10px] text-white/60">الكراتين</div>
-                      <div className="text-xs sm:text-sm font-bold font-mono text-teal-300 mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(totalCartons)} <span className="font-sans text-[10px]">كرتون</span>
+                      <div className="text-sm font-extrabold font-mono text-teal-300 mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(totalCartons)}
                       </div>
                     </div>
                     <div>
                       <div className="text-[10px] text-white/60">الوحدات الفعلية</div>
-                      <div className="text-xs sm:text-sm font-bold font-mono text-emerald-300 mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(totalUnits)} <span className="font-sans text-[10px]">وحدة</span>
+                      <div className="text-sm font-extrabold font-mono text-emerald-300 mt-0.5" dir="ltr" lang="en">
+                        {toEnglishDigits(totalUnits)}
                       </div>
                     </div>
                   </div>

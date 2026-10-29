@@ -3,12 +3,10 @@ import { Tajawal, Inter } from "next/font/google";
 import "./globals.css";
 import "./glass-theme.css";
 import Sidebar from "@/components/layout/Sidebar";
-import AIAssistantWidget from "@/components/chat/AIAssistantWidget";
-import VoiceAIAgent from "@/components/voice/VoiceAIAgent";
+import GlobalFloatingWidgets from "@/components/common/GlobalFloatingWidgets";
 import { NotificationProvider } from "@/components/common/NotificationContext";
 import { LanguageProvider } from "@/components/common/LanguageContext";
 import AuthProvider from "@/components/common/AuthProvider";
-import WelcomeToast from "@/components/common/WelcomeToast";
 import { Suspense } from "react";
 
 const tajawal = Tajawal({
@@ -47,9 +45,15 @@ export default function RootLayout({
     <html
       lang="ar"
       dir="rtl"
-      className={`${tajawal.variable} ${inter.variable} antialiased h-full`}
+      suppressHydrationWarning
+      className={`${tajawal.variable} ${inter.variable} antialiased h-full bg-[#06090e]`}
+      style={{ backgroundColor: "#06090e", colorScheme: "dark" }}
     >
-      <body className="min-h-screen flex bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative">
+      <body
+        suppressHydrationWarning
+        className="min-h-screen flex bg-[#06090e] bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat text-white relative"
+        style={{ backgroundColor: "#06090e" }}
+      >
         {/* Subtle dark overlay to ensure white text and crystal glassmorphism remain perfectly sharp */}
         <div className="fixed inset-0 bg-black/20 pointer-events-none -z-10" aria-hidden="true" />
         <AuthProvider>
@@ -61,9 +65,7 @@ export default function RootLayout({
               <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
                 {children}
               </main>
-              <AIAssistantWidget />
-              <VoiceAIAgent />
-              <WelcomeToast />
+              <GlobalFloatingWidgets />
             </NotificationProvider>
           </LanguageProvider>
         </AuthProvider>

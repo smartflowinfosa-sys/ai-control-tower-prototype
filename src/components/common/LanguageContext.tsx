@@ -180,8 +180,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.receiveStockBtn': 'استلام مخزون',
     'inventory.modalReceiveTitle': 'استلام شحنة مخزون وإرفاق الفاتورة',
     'inventory.modalReceiveSubtitle': 'تحديث المخزون الفعلي في المستودع وإثبات الفاتورة المعتمدة',
-    'inventory.selectPO': 'اختر أمر الشراء (Purchase Order)',
-    'inventory.selectPOPlaceholder': '-- اختر أمر شراء معلق للاستلام --',
+    'inventory.selectPO': 'اختر رقم الطلب (Order ID / PO)',
+    'inventory.selectPOPlaceholder': '-- اختر رقم الطلب (Order ID / PO) --',
     'inventory.actualQuantityReceived': 'الكمية المستلمة (بالكرتون)',
     'inventory.actualQuantityHint': 'افتراضياً نفس الكمية المطلوبة مع إمكانية التعديل للاستلام الجزئي',
     'inventory.uploadInvoiceLabel': 'إرفاق صورة الفاتورة (Invoice Copy)',
@@ -387,8 +387,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'inventory.receiveStockBtn': 'Receive Stock',
     'inventory.modalReceiveTitle': 'Receive Stock Shipment & Upload Invoice',
     'inventory.modalReceiveSubtitle': 'Update actual warehouse stock and attach verified supplier invoice',
-    'inventory.selectPO': 'Select Purchase Order (PO)',
-    'inventory.selectPOPlaceholder': '-- Select a pending purchase order --',
+    'inventory.selectPO': 'Select Order ID (Order ID / PO)',
+    'inventory.selectPOPlaceholder': '-- Select Order ID (PO) --',
     'inventory.actualQuantityReceived': 'Received Quantity (Cartons)',
     'inventory.actualQuantityHint': 'Defaults to requested quantity, editable for partial deliveries',
     'inventory.uploadInvoiceLabel': 'Upload Invoice Copy',
@@ -472,6 +472,7 @@ interface LanguageContextType {
   lang: Language;
   dir: 'rtl' | 'ltr';
   isRtl: boolean;
+  isMounted: boolean;
   currentUser: UserProfile;
   toggleLanguage: (newLang: Language) => void;
   updateUserProfile: (profile: Partial<UserProfile>) => void;
@@ -558,8 +559,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     });
   }, [lang, toggleLanguage]);
 
+  const effectiveLang: Language = isInitialized ? lang : 'ar';
+  const effectiveUser: UserProfile = isInitialized ? currentUser : DEFAULT_USER_PROFILE;
+
   const t = useCallback((key: string, fallback?: string): string => {
-    const dict = translations[lang] || translations.ar;
+    const dict = translations[effectiveLang] || translations.ar;
     if (dict && dict[key] !== undefined) {
       return dict[key];
     }
@@ -568,20 +572,21 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       return translations.ar[key];
     }
     return fallback || key;
-  }, [lang]);
+  }, [effectiveLang]);
 
-  const dir: 'rtl' | 'ltr' = lang === 'ar' ? 'rtl' : 'ltr';
-  const isRtl = lang === 'ar';
+  const dir: 'rtl' | 'ltr' = effectiveLang === 'ar' ? 'rtl' : 'ltr';
+  const isRtl = effectiveLang === 'ar';
 
   const contextValue = useMemo(() => ({
-    lang,
+    lang: effectiveLang,
     dir,
     isRtl,
-    currentUser,
+    isMounted: isInitialized,
+    currentUser: effectiveUser,
     toggleLanguage,
     updateUserProfile,
     t,
-  }), [lang, dir, isRtl, currentUser, toggleLanguage, updateUserProfile, t]);
+  }), [effectiveLang, dir, isRtl, isInitialized, effectiveUser, toggleLanguage, updateUserProfile, t]);
 
   return (
     <LanguageContext.Provider value={contextValue}>

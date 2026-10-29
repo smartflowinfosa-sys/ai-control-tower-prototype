@@ -1,6 +1,16 @@
+import dynamic from 'next/dynamic';
 import { fetchSuppliers, fetchInventoryItems, fetchAllSupplierItems, SupabaseSupplier, SupabaseInventoryItem, SupabasePurchaseOrder, SupabaseSupplierItem } from '@/lib/supabaseService';
 import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
-import SuppliersClient from './SuppliersClient';
+
+const SuppliersClient = dynamic(() => import('./SuppliersClient'), {
+  loading: () => (
+    <div className="page-shell w-full mx-auto space-y-6 font-sans animate-pulse">
+      <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-2xl p-6 h-24" />
+      <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-2xl p-6 h-80" />
+      <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-2xl p-6 h-96" />
+    </div>
+  ),
+});
 
 export const instant = false;
 
