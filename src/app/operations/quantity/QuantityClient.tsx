@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calendar,
   MapPin,
@@ -15,19 +15,18 @@ import {
   Sparkles,
   Database,
   ArrowRightLeft,
-  Check,
   Package,
   Boxes,
   Layers,
   Search,
   PackageX,
   TrendingUp,
-  Hash,
   SlidersHorizontal,
   Info,
   ChevronLeft,
   ChevronRight,
-  PackageCheck
+  PackageCheck,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
@@ -35,18 +34,18 @@ import TikrarSmartReaderModal from '@/components/production/TikrarSmartReaderMod
 import {
   PACKAGING_PRODUCTS,
   PACKAGING_MAPPING,
-  INITIAL_QUANTITY_MEALS,
-  getMealsForDateRange,
   QuantityMealRow
 } from '@/constants/packagingMap';
 
 export default function QuantityClient() {
-  // Main Filter States (Default test window: Oct 20 - 24, 2026)
-  const [dateFrom, setDateFrom] = useState('2026-10-20');
-  const [dateTo, setDateTo] = useState('2026-10-24');
+  const todayIso = () => new Date().toISOString().split('T')[0];
+
+  // Main Filter States (Default to today's live date)
+  const [dateFrom, setDateFrom] = useState<string>(() => todayIso());
+  const [dateTo, setDateTo] = useState<string>(() => todayIso());
   const [city, setCity] = useState('ALL');
   const [branch, setBranch] = useState('الكل');
-  const [status, setStatus] = useState('مؤكد');
+  const [status, setStatus] = useState('الكل');
   const [serviceType, setServiceType] = useState('الكل');
   const [deliveryWindow, setDeliveryWindow] = useState('الكل');
 
@@ -56,10 +55,10 @@ export default function QuantityClient() {
   // Search Query State
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Dynamic mock meals generation aggregated across the selected date range
-  const items = useMemo(() => {
-    return getMealsForDateRange(dateFrom, dateTo);
-  }, [dateFrom, dateTo]);
+  // Live Techrar BOQ aggregated meal rows
+  const [items, setItems] = useState<QuantityMealRow[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  const [dataSource, setDataSource] = useState<'techrar_live_merged' | 'techrar_live' | 'techrar_api' | 'supabase_cache' | 'supabase_fallback'>('techrar_live_merged');
 
   // Toggle Switches State
   const [groupByPackage, setGroupByPackage] = useState(false);
@@ -77,11 +76,119 @@ export default function QuantityClient() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  const requestIdRef = useRef(0);
 
+  /**
+   * Fetches BOQ records LIVE via internal /api/operations/quantity dynamically based on
+   * `from_date`, `to_date`, and `status`:
+   * The frontend does NOT talk to Supabase directly for this data.
+   */
+  const fetchLiveTechrarBoq = useCallback(
+    async (fromDateStr: string, toDateStr: string, statusStr: string) => {
+      const activeFrom = fromDateStr || todayIso();
+      const activeTo = toDateStr || activeFrom;
+      const activeStatus =
+        statusStr !== undefined && statusStr !== null && statusStr !== ''
+          ? statusStr
+          : 'الكل';
+      const reqId = ++requestIdRef.current;
+
+      setIsLoadingData(true);
+      try {
+        const response = await fetch('/api/operations/quantity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            from_date: activeFrom,
+            to_date: activeTo,
+            status: activeStatus,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch live data');
+        }
+
+        const liveData = await response.json();
+
+        if (reqId !== requestIdRef.current) return;
+
+        // Set the table data state with liveData
+        const tableRows = Array.isArray(liveData?.items)
+          ? liveData.items
+          : Array.isArray(liveData)
+          ? liveData
+          : [];
+
+        setItems(tableRows);
+        if (liveData?.source) {
+          setDataSource(liveData.source);
+        }
+      } catch (err) {
+        if (reqId !== requestIdRef.current) return;
+        console.error('[QuantityClient] Error fetching live data:', err);
+        setItems([]);
+      } finally {
+        if (reqId === requestIdRef.current) {
+          setIsLoadingData(false);
+        }
+      }
+    },
+    []
+  );
+
+  // Initial mount fetch
   useEffect(() => {
-    // Client-safe default date initialization to Oct 20 - 24, 2026
-    setDateFrom('2026-10-20');
-    setDateTo('2026-10-24');
+    let ignore = false;
+
+    const loadInitialData = async () => {
+      try {
+        const response = await fetch('/api/operations/quantity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            from_date: dateFrom,
+            to_date: dateTo,
+            status,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch live data');
+        }
+
+        const liveData = await response.json();
+        if (ignore) return;
+
+        const tableRows = Array.isArray(liveData?.items)
+          ? liveData.items
+          : Array.isArray(liveData)
+          ? liveData
+          : [];
+
+        setItems(tableRows);
+        if (liveData?.source) {
+          setDataSource(liveData.source);
+        }
+      } catch (err) {
+        if (ignore) return;
+        console.error('[QuantityClient] Error on initial live fetch:', err);
+        setItems([]);
+      } finally {
+        if (!ignore) {
+          setIsLoadingData(false);
+        }
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Selected Packaging Product details
@@ -90,9 +197,9 @@ export default function QuantityClient() {
   }, [selectedPackaging]);
 
   // Filtering Logic:
-  // When selectedPackaging is a specific packaging item, filter out any items where Meal Code (as number)
+  // When selectedPackaging is a specific packaging item, filter out any items where `product_id` / `mealCode`
   // is NOT included in PACKAGING_MAPPING[selectedPackaging]. If mapping array is empty, show no rows.
-  // When 'none' or 'all', all kitchen meals are displayed.
+  // When 'none' or 'all', all live `techrar_boq` meals for the date are displayed.
   const filteredRows = useMemo(() => {
     let rows = items;
 
@@ -102,18 +209,19 @@ export default function QuantityClient() {
         return [];
       }
       rows = rows.filter((item) => {
-        const codeNum = Number(item.mealCode);
+        const codeNum = Number(item.product_id ?? item.mealCode);
         return allowedCodes.includes(codeNum);
       });
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      rows = rows.filter((item) =>
-        String(item.mealCode).includes(q) ||
-        item.nameAr.toLowerCase().includes(q) ||
-        item.nameEn.toLowerCase().includes(q) ||
-        (item.category && item.category.toLowerCase().includes(q))
+      rows = rows.filter(
+        (item) =>
+          String(item.product_id ?? item.mealCode).includes(q) ||
+          (item.product_name || item.nameAr || '').toLowerCase().includes(q) ||
+          (item.nameEn && item.nameEn.toLowerCase().includes(q)) ||
+          (item.category && item.category.toLowerCase().includes(q))
       );
     }
 
@@ -121,13 +229,13 @@ export default function QuantityClient() {
   }, [items, selectedPackaging, searchQuery]);
 
   // Smart Summary Calculations:
-  // 1. عدد الأصناف المرتبطة: Count of unique meal items displayed after filtering
+  // 1. عدد الأصناف المرتبطة: Count of unique meal items (`product_id`) displayed after filtering
   const uniqueLinkedItemsCount = useMemo(() => {
-    const codes = new Set(filteredRows.map((r) => Number(r.mealCode)));
+    const codes = new Set(filteredRows.map((r) => Number(r.product_id ?? r.mealCode)));
     return codes.size;
   }, [filteredRows]);
 
-  // 2. إجمالي الاستهلاك للفترة: SUM of quantity for all currently filtered rows
+  // 2. إجمالي الوجبات / الاستهلاك للفترة: SUM of grouped quantities
   const totalConsumption = useMemo(() => {
     return filteredRows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   }, [filteredRows]);
@@ -142,7 +250,7 @@ export default function QuantityClient() {
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, safePage, pageSize]);
 
-  // Adjust pagination page when filters change (React recommended pattern)
+  // Adjust pagination page when filters change
   const filterKey = `${searchQuery}-${selectedPackaging}-${dateFrom}-${dateTo}-${city}-${branch}-${status}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (prevFilterKey !== filterKey) {
@@ -150,21 +258,21 @@ export default function QuantityClient() {
     setCurrentPage(1);
   }
 
-  const handleFilter = () => {
+  const handleFilter = async () => {
     setIsFiltering(true);
-    setTimeout(() => {
-      setIsFiltering(false);
-      setIsFiltered(true);
-      showToast('تم تطبيق معايير التصفية وتحديث بيانات الاستهلاك بنجاح');
-    }, 450);
+    await fetchLiveTechrarBoq(dateFrom, dateTo, status);
+    setIsFiltering(false);
+    setIsFiltered(true);
+    showToast(`تم تطبيق التصفية (${status}) وتحديث بيانات الاستهلاك بنجاح`);
   };
 
   const handleReset = () => {
-    setDateFrom('2026-10-20');
-    setDateTo('2026-10-24');
+    const today = todayIso();
+    setDateFrom(today);
+    setDateTo(today);
     setCity('ALL');
     setBranch('الكل');
-    setStatus('مؤكد');
+    setStatus('الكل');
     setServiceType('الكل');
     setDeliveryWindow('الكل');
     setSelectedPackaging('none');
@@ -176,21 +284,21 @@ export default function QuantityClient() {
     setGroupBySize(false);
     setCurrentPage(1);
     setIsFiltered(false);
+    fetchLiveTechrarBoq(today, today, 'الكل');
     showToast('تمت إعادة ضبط معايير التصفية وفلتر التغليف');
   };
 
   const handleExport = (type: 'excel' | 'pdf') => {
     if (type === 'excel') {
       try {
-        const headers = ['#', 'كود الوجبة', 'الاسم الإنجليزي', 'الاسم العربي', 'التصنيف', 'الكمية المستهلكة'];
+        const headers = ['#', 'كود الوجبة (product_id)', 'اسم الوجبة (product_name)', 'التصنيف', 'الكمية (quantity)'];
         const csvRows = [
           headers.join(','),
           ...filteredRows.map((r, idx) =>
             [
               idx + 1,
-              r.mealCode,
-              `"${r.nameEn.replace(/"/g, '""')}"`,
-              `"${r.nameAr.replace(/"/g, '""')}"`,
+              r.product_id ?? r.mealCode,
+              `"${(r.product_name || r.nameAr || '').replace(/"/g, '""')}"`,
               `"${(r.category || 'عام').replace(/"/g, '""')}"`,
               r.quantity
             ].join(',')
@@ -207,7 +315,7 @@ export default function QuantityClient() {
         link.click();
         document.body.removeChild(link);
         showToast('تم تصدير ملف Excel بنجاح');
-      } catch (err) {
+      } catch {
         showToast('جاري تحضير ملف Excel للتصدير...');
       }
     } else {
@@ -262,7 +370,12 @@ export default function QuantityClient() {
               type="date"
               suppressHydrationWarning
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setDateFrom(nextDate);
+                setDateTo(nextDate);
+                fetchLiveTechrarBoq(nextDate, nextDate, status);
+              }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
           </div>
@@ -277,7 +390,11 @@ export default function QuantityClient() {
               type="date"
               suppressHydrationWarning
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                const nextTo = e.target.value;
+                setDateTo(nextTo);
+                fetchLiveTechrarBoq(dateFrom, nextTo, status);
+              }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
           </div>
@@ -300,7 +417,7 @@ export default function QuantityClient() {
             </GlassSelect>
           </div>
 
-          {/* 4. Branch (الفرع - الفروع الفعلية فقط بدون أي خيارات وهمية) */}
+          {/* 4. Branch */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-white/80" />
@@ -327,14 +444,18 @@ export default function QuantityClient() {
             </label>
             <GlassSelect
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                const nextStatus = e.target.value;
+                setStatus(nextStatus);
+                fetchLiveTechrarBoq(dateFrom, dateTo, nextStatus);
+              }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >
+              <option value="الكل">الكل</option>
               <option value="مؤكد">مؤكد</option>
               <option value="تم التوصيل">تم التوصيل</option>
               <option value="لم يتم استلامه من قبل العميل">لم يتم استلامه من قبل العميل</option>
-              <option value="لم يتم استلامه من المطعم">لم يتم استلامه من المطعم</option>
-              <option value="الكل">الكل</option>
+              <option value="لم يتم استلامه من قبل المطعم">لم يتم استلامه من قبل المطعم</option>
             </GlassSelect>
           </div>
 
@@ -554,11 +675,11 @@ export default function QuantityClient() {
             <button
               type="button"
               onClick={handleFilter}
-              disabled={isFiltering}
+              disabled={isFiltering || isLoadingData}
               className="bg-white/20 hover:bg-white/30 active:scale-[0.98] text-white font-extrabold px-6 py-2.5 rounded-xl border border-white/30 shadow-lg shadow-black/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm backdrop-blur-md"
             >
-              <Filter className={`w-4 h-4 text-white ${isFiltering ? 'animate-spin' : ''}`} />
-              <span>{isFiltering ? 'جاري التصفية...' : 'تصفية'}</span>
+              <Filter className={`w-4 h-4 text-white ${isFiltering || isLoadingData ? 'animate-spin' : ''}`} />
+              <span>{isFiltering || isLoadingData ? 'جاري التصفية...' : 'تصفية'}</span>
             </button>
 
             <button
@@ -585,7 +706,6 @@ export default function QuantityClient() {
         </div>
       </div>
 
-
       {/* Smart Summary Card (Dynamic) - Displayed prominently right above the table when selectedPackaging !== 'none' */}
       {selectedPackaging !== 'none' && (
         <section
@@ -603,7 +723,7 @@ export default function QuantityClient() {
                   <span>تتبع استهلاك المخزون (BOM Consumption Tracker)</span>
                 </h2>
                 <p className="text-xs text-white/70 font-medium">
-                  حساب دقيق لاستهلاك علب وصحون التغليف وفق جدول المواد (Bill of Materials)
+                  حساب دقيق لاستهلاك علب وصحون التغليف الفعلي من بيانات techrar_boq وفق جدول المواد (BOM)
                 </p>
               </div>
             </div>
@@ -619,7 +739,7 @@ export default function QuantityClient() {
           {/* 3 Metric Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Metric 1: منتج التغليف (Selected Product Name) */}
-            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4 transition-all">
+            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4">
               <div className="text-xs font-bold text-white/70 mb-1 flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5 text-white/80" />
                 <span>منتج التغليف:</span>
@@ -633,17 +753,17 @@ export default function QuantityClient() {
             </div>
 
             {/* Metric 2: عدد الأصناف المطلوبة (Dynamic distinct meal items currently visible) */}
-            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4 transition-all">
+            <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 rounded-xl transition-all p-4">
               <div className="text-xs font-bold text-white/70 mb-1 flex items-center gap-1.5">
                 <Boxes className="w-3.5 h-3.5 text-white/80" />
                 <span>عدد الأصناف المطلوبة:</span>
               </div>
               <div className="text-2xl sm:text-3xl font-black text-white font-mono flex items-baseline gap-1.5">
-                <span>{filteredRows.length.toLocaleString('en-US')}</span>
+                <span>{uniqueLinkedItemsCount.toLocaleString('en-US')}</span>
                 <span className="text-xs font-medium text-white/70 font-sans">صنف</span>
               </div>
               <div className="text-[11px] text-white/50 font-medium mt-1">
-                صنف منيو تم تحضيره في هذه الفترة
+                صنف منيو مسجل في قاعدة البيانات لهذا التاريخ
               </div>
             </div>
 
@@ -658,7 +778,7 @@ export default function QuantityClient() {
                 <span className="text-xs font-medium text-white/70 font-sans">وحدة تغليف</span>
               </div>
               <div className="text-[11px] text-white/60 font-medium mt-1">
-                مجموع استهلاك كافة الوجبات المرتبطة
+                مجموع استهلاك كافة الوجبات المرتبطة فعلياً
               </div>
             </div>
           </div>
@@ -681,17 +801,27 @@ export default function QuantityClient() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-white/15">
           {/* Top Right (RTL): Status Text */}
           <div className="min-h-[28px] flex items-center">
-            {isFiltered ? (
+            {isLoadingData ? (
+              <div className="text-white/80 font-bold text-xs sm:text-sm flex items-center gap-2">
+                <Loader2 className="w-4 h-4 text-teal-300 animate-spin shrink-0" />
+                <span>جاري استدعاء بيانات الكميات مباشرة من Techrar API...</span>
+              </div>
+            ) : isFiltered ? (
               <div className="text-white font-bold text-sm sm:text-base flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.7)] shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)] shrink-0" />
                 <span suppressHydrationWarning>
                   {`التصدير جاهز للفترة من ${dateFrom || '---'} إلى ${dateTo || '---'}`}
                 </span>
               </div>
             ) : (
-              <span className="text-xs text-white/50 font-medium">
-                يرجى الضغط على زر &quot;تصفية&quot; لتحديث وتجهيز بيانات التصدير
-              </span>
+              <div className="flex items-center gap-2 text-xs font-semibold">
+                <span className={`w-2 h-2 rounded-full ${dataSource === 'techrar_live_merged' || dataSource === 'techrar_live' || dataSource === 'techrar_api' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-teal-400'} animate-pulse shrink-0`} />
+                <span className="text-white/90" suppressHydrationWarning>
+                  {dataSource === 'techrar_live_merged' || dataSource === 'techrar_live' || dataSource === 'techrar_api'
+                    ? `استدعاء حي ومباشر من Techrar API للفترة (${dateFrom || '---'})`
+                    : `بيانات جدول الكميات (techrar_boq) للفترة (${dateFrom || '---'})`}
+                </span>
+              </div>
             )}
           </div>
 
@@ -807,30 +937,49 @@ export default function QuantityClient() {
                 <th scope="col" className="py-3.5 px-3 w-16 text-center font-bold">
                   #
                 </th>
-                <th scope="col" className="py-3.5 px-3 w-28 text-center font-bold">
+                <th scope="col" className="py-3.5 px-3 w-36 text-center font-bold">
                   كود الوجبة
-                </th>
-                <th scope="col" className="py-3.5 px-4 text-right font-bold">
-                  الاسم الإنجليزي (English Name)
                 </th>
                 <th scope="col" className="py-3.5 px-4 text-right font-bold">
                   الاسم العربي
                 </th>
                 {showCategory && (
-                  <th scope="col" className="py-3.5 px-3 w-32 text-center font-bold">
+                  <th scope="col" className="py-3.5 px-3 w-36 text-center font-bold">
                     التصنيف
                   </th>
                 )}
-                <th scope="col" className="py-3.5 px-4 w-32 text-center font-bold">
+                <th scope="col" className="py-3.5 px-4 w-36 text-center font-bold">
                   الكمية
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {paginatedRows.length > 0 ? (
+              {isLoadingData ? (
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <tr key={`skeleton-${idx}`} className="border-b border-white/5 animate-pulse">
+                    <td className="py-3.5 px-3 text-center">
+                      <div className="h-4 w-6 bg-white/10 rounded mx-auto" />
+                    </td>
+                    <td className="py-3.5 px-3 text-center">
+                      <div className="h-5 w-16 bg-white/10 rounded-lg mx-auto" />
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="h-4 w-48 bg-white/10 rounded" />
+                    </td>
+                    {showCategory && (
+                      <td className="py-3.5 px-3 text-center">
+                        <div className="h-5 w-20 bg-white/10 rounded-md mx-auto" />
+                      </td>
+                    )}
+                    <td className="py-3.5 px-4 text-center">
+                      <div className="h-5 w-12 bg-white/10 rounded mx-auto" />
+                    </td>
+                  </tr>
+                ))
+              ) : paginatedRows.length > 0 ? (
                 paginatedRows.map((row, idx) => (
                   <tr
-                    key={row.id || `${row.mealCode}-${idx}`}
+                    key={row.id || `${row.product_id}-${idx}`}
                     className="hover:bg-white/5 transition-colors border-b border-white/5"
                   >
                     <td className="py-3 px-3 text-xs font-mono text-white/60 text-center">
@@ -838,14 +987,11 @@ export default function QuantityClient() {
                     </td>
                     <td className="py-3 px-3 text-xs font-mono font-bold text-white text-center">
                       <span className="bg-white/10 border border-white/20 px-2 py-0.5 rounded-lg inline-block">
-                        {row.mealCode}
+                        {row.product_id ?? row.mealCode}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-sm font-semibold text-white/90 text-right" dir="ltr">
-                      {row.nameEn}
-                    </td>
                     <td className="py-3 px-4 text-sm font-bold text-white text-right">
-                      {row.nameAr}
+                      {row.product_name || row.nameAr}
                     </td>
                     {showCategory && (
                       <td className="py-3 px-3 text-xs text-white/80 text-center">
@@ -861,24 +1007,32 @@ export default function QuantityClient() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={showCategory ? 6 : 5} className="py-16 px-4 text-center">
+                  <td colSpan={showCategory ? 5 : 4} className="py-16 px-4 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white mb-4 shadow-inner">
                         <PackageX size={28} className="text-white" />
                       </div>
 
                       <h3 className="text-lg font-extrabold text-white mb-1.5 drop-shadow-sm">
-                        لا توجد أصناف مسندة لهذا الفلتر
+                        {items.length === 0
+                          ? 'لا توجد بيانات مسجلة لهذا التاريخ'
+                          : 'لا توجد أصناف مسندة لهذا الفلتر'}
                       </h3>
                       <p className="text-white/70 text-xs sm:text-sm max-w-md mx-auto leading-relaxed mb-4 font-medium">
-                        {selectedPackaging !== 'none' && selectedPackaging !== 'all'
-                          ? `لم يتم العثور على أي وجبات مرتبطة بمنتج "${selectedProduct.name}" في جدول المواد (BOM) للفترة المحددة.`
-                          : 'لم يتم العثور على أي سجلات مطابقة لمعايير البحث الحالية.'}
+                        {items.length === 0
+                          ? `لم يتم العثور على أي وجبات (${status}) من Techrar API للتاريخ المحدد (${dateFrom}).`
+                          : selectedPackaging !== 'none' && selectedPackaging !== 'all'
+                            ? `لم يتم العثور على أي وجبات مرتبطة بمنتج "${selectedProduct.name}" في جدول المواد (BOM) للفترة المحددة.`
+                            : 'لم يتم العثور على أي سجلات مطابقة لمعايير البحث الحالية.'}
                       </p>
 
                       <div className="inline-flex items-center gap-2 text-xs font-mono font-bold text-white/60 bg-white/5 border border-white/15 px-3.5 py-1.5 rounded-xl">
                         <Database size={13} className="text-white" />
-                        <span>خريطة الـ BOM: packagingMap.ts</span>
+                        <span>
+                          {dataSource === 'techrar_live_merged' || dataSource === 'techrar_live' || dataSource === 'techrar_api'
+                            ? 'المصدر: Techrar Live API (Direct Integration)'
+                            : 'المصدر: Supabase (techrar_boq fallback)'}
+                        </span>
                         <ArrowRightLeft size={11} className="text-white/40" />
                       </div>
                     </div>
@@ -886,10 +1040,10 @@ export default function QuantityClient() {
                 </tr>
               )}
             </tbody>
-            {filteredRows.length > 0 && (
+            {filteredRows.length > 0 && !isLoadingData && (
               <tfoot>
                 <tr className="bg-white/10 border-t-2 border-white/20 font-bold text-white">
-                  <td colSpan={showCategory ? 5 : 4} className="py-3.5 px-4 text-right">
+                  <td colSpan={showCategory ? 4 : 3} className="py-3.5 px-4 text-right">
                     <span className="font-extrabold text-sm sm:text-base">إجمالي الوجبات (Total Meals)</span>
                   </td>
                   <td className="py-3.5 px-4 text-center font-mono font-black text-base sm:text-lg text-emerald-300">
@@ -902,7 +1056,7 @@ export default function QuantityClient() {
         </div>
 
         {/* Pagination Controls */}
-        {filteredRows.length > 0 && (
+        {filteredRows.length > 0 && !isLoadingData && (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-white/80">
             <div className="flex items-center gap-2">
               <span>
@@ -996,6 +1150,7 @@ export default function QuantityClient() {
         isOpen={isTikrarModalOpen}
         onClose={() => setIsTikrarModalOpen(false)}
         onSuccess={(totalItems, totalQuantity) => {
+          fetchLiveTechrarBoq(dateFrom, dateTo, status);
           showToast(`تمت قراءة فاتورة تكرار بنجاح وتحديث خطة الإنتاج اليومية بـ ${totalItems} أصناف (${totalQuantity} وجبة)!`);
         }}
       />
