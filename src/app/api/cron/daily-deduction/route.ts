@@ -444,14 +444,16 @@ async function fetchAndSyncBoq(
 
 /**
  * Step 3b: Fetch Packaging Report from Techrar for `targetDate` and upsert into `techrar_packaging_report`.
- * Wrapped in resilient try/catch: if Techrar returns 500 or fails, it logs a warning and returns
- * `{ packagingOrdersSynced: 0, packagingWarning: ... }` so the entire daily deduction does NOT crash.
+ *
+ * IMPORTANT: Techrar's `subscription-packaging/` endpoint returns HTTP 500 if BOQ-only grouping flags
+ * (`grouped: 0`, `group_by_reference`, etc.) are sent, and returns HTTP 400 if `status` is omitted.
+ * Each status request uses the clean subscription-packaging payload and is individually wrapped in try/catch.
  */
 async function fetchAndSyncPackaging(
   supabase: ReturnType<typeof getDbClient>,
   token: string,
   targetDate: string
-): Promise<{ packagingOrdersSynced: number; packagingWarning?: string }> {
+): Promise<{ bagsCount: number; packagingOrdersSynced: number; packagingWarning?: string }> {
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -466,13 +468,9 @@ async function fetchAndSyncPackaging(
           const payload = {
             restaurant_id: 715,
             date: targetDate,
-            status: st,
             cities_ids: [4, 1, 12],
             dispatch_branch_ids: [],
-            group_by_reference: false,
-            grouped: 0,
-            grouped_by_description: false,
-            grouped_by_size: false,
+            status: st,
             type: 'subscription',
           };
 
@@ -485,6 +483,14 @@ async function fetchAndSyncPackaging(
 
           if (!res.ok) {
             const errBody = await res.text().catch(() => '');
+            if (res.status === 400 && errBody.includes('enter valid status')) {
+              return {
+                ok: true,
+                statusCode: st,
+                httpStatus: 200,
+                items: [] as RawRecord[],
+              };
+            }
             return {
               ok: false,
               statusCode: st,
@@ -494,7 +500,7 @@ async function fetchAndSyncPackaging(
             };
           }
 
-          const json = await res.json();
+          const json: unknown = await res.json();
           return {
             ok: true,
             statusCode: st,
@@ -516,8 +522,9 @@ async function fetchAndSyncPackaging(
 
     if (outcomes.every((o) => !o.ok)) {
       const warnMsg = `Techrar Packaging API failed for all statuses on ${targetDate} (HTTP ${outcomes[0]?.httpStatus ?? 500}): ${outcomes[0]?.error || 'Upstream server error'}`;
-      console.warn(`⚠️ [Cron Daily Deduction] ${warnMsg}. Falling back to 0 packaging orders synced.`);
+      console.warn(`⚠️ [Cron Daily Deduction] ${warnMsg}. Falling back to bagsCount = 0.`);
       return {
+        bagsCount: 0,
         packagingOrdersSynced: 0,
         packagingWarning: warnMsg,
       };
@@ -571,11 +578,20 @@ async function fetchAndSyncPackaging(
       }
     }
 
-    const rowsToUpsert = Array.from(uniqueRows.values());
-    if (rowsToUpsert.length > 0) {
+    const packagingItems = Array.from(uniqueRows.values());
+    const bagsCount = packagingItems.length;
+
+    if (bagsCount > 0) {
+      // Remove any stale records for `targetDate` before upserting so `techrar_packaging_report`
+      // row count for `targetDate` strictly matches `bagsCount` for `process_daily_inventory_deduction`
+      await supabase
+        .from('techrar_packaging_report')
+        .delete()
+        .eq('report_date', targetDate);
+
       const CHUNK_SIZE = 500;
-      for (let i = 0; i < rowsToUpsert.length; i += CHUNK_SIZE) {
-        const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < packagingItems.length; i += CHUNK_SIZE) {
+        const chunk = packagingItems.slice(i, i + CHUNK_SIZE);
         const { error: upsertError } = await supabase
           .from('techrar_packaging_report')
           .upsert(chunk, { onConflict: 'techrar_id' });
@@ -585,6 +601,7 @@ async function fetchAndSyncPackaging(
             `⚠️ [Cron Daily Deduction] Warning upserting techrar_packaging_report for ${targetDate}: ${upsertError.message}`
           );
           return {
+            bagsCount: 0,
             packagingOrdersSynced: 0,
             packagingWarning: `Upsert warning: ${upsertError.message}`,
           };
@@ -606,14 +623,16 @@ async function fetchAndSyncPackaging(
     }
 
     return {
-      packagingOrdersSynced: rowsToUpsert.length,
+      bagsCount,
+      packagingOrdersSynced: bagsCount,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(
-      `⚠️ [Cron Daily Deduction] Packaging fetch exception for ${targetDate}: ${msg}. Falling back to 0 packaging orders synced.`
+      `⚠️ [Cron Daily Deduction] Packaging fetch exception for ${targetDate}: ${msg}. Falling back to bagsCount = 0.`
     );
     return {
+      bagsCount: 0,
       packagingOrdersSynced: 0,
       packagingWarning: msg,
     };
@@ -678,7 +697,7 @@ async function executeScheduledDeduction(request: Request) {
           console.warn(
             `⚠️ [Cron Daily Deduction] Packaging fetch rejected for ${targetDate}: ${pkgMsg}. Defaulting bagsCount = 0 and proceeding with BOQ meal deduction.`
           );
-          return { packagingOrdersSynced: 0, packagingWarning: pkgMsg };
+          return { bagsCount: 0, packagingOrdersSynced: 0, packagingWarning: pkgMsg };
         }),
       ]);
 
@@ -743,9 +762,9 @@ async function executeScheduledDeduction(request: Request) {
           ? (rpcData as Record<string, unknown>)
           : {};
       const bagsDeducted =
-        typeof rpcObj.bags_deducted === 'number'
+        typeof rpcObj.bags_deducted === 'number' && rpcObj.bags_deducted > 0
           ? rpcObj.bags_deducted
-          : (packagingSummary?.packagingOrdersSynced ?? 0);
+          : (packagingSummary?.bagsCount ?? 0);
 
       console.log(
         `✅ [Cron Daily Deduction] Successfully deducted & locked ${targetDate} (bags_deducted: ${bagsDeducted}, boq_total_meals: ${boqSummary.totalMeals})`
