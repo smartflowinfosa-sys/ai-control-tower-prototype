@@ -25,8 +25,8 @@ export interface SupabaseInventoryItem {
     price?: number;
     is_available?: boolean;
     suppliers?:
-      | { id: string; name_ar?: string; name_en?: string }
-      | Array<{ id: string; name_ar?: string; name_en?: string }>
+      | { id: string; name_ar?: string; name_en?: string; delivery_time_hours?: number }
+      | Array<{ id: string; name_ar?: string; name_en?: string; delivery_time_hours?: number }>
       | null;
   }>;
 }
@@ -164,7 +164,8 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
         suppliers (
           id,
           name_ar,
-          name_en
+          name_en,
+          delivery_time_hours
         )
       )
     `)
@@ -184,18 +185,31 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
     throw new Error(error.message);
   }
 
-  // DB values win when present; otherwise fall back to the real-world policy constants.
+  // Strictly preserve live current_stock and reorder_level from Supabase.
+  // Only map lead_time_days from joined supplier delivery_time_hours or LEAD_TIME_DAYS policy.
   const items = ((data as unknown as SupabaseInventoryItem[]) || []).map(row => {
     const policy = getStockPolicy(row.item_code);
+    const firstRel = Array.isArray(row.supplier_items) ? row.supplier_items[0] : undefined;
+    const firstSup = firstRel
+      ? Array.isArray(firstRel.suppliers)
+        ? firstRel.suppliers[0]
+        : firstRel.suppliers
+      : undefined;
+    const derivedSupplierLeadDays =
+      firstSup?.delivery_time_hours != null
+        ? Math.max(1, Math.ceil(Number(firstSup.delivery_time_hours) / 24))
+        : null;
+
     return {
       ...row,
-      min_stock_level: row.min_stock_level ?? policy.min_stock_level ?? null,
-      lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? null,
+      current_stock: Number(row.current_stock ?? 0),
+      reorder_level: Number(row.reorder_level ?? 0),
+      lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? derivedSupplierLeadDays,
     };
   });
   // Frontend Data Transformation: PostgreSQL standard .order('item_code') sorts lexicographically
-  // as P1, P10, P2, P3. Here we apply strict numerical/alphanumeric transformation so P1..P10
-  // are sorted strictly ascending (P1, P2 ... P9, P10).
+  // as P1, P10, P2, P3. Here we apply strict numerical/alphanumeric transformation so P1..P11
+  // are sorted strictly ascending (P1, P2 ... P9, P10, P11).
   return items.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
 }
 

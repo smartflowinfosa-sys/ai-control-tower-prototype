@@ -400,14 +400,12 @@ const rawInventoryItems: InventoryItem[] = [
   },
 ];
 
-// Inject real min_stock_level / lead_time_days (also used as minThreshold).
+// Inject lead_time_days mapping where needed.
 export const initialInventoryItems: InventoryItem[] = rawInventoryItems.map(item => {
   const policy = getStockPolicy(item.item_code || item.id);
   return {
     ...item,
-    min_stock_level: policy.min_stock_level,
     lead_time_days: policy.lead_time_days,
-    minThreshold: policy.min_stock_level ?? item.minThreshold,
   };
 });
 

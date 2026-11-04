@@ -47,10 +47,11 @@ export const config = {
      * - /login (custom login page)
      * - /api/auth/* (NextAuth endpoints)
      * - /api/chat (AI Assistant chat endpoint)
+     * - /api/cron/* (Scheduled Cron endpoints protected by CRON_SECRET)
      * - /_next/static (static chunks)
      * - /_next/image (image optimization)
      * - static files (.svg, .png, .jpg, .ico, etc.)
      */
-    "/((?!login|api/auth|api/chat|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!login|api/auth|api/chat|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

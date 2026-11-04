@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, type FocusEvent, type MouseEvent } from 'react';
+import { useState, useRef, useSyncExternalStore, type FocusEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -24,42 +24,50 @@ import {
   ClipboardList,
   FileText,
   PackageCheck,
-  ChevronDown
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 
 interface NavSubItem {
   href: string;
   labelKey: string;
-  icon: any;
+  icon: LucideIcon;
 }
 
 interface NavItem {
   href?: string;
   labelKey: string;
-  icon: any;
+  icon: LucideIcon;
   adminOnly: boolean;
   children?: NavSubItem[];
 }
+
+const emptySubscribe = () => () => {};
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { notifications } = useNotification();
   const { lang: contextLang, currentUser: contextUser, t: contextT, isRtl: contextIsRtl } = useLanguage();
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [operationsOpen, setOperationsOpen] = useState(true);
+  const [prevPathname, setPrevPathname] = useState(pathname);
   const [tooltip, setTooltip] = useState<{ label: string; top: number; right?: number; left?: number } | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  // Auto-expand operations submenu when user navigates to any operations page
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    if (pathname?.startsWith('/operations')) {
+      setOperationsOpen(true);
+    }
+  }
 
   // Ensure SSR and initial CSR hydration match 100% before applying client-only session/language state
   const lang = isMounted ? contextLang : 'ar';
@@ -68,13 +76,6 @@ export default function Sidebar() {
   const activeSession = isMounted ? session : null;
   const t = (key: string) => (isMounted ? contextT(key) : (translations.ar[key] ?? key));
   const pendingCount = isMounted ? notifications.filter(n => n.status === 'pending').length : 0;
-
-  // Auto-expand operations submenu when user is on any operations page
-  useEffect(() => {
-    if (pathname?.startsWith('/operations')) {
-      setOperationsOpen(true);
-    }
-  }, [pathname]);
 
   // Check if current user has admin privileges or is staff (strictly after mount to avoid SSR/CSR mismatch)
   const userRole = (activeSession?.user?.role || (activeSession?.user as { role?: string } | undefined)?.role || '').toUpperCase();

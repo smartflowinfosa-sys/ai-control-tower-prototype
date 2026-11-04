@@ -51,6 +51,10 @@ const STATUS_MAPPING: Record<string, string> = {
   'لم يتم استلامه من قبل المطعم': 'not_received_by_restaurant',
 };
 
+function getDbClient() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY ? getSupabaseAdmin() : anonSupabase;
+}
+
 /**
  * Enriches aggregated items with categories and English names from Supabase `menu_items`
  */
@@ -102,51 +106,180 @@ async function enrichWithMenuMeta(items: AggregatedMealItem[]): Promise<void> {
   }
 }
 
+const boqSyncLocks = new Map<string, Promise<boolean>>();
+
 /**
- * Supabase Cache (Idempotency):
- * - Deletes previous rows in techrar_boq where report_date = from_date
- * - Inserts the newly aggregated items
+ * Safely syncs `techrar_boq` for `targetDate` WITHOUT triggering any legacy PostgreSQL
+ * `AFTER INSERT` inventory trigger:
+ * - Updates existing `product_id` rows in place when `quantity` or `product_name` changed.
+ * - Inserts any brand-new `product_id` rows with `quantity: 0` first, then updates `quantity`
+ *   to the real value (so `AFTER INSERT` triggers see `0` and never double-deduct stock).
+ * - Removes stale/duplicate rows when syncing the full day (`isFullStatusSync`).
  */
 async function syncSupabaseCache(
-  fromDate: string,
-  aggregatedItems: AggregatedMealItem[]
-): Promise<void> {
-  try {
-    const supabase = process.env.SUPABASE_SERVICE_ROLE_KEY
-      ? getSupabaseAdmin()
-      : anonSupabase;
+  targetDate: string,
+  aggregatedItems: AggregatedMealItem[],
+  isFullStatusSync: boolean
+): Promise<boolean> {
+  const prevSync = boqSyncLocks.get(targetDate) ?? Promise.resolve(true);
 
-    // Delete previous rows in techrar_boq where report_date = from_date
-    const { error: deleteError } = await supabase
-      .from('techrar_boq')
-      .delete()
-      .eq('report_date', fromDate);
+  const task = prevSync
+    .catch(() => true)
+    .then(async (): Promise<boolean> => {
+      try {
+        const supabase = getDbClient();
 
-    if (deleteError) {
-      console.error('[Supabase Cache] Error deleting previous rows in techrar_boq:', deleteError.message);
-    }
+        const { data: existingRows, error: fetchError } = await supabase
+          .from('techrar_boq')
+          .select('id, product_id, product_name, quantity')
+          .eq('report_date', targetDate);
 
-    // Insert newly aggregated items
-    if (aggregatedItems.length > 0) {
-      const dbRows = aggregatedItems.map((item) => ({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        quantity: item.quantity,
-        report_date: fromDate,
-      }));
+        if (fetchError) {
+          console.error('[Supabase Cache] Error reading existing techrar_boq rows:', fetchError.message);
+          return false;
+        }
 
-      const { error: insertError } = await supabase
-        .from('techrar_boq')
-        .insert(dbRows);
+        // Do not overwrite full-day BOQ cache with a partial single-status filter
+        if (!isFullStatusSync && existingRows && existingRows.length > 0) {
+          return true;
+        }
 
-      if (insertError) {
-        console.error('[Supabase Cache] Error inserting newly aggregated items:', insertError.message);
-      } else {
-        console.log(`[Supabase Cache] Successfully saved ${dbRows.length} items into techrar_boq for ${fromDate}`);
+        const existingByProductId = new Map<
+          number,
+          { id: number; product_name: string; quantity: number }
+        >();
+        const duplicateOrStaleIds: number[] = [];
+
+        for (const row of existingRows || []) {
+          const pid = Number(row.product_id);
+          const rowId = Number(row.id);
+          if (!existingByProductId.has(pid)) {
+            existingByProductId.set(pid, {
+              id: rowId,
+              product_name: String(row.product_name || ''),
+              quantity: Number(row.quantity || 0),
+            });
+          } else if (Number.isFinite(rowId)) {
+            duplicateOrStaleIds.push(rowId);
+          }
+        }
+
+        const seenProductIds = new Set<number>();
+        const toUpdate: Array<{ id: number; product_name: string; quantity: number }> = [];
+        const toInsert: AggregatedMealItem[] = [];
+
+        for (const item of aggregatedItems) {
+          seenProductIds.add(item.product_id);
+          const existing = existingByProductId.get(item.product_id);
+          if (existing) {
+            if (
+              existing.quantity !== item.quantity ||
+              existing.product_name !== item.product_name
+            ) {
+              toUpdate.push({
+                id: existing.id,
+                product_name: item.product_name,
+                quantity: item.quantity,
+              });
+            }
+          } else {
+            toInsert.push(item);
+          }
+        }
+
+        if (isFullStatusSync) {
+          for (const [pid, existing] of existingByProductId.entries()) {
+            if (!seenProductIds.has(pid) && Number.isFinite(existing.id)) {
+              duplicateOrStaleIds.push(existing.id);
+            }
+          }
+        }
+
+        // 1. Update changed existing rows in place (does NOT fire AFTER INSERT triggers)
+        if (toUpdate.length > 0) {
+          const updateResults = await Promise.all(
+            toUpdate.map((u) =>
+              supabase
+                .from('techrar_boq')
+                .update({ product_name: u.product_name, quantity: u.quantity })
+                .eq('id', u.id)
+            )
+          );
+          const failedUpdate = updateResults.find((r) => r.error);
+          if (failedUpdate?.error) {
+            console.error('[Supabase Cache] Error updating techrar_boq row:', failedUpdate.error.message);
+            return false;
+          }
+        }
+
+        // 2. Insert brand-new rows with quantity = 0 first, then update to real quantity
+        //    so any legacy DB AFTER INSERT trigger computes 0 and NEVER double-deducts stock.
+        if (toInsert.length > 0) {
+          const zeroRows = toInsert.map((item) => ({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: 0,
+            report_date: targetDate,
+          }));
+
+          const { data: insertedRows, error: insertError } = await supabase
+            .from('techrar_boq')
+            .insert(zeroRows)
+            .select('id, product_id');
+
+          if (insertError) {
+            console.error('[Supabase Cache] Error inserting zero-qty techrar_boq rows:', insertError.message);
+            return false;
+          }
+
+          const qtyByProdId = new Map<number, number>(
+            toInsert.map((i) => [i.product_id, i.quantity])
+          );
+
+          const patchResults = await Promise.all(
+            (insertedRows || []).map((ins) =>
+              supabase
+                .from('techrar_boq')
+                .update({ quantity: qtyByProdId.get(Number(ins.product_id)) ?? 0 })
+                .eq('id', ins.id)
+            )
+          );
+          const failedPatch = patchResults.find((r) => r.error);
+          if (failedPatch?.error) {
+            console.error('[Supabase Cache] Error setting quantities on new techrar_boq rows:', failedPatch.error.message);
+            return false;
+          }
+        }
+
+        // 3. Clean up stale or duplicate rows
+        if (duplicateOrStaleIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('techrar_boq')
+            .delete()
+            .in('id', duplicateOrStaleIds);
+
+          if (deleteError) {
+            console.warn('[Supabase Cache] Warning cleaning stale techrar_boq rows:', deleteError.message);
+          }
+        }
+
+        console.log(
+          `[Supabase Cache] Synced techrar_boq for ${targetDate} (inserted: ${toInsert.length}, updated: ${toUpdate.length}, removed: ${duplicateOrStaleIds.length})`
+        );
+        return true;
+      } catch (err) {
+        console.error('[Supabase Cache] Exception while syncing cache:', err);
+        return false;
       }
+    });
+
+  boqSyncLocks.set(targetDate, task);
+  try {
+    return await task;
+  } finally {
+    if (boqSyncLocks.get(targetDate) === task) {
+      boqSyncLocks.delete(targetDate);
     }
-  } catch (err) {
-    console.error('[Supabase Cache] Exception while syncing cache:', err);
   }
 }
 
@@ -334,10 +467,12 @@ async function handleBoqRequest(
   // Optional metadata enrichment from menu_items
   await enrichWithMenuMeta(aggregatedItems);
 
-  // 5. Supabase Cache (Idempotency):
-  // Delete previous rows where report_date = from_date and insert newly aggregated items
-  if (aggregatedItems.length > 0) {
-    await syncSupabaseCache(fromDate, aggregatedItems);
+  // 5. Read-only Supabase Cache Sync (no inventory deductions triggered from UI/API)
+  const isSingleDate = fromDate === toDate;
+  const isFullStatusSync = !status || status === 'الكل';
+
+  if (isSingleDate && aggregatedItems.length > 0) {
+    await syncSupabaseCache(fromDate, aggregatedItems, isFullStatusSync);
   }
 
   const totalMeals = aggregatedItems.reduce((acc, cur) => acc + cur.quantity, 0);

@@ -77,14 +77,31 @@ export default function QuantityClient() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const requestIdRef = useRef(0);
+  const inFlightFilterRef = useRef(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, durationMs = 4200) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, durationMs);
+  }, []);
 
   /**
    * Fetches BOQ records LIVE via internal /api/operations/quantity dynamically based on
    * `from_date`, `to_date`, and `status`:
-   * The frontend does NOT talk to Supabase directly for this data.
+   * Strictly read-only UI fetch (no inventory deductions).
    */
   const fetchLiveTechrarBoq = useCallback(
-    async (fromDateStr: string, toDateStr: string, statusStr: string) => {
+    async (
+      fromDateStr: string,
+      toDateStr: string,
+      statusStr: string
+    ): Promise<boolean> => {
       const activeFrom = fromDateStr || todayIso();
       const activeTo = toDateStr || activeFrom;
       const activeStatus =
@@ -112,7 +129,9 @@ export default function QuantityClient() {
 
         const liveData = await response.json();
 
-        if (reqId !== requestIdRef.current) return;
+        if (reqId !== requestIdRef.current) {
+          return false;
+        }
 
         // Set the table data state with liveData
         const tableRows = Array.isArray(liveData?.items)
@@ -125,10 +144,15 @@ export default function QuantityClient() {
         if (liveData?.source) {
           setDataSource(liveData.source);
         }
+
+        return true;
       } catch (err) {
-        if (reqId !== requestIdRef.current) return;
+        if (reqId !== requestIdRef.current) {
+          return false;
+        }
         console.error('[QuantityClient] Error fetching live data:', err);
         setItems([]);
+        return false;
       } finally {
         if (reqId === requestIdRef.current) {
           setIsLoadingData(false);
@@ -138,9 +162,9 @@ export default function QuantityClient() {
     []
   );
 
-  // Initial mount fetch
+  // Initial mount fetch with AbortController so React StrictMode never fires duplicate POSTs
   useEffect(() => {
-    let ignore = false;
+    const controller = new AbortController();
 
     const loadInitialData = async () => {
       try {
@@ -148,6 +172,7 @@ export default function QuantityClient() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',
+          signal: controller.signal,
           body: JSON.stringify({
             from_date: dateFrom,
             to_date: dateTo,
@@ -160,7 +185,7 @@ export default function QuantityClient() {
         }
 
         const liveData = await response.json();
-        if (ignore) return;
+        if (controller.signal.aborted) return;
 
         const tableRows = Array.isArray(liveData?.items)
           ? liveData.items
@@ -173,11 +198,11 @@ export default function QuantityClient() {
           setDataSource(liveData.source);
         }
       } catch (err) {
-        if (ignore) return;
+        if (controller.signal.aborted) return;
         console.error('[QuantityClient] Error on initial live fetch:', err);
         setItems([]);
       } finally {
-        if (!ignore) {
+        if (!controller.signal.aborted) {
           setIsLoadingData(false);
         }
       }
@@ -186,7 +211,7 @@ export default function QuantityClient() {
     loadInitialData();
 
     return () => {
-      ignore = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -259,11 +284,19 @@ export default function QuantityClient() {
   }
 
   const handleFilter = async () => {
+    if (isFiltering || isLoadingData || inFlightFilterRef.current) return;
+    inFlightFilterRef.current = true;
     setIsFiltering(true);
-    await fetchLiveTechrarBoq(dateFrom, dateTo, status);
-    setIsFiltering(false);
-    setIsFiltered(true);
-    showToast(`تم تطبيق التصفية (${status}) وتحديث بيانات الاستهلاك بنجاح`);
+    try {
+      const ok = await fetchLiveTechrarBoq(dateFrom, dateTo, status);
+      setIsFiltered(true);
+      if (ok) {
+        showToast('✅ تم جلب البيانات بنجاح');
+      }
+    } finally {
+      inFlightFilterRef.current = false;
+      setIsFiltering(false);
+    }
   };
 
   const handleReset = () => {
@@ -284,11 +317,23 @@ export default function QuantityClient() {
     setGroupBySize(false);
     setCurrentPage(1);
     setIsFiltered(false);
-    fetchLiveTechrarBoq(today, today, 'الكل');
-    showToast('تمت إعادة ضبط معايير التصفية وفلتر التغليف');
+    void fetchLiveTechrarBoq(today, today, 'الكل').then((ok) => {
+      if (ok) {
+        showToast('✅ تم جلب البيانات بنجاح');
+      }
+    });
   };
 
+  /**
+   * Purely client-side export (Excel CSV & Printable PDF) using existing `filteredRows`.
+   * NEVER sends any POST request to `/api/operations/quantity` or triggers inventory deductions.
+   */
   const handleExport = (type: 'excel' | 'pdf') => {
+    if (filteredRows.length === 0) {
+      showToast('لا توجد بيانات حالية في الجدول للتصدير');
+      return;
+    }
+
     if (type === 'excel') {
       try {
         const headers = ['#', 'كود الوجبة (product_id)', 'اسم الوجبة (product_name)', 'التصنيف', 'الكمية (quantity)'];
@@ -314,18 +359,87 @@ export default function QuantityClient() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         showToast('تم تصدير ملف Excel بنجاح');
       } catch {
-        showToast('جاري تحضير ملف Excel للتصدير...');
+        showToast('تعذر تصدير ملف Excel');
       }
-    } else {
-      showToast('جاري تحضير ملف PDF للتصدير...');
+      return;
     }
-  };
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    // Pure client-side PDF print view from existing `filteredRows`
+    const escapeHtml = (str: string) =>
+      str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const printWin = window.open('', '_blank', 'width=1050,height=800');
+    if (!printWin) {
+      showToast('يرجى السماح بالنوافذ المنبثقة لتصدير ملف PDF');
+      return;
+    }
+
+    const bodyRowsHtml = filteredRows
+      .map(
+        (r, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${escapeHtml(String(r.product_id ?? r.mealCode ?? ''))}</td>
+            <td style="text-align:right;font-weight:700;">${escapeHtml(r.product_name || r.nameAr || '')}</td>
+            <td>${escapeHtml(r.category || 'عام')}</td>
+            <td style="font-weight:800;">${Number(r.quantity || 0).toLocaleString('en-US')}</td>
+          </tr>`
+      )
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>فاتورة الكميات - ${escapeHtml(dateFrom || '')}</title>
+  <style>
+    body { font-family: Tahoma, Arial, sans-serif; padding: 24px; color: #0f172a; direction: rtl; }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .meta { font-size: 12px; color: #475569; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: center; }
+    th { background: #0f766e; color: #ffffff; font-weight: 700; }
+    tfoot td { background: #f1f5f9; font-weight: 800; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>فاتورة الكمية وتتبع استهلاك المخزون</h1>
+  <div class="meta">الفترة: ${escapeHtml(dateFrom || '---')} إلى ${escapeHtml(dateTo || '---')} | الحالة: ${escapeHtml(status)} | إجمالي السجلات: ${filteredRows.length}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>كود الوجبة</th>
+        <th style="text-align:right;">اسم الوجبة</th>
+        <th>التصنيف</th>
+        <th>الكمية</th>
+      </tr>
+    </thead>
+    <tbody>${bodyRowsHtml}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align:right;">إجمالي الوجبات (Total Meals)</td>
+        <td>${totalConsumption.toLocaleString('en-US')}</td>
+      </tr>
+    </tfoot>
+  </table>
+  <script>
+    window.onload = function() { window.focus(); window.print(); };
+  </script>
+</body>
+</html>`;
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+    showToast('تم تجهيز ملف PDF للطباعة والحفظ بنجاح');
   };
 
   return (
@@ -374,7 +488,6 @@ export default function QuantityClient() {
                 const nextDate = e.target.value;
                 setDateFrom(nextDate);
                 setDateTo(nextDate);
-                fetchLiveTechrarBoq(nextDate, nextDate, status);
               }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
@@ -391,9 +504,7 @@ export default function QuantityClient() {
               suppressHydrationWarning
               value={dateTo}
               onChange={(e) => {
-                const nextTo = e.target.value;
-                setDateTo(nextTo);
-                fetchLiveTechrarBoq(dateFrom, nextTo, status);
+                setDateTo(e.target.value);
               }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-medium text-sm rounded-xl px-3.5 py-2.5 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 [color-scheme:dark] transition-colors cursor-pointer"
             />
@@ -445,9 +556,7 @@ export default function QuantityClient() {
             <GlassSelect
               value={status}
               onChange={(e) => {
-                const nextStatus = e.target.value;
-                setStatus(nextStatus);
-                fetchLiveTechrarBoq(dateFrom, dateTo, nextStatus);
+                setStatus(e.target.value);
               }}
               className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none cursor-pointer hover:bg-white/15 transition-colors"
             >

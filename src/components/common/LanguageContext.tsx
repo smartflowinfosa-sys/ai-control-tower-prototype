@@ -491,35 +491,37 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize from localStorage safely on client
   useEffect(() => {
-    try {
-      const storedUserStr = localStorage.getItem(STORAGE_USER_KEY);
-      let activeUser = DEFAULT_USER_PROFILE;
+    queueMicrotask(() => {
+      try {
+        const storedUserStr = localStorage.getItem(STORAGE_USER_KEY);
+        let activeUser = DEFAULT_USER_PROFILE;
 
-      if (storedUserStr) {
-        try {
-          const parsed = JSON.parse(storedUserStr);
-          activeUser = { ...DEFAULT_USER_PROFILE, ...parsed };
-        } catch (e) {
-          console.warn('Could not parse stored user profile:', e);
+        if (storedUserStr) {
+          try {
+            const parsed = JSON.parse(storedUserStr);
+            activeUser = { ...DEFAULT_USER_PROFILE, ...parsed };
+          } catch (e) {
+            console.warn('Could not parse stored user profile:', e);
+          }
         }
+
+        // Read preferred language from user profile or fallback key
+        const storedLang = (localStorage.getItem(STORAGE_LANG_KEY) || activeUser.preferredLang) as Language;
+        const initialLang: Language = storedLang === 'en' ? 'en' : 'ar';
+
+        activeUser.preferredLang = initialLang;
+        setCurrentUser(activeUser);
+        setLang(initialLang);
+
+        // Apply HTML attributes
+        document.documentElement.lang = initialLang;
+        document.documentElement.dir = initialLang === 'ar' ? 'rtl' : 'ltr';
+      } catch (e) {
+        console.warn('Error reading language from localStorage:', e);
+      } finally {
+        setIsInitialized(true);
       }
-
-      // Read preferred language from user profile or fallback key
-      const storedLang = (localStorage.getItem(STORAGE_LANG_KEY) || activeUser.preferredLang) as Language;
-      const initialLang: Language = storedLang === 'en' ? 'en' : 'ar';
-
-      activeUser.preferredLang = initialLang;
-      setCurrentUser(activeUser);
-      setLang(initialLang);
-
-      // Apply HTML attributes
-      document.documentElement.lang = initialLang;
-      document.documentElement.dir = initialLang === 'ar' ? 'rtl' : 'ltr';
-    } catch (e) {
-      console.warn('Error reading language from localStorage:', e);
-    } finally {
-      setIsInitialized(true);
-    }
+    });
   }, []);
 
   const toggleLanguage = useCallback((newLang: Language) => {

@@ -41,43 +41,7 @@ export const CARTON_SIZES: Record<string, number> = {
 };
 
 /**
- * Real inventory stock quantities provided by user from real inventory ledger.
- */
-export const REAL_INVENTORY_STOCK: Record<string, number> = {
-  P1: 33300,
-  P2: 12450,
-  P3: 2000,
-  P4: 3000,
-  P5: 0,
-  P6: 7000,
-  P7: 20000,
-  P8: 10400,
-  P9: 8000,
-  P10: 2000,
-  P11: 6000,
-};
-
-/**
- * Real minimum stock levels (reorder points) in units, provided by the user.
- * Mirrors the `min_stock_level` (INTEGER) column of `inventory_items`.
- */
-export const MIN_STOCK_LEVELS: Record<string, number> = {
-  P1: 11000,
-  P2: 11000,
-  P3: 5000,
-  P4: 4000,
-  P5: 3000,
-  P6: 32000,
-  P7: 32000,
-  P8: 20000,
-  P9: 1500,
-  P10: 4000,
-  P11: 11000,
-};
-
-/**
- * Real supplier lead times in days, provided by the user.
- * Mirrors the `lead_time_days` (INTEGER) column of `inventory_items`.
+ * Real supplier lead times in days (frontend mapping constant for lead times only).
  */
 export const LEAD_TIME_DAYS: Record<string, number> = {
   P1: 14,
@@ -93,10 +57,10 @@ export const LEAD_TIME_DAYS: Record<string, number> = {
   P11: 14,
 };
 
-/** Returns the `{ min_stock_level, lead_time_days }` pair for an item code (undefined when unknown). */
+/** Returns the `{ lead_time_days }` mapping for an item code (never overrides DB stock or reorder_level). */
 export const getStockPolicy = (code: string) => {
   const key = (code || '').trim().toUpperCase();
-  return { min_stock_level: MIN_STOCK_LEVELS[key], lead_time_days: LEAD_TIME_DAYS[key] };
+  return { lead_time_days: LEAD_TIME_DAYS[key] };
 };
 
 /**
@@ -163,7 +127,11 @@ export const compareItemCodes = (a: string | null | undefined, b: string | null 
  */
 export const sortItemsByCode = <T>(
   items: T[],
-  getCode: (item: T) => string | undefined = (item: any) => item?.item_code ?? item?.itemId ?? item?.code
+  getCode: (item: T) => string | undefined = (item: T) => {
+    const rec = item as Record<string, unknown> | null | undefined;
+    const raw = rec?.item_code ?? rec?.itemId ?? rec?.code;
+    return typeof raw === 'string' ? raw : undefined;
+  }
 ): T[] => {
   return [...items].sort((a, b) => compareItemCodes(getCode(a), getCode(b)));
 };

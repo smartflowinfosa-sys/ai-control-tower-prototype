@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, receivePurchaseOrder, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { SupabaseInventoryItem, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { getKdsBatches } from '@/lib/kdsProductionStore';
@@ -12,10 +12,9 @@ import {
   STANDARD_ITEM_CODES,
   compareItemCodes,
   CARTON_SIZES,
-  REAL_INVENTORY_STOCK,
+  LEAD_TIME_DAYS,
   INITIAL_UNREPLENISHED_CONSUMPTION,
   getStandardCodeInfo,
-  getStockPolicy,
   getMockRestockDate,
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
@@ -23,16 +22,16 @@ import { triggerLowStockEmail } from '@/lib/notifications';
 import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
-// Helper to ensure all digits are strictly English / Western (0-9)
+// Helper to ensure all digits are strictly English / Western (0-9), preserving negative numbers cleanly
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
     return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
   }
   const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
-  const num = Number(clean);
-  if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
-    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+  const trimmed = clean.trim();
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(Number(trimmed));
   }
   return clean;
 };
@@ -47,21 +46,49 @@ const getItemCategory = (name: string): string => {
   return 'مواد تشغيلية وتغليف';
 };
 
-// Attaches the real min_stock_level / lead_time_days / last_restock_date (DB value wins, constants/mocks are the fallback).
-const applyStockPolicy = (item: SupabaseInventoryItem): SupabaseInventoryItem => {
-  const policy = getStockPolicy(item.item_code);
-  const code = item.item_code.toUpperCase();
+// Strictly preserves live current_stock and reorder_level from Supabase; only maps lead_time_days & restock date metadata.
+const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInventoryItem => {
+  const code = String(item.item_code || '').trim().toUpperCase();
+  const firstRel = Array.isArray(item.supplier_items) ? item.supplier_items[0] : undefined;
+  const firstSup = firstRel
+    ? Array.isArray(firstRel.suppliers)
+      ? firstRel.suppliers[0]
+      : firstRel.suppliers
+    : undefined;
+  const derivedLeadDays =
+    firstSup?.delivery_time_hours != null
+      ? Math.max(1, Math.ceil(Number(firstSup.delivery_time_hours) / 24))
+      : null;
+
   return {
     ...item,
-    min_stock_level: item.min_stock_level ?? policy.min_stock_level ?? null,
-    lead_time_days: item.lead_time_days ?? policy.lead_time_days ?? null,
+    current_stock: Number(item.current_stock ?? 0),
+    reorder_level: Number(item.reorder_level ?? 0),
+    lead_time_days: item.lead_time_days ?? LEAD_TIME_DAYS[code] ?? derivedLeadDays,
     last_restock_date: item.last_restock_date || getMockRestockDate(code),
   };
 };
 
-// Effective critical threshold: min_stock_level when known, otherwise legacy reorder_level.
-const getMinLevel = (item: SupabaseInventoryItem): number =>
-  item.min_stock_level ?? item.reorder_level;
+const extractSupplierMappings = (
+  rows: SupabaseInventoryItem[]
+): Record<string, Array<{ id: string; name: string }>> => {
+  const mappings: Record<string, Array<{ id: string; name: string }>> = {};
+  for (const item of rows) {
+    const code = String(item.item_code || '').trim().toUpperCase();
+    if (!code || !Array.isArray(item.supplier_items)) continue;
+    for (const rel of item.supplier_items) {
+      const sup = Array.isArray(rel.suppliers) ? rel.suppliers[0] : rel.suppliers;
+      if (!sup) continue;
+      const name = (sup.name_ar || sup.name_en || '').trim();
+      if (!name) continue;
+      if (!mappings[code]) mappings[code] = [];
+      if (!mappings[code].some(x => x.name === name)) {
+        mappings[code].push({ id: sup.id, name });
+      }
+    }
+  }
+  return mappings;
+};
 
 export interface ReceivedItemRow {
   id: string;
@@ -74,104 +101,45 @@ export interface ReceivedItemRow {
 }
 
 interface InventoryClientProps {
-  initialItems: SupabaseInventoryItem[];
+  initialItems?: SupabaseInventoryItem[];
   initialPurchaseOrders?: SupabasePurchaseOrder[];
   initialSupplierMappings?: Record<string, Array<{ id: string; name: string }>>;
   fetchError?: string | null;
 }
 
 export default function InventoryClient({
-  initialItems,
+  initialItems = [],
   initialPurchaseOrders = [],
   initialSupplierMappings = {},
   fetchError
 }: InventoryClientProps) {
-  const { lang, t, isRtl, currentUser } = useLanguage();
-  const [items, setItems] = useState<SupabaseInventoryItem[]>(() => {
-    const fallbackItems: SupabaseInventoryItem[] = STANDARD_ITEM_CODES.map(std => ({
-      item_code: std.code,
-      item_name_ar: std.nameAr,
-      item_name_en: std.nameEn,
-      current_stock: REAL_INVENTORY_STOCK[std.code] ?? 0,
-      reorder_level: 2000,
-      cost_per_unit: 1.0,
-      category_ar: 'صحون وأطباق',
-      category_en: 'Plates & Dishes',
-    }));
-    const baseItems = initialItems && initialItems.length > 0 ? initialItems : fallbackItems;
-    const merged = baseItems.map(item => {
-      const code = item.item_code.toUpperCase();
-      if (REAL_INVENTORY_STOCK[code] !== undefined) {
-        return {
-          ...item,
-          current_stock: REAL_INVENTORY_STOCK[code],
-          item_name_ar: STANDARD_ITEM_CODES.find(s => s.code === code)?.nameAr || item.item_name_ar,
-        };
-      }
-      return item;
-    });
+  const { lang, t } = useLanguage();
+  const [inventoryItems, setInventoryItems] = useState<SupabaseInventoryItem[]>(() =>
+    initialItems && initialItems.length > 0
+      ? initialItems.map(normalizeLiveInventoryItem).sort((a, b) => compareItemCodes(a.item_code, b.item_code))
+      : []
+  );
+  const [isLoadingInventory, setIsLoadingInventory] = useState<boolean>(
+    !(initialItems && initialItems.length > 0)
+  );
+  const [liveFetchError, setLiveFetchError] = useState<string | null>(fetchError || null);
 
-    if (!merged.some(i => i.item_code.toUpperCase() === 'P11')) {
-      merged.push({
-        item_code: 'P11',
-        item_name_ar: 'صحن غير مقسم 24',
-        item_name_en: 'Main Tray - Undivided 24',
-        current_stock: 6000,
-        reorder_level: 2000,
-        cost_per_unit: 0.85,
-        category_ar: 'صحون وأطباق',
-        category_en: 'Plates & Dishes',
-      });
-    }
-
-    return merged.map(applyStockPolicy).sort((a, b) => compareItemCodes(a.item_code, b.item_code));
-  });
-
-  useEffect(() => {
-    if (initialItems && initialItems.length > 0) {
-      const merged = initialItems.map(item => {
-        const code = item.item_code.toUpperCase();
-        if (REAL_INVENTORY_STOCK[code] !== undefined) {
-          return {
-            ...item,
-            current_stock: REAL_INVENTORY_STOCK[code],
-            item_name_ar: STANDARD_ITEM_CODES.find(s => s.code === code)?.nameAr || item.item_name_ar,
-          };
-        }
-        return item;
-      });
-      if (!merged.some(i => i.item_code.toUpperCase() === 'P11')) {
-        merged.push({
-          item_code: 'P11',
-          item_name_ar: 'صحن غير مقسم 24',
-          item_name_en: 'Main Tray - Undivided 24',
-          current_stock: 6000,
-          reorder_level: 2000,
-          cost_per_unit: 0.85,
-          category_ar: 'صحون وأطباق',
-          category_en: 'Plates & Dishes',
-        });
-      }
-      setItems(merged.map(applyStockPolicy).sort((a, b) => compareItemCodes(a.item_code, b.item_code)));
-    }
-  }, [initialItems]);
-
-  // Fire the (mock) low-stock email hook once per item when it first breaches its minimum level.
+  // Fire the low-stock email hook once per item when it breaches its DB reorder_level.
   const notifiedCodes = useRef<Set<string>>(new Set());
   useEffect(() => {
-    items.forEach(item => {
+    inventoryItems.forEach(item => {
       const code = item.item_code.toUpperCase();
-      const minQty = getMinLevel(item);
-      if (item.current_stock <= minQty) {
+      const reorderLevel = Number(item.reorder_level ?? 0);
+      if (item.current_stock <= reorderLevel) {
         if (!notifiedCodes.current.has(code)) {
           notifiedCodes.current.add(code);
-          triggerLowStockEmail(code, item.item_name_ar, item.current_stock, minQty);
+          triggerLowStockEmail(code, item.item_name_ar, item.current_stock, reorderLevel);
         }
       } else {
         notifiedCodes.current.delete(code);
       }
     });
-  }, [items]);
+  }, [inventoryItems]);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -182,6 +150,60 @@ export default function InventoryClient({
   const [itemSuppliers, setItemSuppliers] = useState<Record<string, Array<{ id: string; name: string }>>>(
     initialSupplierMappings || {}
   );
+
+  const refreshLiveInventory = useCallback(async () => {
+    setIsLoadingInventory(true);
+    setLiveFetchError(null);
+    try {
+      const liveRows = await fetchInventoryItems();
+      const normalized = liveRows
+        .map(normalizeLiveInventoryItem)
+        .sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+      setInventoryItems(normalized);
+      const extracted = extractSupplierMappings(liveRows);
+      if (Object.keys(extracted).length > 0) {
+        setItemSuppliers(prev => ({ ...prev, ...extracted }));
+      }
+    } catch (err: unknown) {
+      console.error('Failed to fetch live inventory_items from Supabase:', err);
+      setLiveFetchError(
+        err instanceof Error ? err.message : 'تعذر الاتصال بقاعدة بيانات Supabase لجلب المخزون الحي'
+      );
+    } finally {
+      setIsLoadingInventory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchInventoryItems()
+      .then(liveRows => {
+        if (!isMounted) return;
+        const normalized = liveRows
+          .map(normalizeLiveInventoryItem)
+          .sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+        setInventoryItems(normalized);
+        const extracted = extractSupplierMappings(liveRows);
+        if (Object.keys(extracted).length > 0) {
+          setItemSuppliers(prev => ({ ...prev, ...extracted }));
+        }
+        setLiveFetchError(null);
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        console.error('Failed to fetch live inventory_items from Supabase:', err);
+        setLiveFetchError(
+          err instanceof Error ? err.message : 'تعذر الاتصال بقاعدة بيانات Supabase لجلب المخزون الحي'
+        );
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingInventory(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const [isLoadingSuppliers, setIsLoadingSuppliers] = useState<boolean>(false);
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
@@ -256,7 +278,7 @@ export default function InventoryClient({
         if (existingItem) {
           existingItem.quantity += qty;
         } else {
-          const catalogItem = items.find(i => i.item_code.toUpperCase() === cCode);
+          const catalogItem = inventoryItems.find(i => i.item_code.toUpperCase() === cCode);
           const stdInfo = getStandardCodeInfo(cCode);
           const cleanLineName = (line.itemName || '').replace(/\s*\(\+\d+\)\s*$/, '').trim();
           consolidated.items.push({
@@ -278,7 +300,7 @@ export default function InventoryClient({
         totalQuantity: sortedItems.reduce((sum, it) => sum + it.quantity, 0),
       };
     });
-  }, [purchaseOrders, items]);
+  }, [purchaseOrders, inventoryItems]);
 
   // Strict Session Authentication: Only authenticated NextAuth sessions can create or execute POs
   const { data: session } = useSession();
@@ -302,10 +324,10 @@ export default function InventoryClient({
   const [receiverSignature, setReceiverSignature] = useState<string>('');
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState<boolean>(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
-  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  const [, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Raw materials & inventory items list (BOM packaging, carton supplies, raw materials)
+  // Live inventory items list from Supabase `inventory_items`
   interface RawMaterialItem {
     code: string;
     nameAr: string;
@@ -314,34 +336,15 @@ export default function InventoryClient({
   }
 
   const rawMaterialsList: RawMaterialItem[] = useMemo(() => {
-    const map = new Map<string, { code: string; nameAr: string; nameEn?: string; categoryAr?: string }>();
-
-    // 1. From database inventory_items:
-    items.forEach(it => {
-      const code = it.item_code.toUpperCase();
-      map.set(code, {
-        code,
+    return inventoryItems
+      .map(it => ({
+        code: it.item_code.toUpperCase(),
         nameAr: it.item_name_ar,
         nameEn: it.item_name_en,
         categoryAr: it.category_ar,
-      });
-    });
-
-    // 2. From standard inventory codes (packaging, raw materials, operational items):
-    STANDARD_ITEM_CODES.forEach(std => {
-      const code = std.code.toUpperCase();
-      if (!map.has(code)) {
-        map.set(code, {
-          code,
-          nameAr: std.nameAr,
-          nameEn: std.nameEn,
-          categoryAr: 'مواد تغليف وتشغيل',
-        });
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => compareItemCodes(a.code, b.code));
-  }, [items]);
+      }))
+      .sort((a, b) => compareItemCodes(a.code, b.code));
+  }, [inventoryItems]);
 
   // Real Supabase BOM Packaging Demand State for KDS
   const [bomDemand, setBomDemand] = useState<Array<{
@@ -359,7 +362,7 @@ export default function InventoryClient({
   useEffect(() => {
     const syncDemand = () => {
       const kdsBatches = getKdsBatches();
-      calculatePackagingDemand(kdsBatches, items).then(res => {
+      calculatePackagingDemand(kdsBatches, inventoryItems).then(res => {
         setBomDemand(res);
       }).catch(err => console.error('Error fetching BOM demand:', err));
     };
@@ -369,12 +372,13 @@ export default function InventoryClient({
     return () => {
       window.removeEventListener('kds_batches_updated', syncDemand);
     };
-  }, [items]);
+  }, [inventoryItems]);
 
   useEffect(() => {
-    const handleStorageError = (e: any) => {
-      if (e.detail?.message) {
-        setStorageNotice(e.detail.message);
+    const handleStorageError: EventListener = (event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) {
+        setStorageNotice(detail.message);
       }
     };
     window.addEventListener('supabase_storage_bucket_error', handleStorageError);
@@ -402,7 +406,7 @@ export default function InventoryClient({
     };
 
     const handlePOReceived: EventListener = (event) => {
-      const detail = (event as CustomEvent<any>).detail;
+      const detail = (event as CustomEvent<{ id?: string; poNumber?: string; invoiceUrl?: string; receivedQuantity?: number }>).detail;
       if (detail?.id || detail?.poNumber) {
         const targetId = detail.id || detail.poNumber;
         setPurchaseOrders(prev =>
@@ -442,7 +446,7 @@ export default function InventoryClient({
       window.removeEventListener('ai_purchase_order_updated', handleUpdatePO);
       window.removeEventListener('purchase_order_received', handlePOReceived);
     };
-  }, []);
+  }, [initialPurchaseOrders]);
 
   // Builds the complete pre-populated invoice rows array from all items associated with a specific PO
   const buildInvoiceRowsFromPO = (poId: string): ReceivedItemRow[] => {
@@ -489,7 +493,7 @@ export default function InventoryClient({
       .map((entry, idx) => {
         const cSize = CARTON_SIZES[entry.itemCode] || 1;
         const reqCartons = Math.max(1, Math.round(entry.quantityUnits / cSize));
-        const catalogItem = items.find(i => i.item_code.toUpperCase() === entry.itemCode);
+        const catalogItem = inventoryItems.find(i => i.item_code.toUpperCase() === entry.itemCode);
         const stdInfo = getStandardCodeInfo(entry.itemCode);
         const cleanEntryName = (entry.itemName || '').replace(/\s*\(\+\d+\)\s*$/, '').trim();
         return {
@@ -636,7 +640,10 @@ export default function InventoryClient({
       if (invoicePublicUrl) {
         try {
           const po = purchaseOrders.find(p => p.id === receivePoId);
-          const supplierName = po?.supplierName || (po as any)?.supplier_name || 'فاتورة استلام مجمعة';
+          const supplierName =
+            po?.supplierName ||
+            (po as unknown as { supplier_name?: string })?.supplier_name ||
+            'فاتورة استلام مجمعة';
           const invoiceDate = new Date().toISOString().split('T')[0];
 
           fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook/zahi-invoice-upload', {
@@ -689,7 +696,7 @@ export default function InventoryClient({
       });
 
       // Update local inventory items immediately and set last_restock_date to nowIso
-      setItems(prevItems =>
+      setInventoryItems(prevItems =>
         [...prevItems.map(item => {
           const code = item.item_code.toUpperCase();
           const added = addedUnitsMap[code];
@@ -735,7 +742,9 @@ export default function InventoryClient({
           fetchPurchaseOrders().catch(() => []),
         ]);
         if (fresh && fresh.length > 0) {
-          setItems([...fresh].sort((a, b) => compareItemCodes(a.item_code, b.item_code)));
+          setInventoryItems(
+            fresh.map(normalizeLiveInventoryItem).sort((a, b) => compareItemCodes(a.item_code, b.item_code))
+          );
         }
         if (freshPOs && freshPOs.length > 0) {
           setPurchaseOrders(freshPOs as unknown as PurchaseOrder[]);
@@ -795,13 +804,13 @@ export default function InventoryClient({
 
 
 
-  // Compute unique categories from real data
+  // Compute unique categories from live database data
   const dynamicCategories = [
     'ALL',
-    ...Array.from(new Set(items.map(item => getItemCategoryKey(item))))
+    ...Array.from(new Set(inventoryItems.map(item => getItemCategoryKey(item))))
   ];
 
-  const filteredItems = items.filter(item => {
+  const filteredItems = inventoryItems.filter(item => {
     const catKey = getItemCategoryKey(item);
     const catDisplay = getItemCategoryDisplay(item);
     const displayName = getItemDisplayName(item);
@@ -819,7 +828,7 @@ export default function InventoryClient({
     return matchCat && matchSearch;
   });
 
-  // Smart Auto PO Sorting Engine
+  // Smart Auto PO Sorting Engine (strictly driven by live current_stock & reorder_level from Supabase)
   const sortedTableItems = [...filteredItems].sort((a, b) => {
     if (sortBy === 'highest_stock') {
       return (b.current_stock ?? 0) - (a.current_stock ?? 0);
@@ -835,12 +844,12 @@ export default function InventoryClient({
     }
 
     // Default Priority Sorting Hierarchy:
-    const minA = getMinLevel(a);
-    const minB = getMinLevel(b);
+    const minA = Number(a.reorder_level ?? 0);
+    const minB = Number(b.reorder_level ?? 0);
     const isCriticalA = (a.current_stock ?? 0) <= minA;
     const isCriticalB = (b.current_stock ?? 0) <= minB;
 
-    // 1. Critical items (current_stock <= min_stock_level) MUST appear at the very top
+    // 1. Critical items (current_stock <= reorder_level) MUST appear at the very top
     if (isCriticalA && !isCriticalB) return -1;
     if (!isCriticalA && isCriticalB) return 1;
 
@@ -870,7 +879,7 @@ export default function InventoryClient({
     return compareItemCodes(a.item_code, b.item_code);
   });
 
-  const lowStockCount = items.filter(i => i.current_stock <= getMinLevel(i)).length;
+  const lowStockCount = inventoryItems.filter(i => i.current_stock <= Number(i.reorder_level ?? 0)).length;
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -878,16 +887,16 @@ export default function InventoryClient({
    * A. Deducts `consumedUnits` from the item's `current_quantity` (`item.current_stock`).
    * B. Adds `consumedUnits` to the item's `unreplenished_consumption` counter (`unreplenished`).
    */
-  const handleQuantityConsumption = (itemCode: string, consumedUnits: number) => {
+  const handleQuantityConsumption = useCallback((itemCode: string, consumedUnits: number) => {
     const code = (itemCode || '').trim().toUpperCase();
     const qty = Math.max(0, Number(consumedUnits) || 0);
     if (!code || qty <= 0) return;
 
     // A. Deduct consumedUnits from item's current_quantity (current_stock)
-    setItems(prevItems =>
+    setInventoryItems(prevItems =>
       prevItems.map(item => {
         if (item.item_code.toUpperCase() === code) {
-          const updatedStock = Math.max(0, (item.current_stock ?? 0) - qty);
+          const updatedStock = (item.current_stock ?? 0) - qty;
           return {
             ...item,
             current_stock: updatedStock,
@@ -910,24 +919,28 @@ export default function InventoryClient({
       : `[Quantity Invoice] Deducted ${toEnglishDigits(qty)} units from (${code}) stock, added to unreplenished consumption.`;
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 4500);
-  };
+  }, [lang]);
 
   // Expose handleQuantityConsumption to window and custom events for seamless integration
   useEffect(() => {
-    const onInvoiceEvent = (e: any) => {
-      const { itemCode, consumedUnits } = e.detail || {};
+    type WindowWithConsumption = Window & {
+      handleQuantityConsumption?: (itemCode: string, consumedUnits: number) => void;
+    };
+    const onInvoiceEvent: EventListener = (event) => {
+      const { itemCode, consumedUnits } =
+        (event as CustomEvent<{ itemCode?: string; consumedUnits?: number }>).detail || {};
       if (itemCode && consumedUnits) {
         handleQuantityConsumption(itemCode, consumedUnits);
       }
     };
-    window.addEventListener('quantity_consumption_invoice', onInvoiceEvent as EventListener);
-    (window as any).handleQuantityConsumption = handleQuantityConsumption;
+    window.addEventListener('quantity_consumption_invoice', onInvoiceEvent);
+    (window as WindowWithConsumption).handleQuantityConsumption = handleQuantityConsumption;
 
     return () => {
-      window.removeEventListener('quantity_consumption_invoice', onInvoiceEvent as EventListener);
-      delete (window as any).handleQuantityConsumption;
+      window.removeEventListener('quantity_consumption_invoice', onInvoiceEvent);
+      delete (window as WindowWithConsumption).handleQuantityConsumption;
     };
-  }, []);
+  }, [handleQuantityConsumption]);
 
   const handleOpenPO = async (item: SupabaseInventoryItem, initialCartons?: number) => {
     const authUser = getAuthenticatedPOUser(session, lang);
@@ -946,9 +959,10 @@ export default function InventoryClient({
     const calcCartons = Math.ceil(consumed / cartonSize);
 
     // Quantity MUST default to Suggested Order in Cartons (الطلب المقترح), NOT units!
+    const reorderLevel = Number(item.reorder_level ?? 0);
     const defaultCartons = initialCartons !== undefined && initialCartons > 0
       ? initialCartons
-      : (calcCartons > 0 ? calcCartons : Math.max(1, Math.ceil((getMinLevel(item) - item.current_stock) / cartonSize)));
+      : (calcCartons > 0 ? calcCartons : Math.max(1, Math.ceil((reorderLevel - item.current_stock) / cartonSize)));
 
     setPoQuantity(Math.max(1, defaultCartons));
 
@@ -994,7 +1008,7 @@ export default function InventoryClient({
     const cartonSize = CARTON_SIZES[code] || 1;
     const isPerPiece = cartonSize === 1;
     const totalUnits = isPerPiece ? poQuantity : poQuantity * cartonSize;
-    const unitCost = selectedItemForPO.cost_per_unit || 0.45;
+    const unitCost = selectedItemForPO.cost_per_unit || selectedItemForPO.supplier_items?.[0]?.price || 0.45;
     const totalCost = Number((totalUnits * unitCost).toFixed(2));
     const poNum = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -1054,7 +1068,7 @@ export default function InventoryClient({
   // Replenishment table action: opens the PO modal pre-filled with the carton-equivalent quantity.
   // NOTE: Issuing a PO does NOT reset the unreplenished consumption counter.
   const handleReplenishPO = (code: string, cartons: number) => {
-    const item = items.find(i => i.item_code.toUpperCase() === code);
+    const item = inventoryItems.find(i => i.item_code.toUpperCase() === code);
     if (!item) {
       setSuccessToast(`لا يوجد صنف مرتبط بالرمز ${code} في المخزون`);
       setTimeout(() => setSuccessToast(null), 4000);
@@ -1082,20 +1096,21 @@ export default function InventoryClient({
       )}
 
       {/* Database Error Banner if Supabase connection fails */}
-      {fetchError && (
+      {liveFetchError && (
         <div className="bg-rose-500/10 border border-rose-400/30 rounded-2xl p-4 flex items-center justify-between gap-4 text-white">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-rose-200 shrink-0" />
             <div>
               <p className="text-sm font-bold text-rose-200">{t('inventory.dbErrorTitle')}</p>
-              <p className="text-xs text-white/80 mt-0.5">{fetchError}</p>
+              <p className="text-xs text-white/80 mt-0.5">{liveFetchError}</p>
             </div>
           </div>
           <button
-            onClick={() => window.location.reload()}
-            className="bg-white/8 hover:bg-white/15 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            onClick={refreshLiveInventory}
+            disabled={isLoadingInventory}
+            className="bg-white/8 hover:bg-white/15 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingInventory ? 'animate-spin' : ''}`} />
             <span>{t('common.retry')}</span>
           </button>
         </div>
@@ -1135,14 +1150,24 @@ export default function InventoryClient({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiTotalItems')}</div>
-          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">{toEnglishDigits(items.length)}</div>
+          <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">
+            {isLoadingInventory && inventoryItems.length === 0 ? (
+              <Loader2 className="w-6 h-6 animate-spin text-white/70" />
+            ) : (
+              toEnglishDigits(inventoryItems.length)
+            )}
+          </div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiTotalItemsDesc')}</div>
         </div>
 
         <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiLowStock')}</div>
           <div className={`text-3xl font-extrabold font-mono tracking-wider mt-2 drop-shadow-sm ${lowStockCount > 0 ? 'text-rose-200' : 'text-white'}`}>
-            {toEnglishDigits(lowStockCount)}
+            {isLoadingInventory && inventoryItems.length === 0 ? (
+              <Loader2 className="w-6 h-6 animate-spin text-white/70" />
+            ) : (
+              toEnglishDigits(lowStockCount)
+            )}
           </div>
           <div className="text-xs text-rose-200 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiLowStockDesc')}</div>
         </div>
@@ -1156,7 +1181,11 @@ export default function InventoryClient({
         <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
           <div className="text-xs font-bold text-slate-100 drop-shadow-sm">{t('inventory.kpiCoverage')}</div>
           <div className="text-3xl font-extrabold text-white font-mono tracking-wider mt-2 drop-shadow-sm">
-            {items.length > 0 ? `${Math.round(((items.length - lowStockCount) / items.length) * 100)}%` : '0%'}
+            {isLoadingInventory && inventoryItems.length === 0 ? (
+              <Loader2 className="w-6 h-6 animate-spin text-white/70" />
+            ) : (
+              inventoryItems.length > 0 ? `${Math.round(((inventoryItems.length - lowStockCount) / inventoryItems.length) * 100)}%` : '0%'
+            )}
           </div>
           <div className="text-xs text-white/80 font-semibold mt-1 drop-shadow-sm">{t('inventory.kpiCoverageDesc')}</div>
         </div>
@@ -1215,8 +1244,19 @@ export default function InventoryClient({
             </span>
           </div>
 
-          {/* Controls: BOM Demand Toggle & Sorting */}
+          {/* Controls: Live Refresh, BOM Demand Toggle & Sorting */}
           <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={refreshLiveInventory}
+              disabled={isLoadingInventory}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-white/10 hover:bg-white/15 border-white/20 text-white/90 hover:text-white disabled:opacity-50"
+              title={lang === 'en' ? 'Refresh live stock from Supabase' : 'تحديث الرصيد الحي من قاعدة البيانات'}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-300 ${isLoadingInventory ? 'animate-spin' : ''}`} />
+              <span>{lang === 'en' ? 'Sync Live Stock' : 'تحديث الرصيد'}</span>
+            </button>
+
             {/* Live BOM Packaging Demand Toggle */}
             <button
               type="button"
@@ -1280,7 +1320,7 @@ export default function InventoryClient({
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
               {bomDemand.map(d => {
-                const invItem = items.find(i => i.item_code.toUpperCase() === d.item_code);
+                const invItem = inventoryItems.find(i => i.item_code.toUpperCase() === d.item_code);
                 return (
                   <div
                     key={d.item_code}
@@ -1292,7 +1332,7 @@ export default function InventoryClient({
                   >
                     <div className="flex items-center justify-between font-mono">
                       <span className="font-bold text-teal-300">{d.item_code}</span>
-                      <span className="text-[10px] text-white/60">{toEnglishDigits(d.current_stock)} في المستودع</span>
+                      <span className="text-[10px] text-white/60"><span className="inline-block" dir="ltr">{toEnglishDigits(d.current_stock)}</span> في المستودع</span>
                     </div>
                     <div className="font-bold truncate text-[11px]" title={d.item_name_ar}>
                       {d.item_name_ar}
@@ -1336,117 +1376,151 @@ export default function InventoryClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {sortedTableItems.map(item => {
-                const code = item.item_code.toUpperCase();
-                const std = getStandardCodeInfo(code);
-                const consumed = unreplenished[code] || 0;
-                const cartonSize = CARTON_SIZES[code] || 1;
-                const cartons = Math.ceil(consumed / cartonSize);
-                const pendingPOs = activePOs.filter(po =>
-                  Array.isArray(po.items) && po.items.length > 0
-                    ? po.items.some(it => String(it.itemId).toUpperCase() === code)
-                    : String(po.itemId).toUpperCase() === code
-                ).length;
-                const isPerPiece = cartonSize === 1;
-                const minLevel = getMinLevel(item);
-                const isCritical = item.current_stock <= minLevel;
-                const leadDays = item.lead_time_days;
-
-                return (
-                  <tr
-                    key={code}
-                    className="hover:bg-white/[0.04] transition-colors border-b border-white/5"
-                  >
-                    <td className="py-3.5 px-3">
-                      <span className="font-mono font-extrabold text-sm text-white bg-white/15 border border-white/25 px-2.5 py-0.5 rounded-lg">
-                        {code}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center gap-2 text-sm font-bold text-white">
-                        {isCritical && (
-                          <span className="flex items-center gap-1.5 text-rose-400 shrink-0" title="مستوى حرج">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
-                            </span>
-                            <AlertTriangle className="w-4 h-4 text-rose-400" />
-                          </span>
-                        )}
-                        <span>{getItemDisplayName(item)}</span>
-                      </div>
-                      <div className="text-[11px] text-white/60 font-mono" dir="ltr">{std?.nameEn || item.item_name_en}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`font-mono font-black text-lg ${isCritical ? 'text-rose-400 font-extrabold' : 'text-white'}`}>
-                        {toEnglishDigits(item.current_stock)}
-                      </span>
-                      <span className="text-xs text-white/60 ms-1">{t('common.unit')}</span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="font-mono font-bold text-base text-white/90">{toEnglishDigits(minLevel)}</span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {leadDays != null ? (
-                        <span className="text-sm font-bold text-white">
-                          <span className="font-mono">{toEnglishDigits(leadDays)}</span> يوم
+              {isLoadingInventory && inventoryItems.length === 0 ? (
+                <>
+                  <tr>
+                    <td colSpan={8} className="py-6 px-4 text-center">
+                      <div className="inline-flex items-center gap-2.5 text-sm font-bold text-white/90 bg-white/10 border border-white/20 px-4 py-2 rounded-xl">
+                        <Loader2 className="w-4 h-4 animate-spin text-teal-300 shrink-0" />
+                        <span>
+                          {lang === 'en'
+                            ? 'Fetching live inventory stock from Supabase...'
+                            : 'جاري جلب الأرصدة الحية من قاعدة البيانات (Supabase)...'}
                         </span>
-                      ) : (
-                        <span className="text-white/40">—</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold font-mono text-base text-white">
-                        {toEnglishDigits(consumed)} <span className="text-sm font-normal text-white/70">وحدة</span>
-                      </div>
-                      <div className="text-xs text-white/50 mt-0.5">
-                        (منذ {toEnglishDigits(getDaysSinceRestock(item.last_restock_date))} أيام)
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-col items-center">
-                        <div>
-                          <span className="font-mono font-black text-lg text-white">{toEnglishDigits(cartons)}</span>
-                          <span className="text-xs text-white/70 ms-1 font-semibold">
-                            {isPerPiece ? 'حبة (بالقطعة)' : (lang === 'en' ? 'cartons' : 'كرتون')}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-white/50 font-mono mt-0.5">
-                          {isPerPiece ? 'طلب بالقطعة (1:1)' : `(${toEnglishDigits(cartonSize)} وحدة/كرتون)`}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-col items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => (consumed > 0 ? handleReplenishPO(code, cartons) : handleOpenPO(item))}
-                          disabled={consumed <= 0 && !isCritical}
-                          className={`backdrop-blur-md border text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
-                            isCritical
-                              ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/50'
-                              : 'bg-white/10 hover:bg-white/20 border-white/25'
-                          }`}
-                        >
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                          <span>إصدار أمر شراء</span>
-                        </button>
-                        {pendingPOs > 0 && (
-                          <span className="text-[10px] text-white/60">
-                            {toEnglishDigits(pendingPOs)} أمر شراء بانتظار الاستلام
-                          </span>
-                        )}
                       </div>
                     </td>
                   </tr>
-                );
-              })}
+                  {[1, 2, 3, 4, 5].map(rowIdx => (
+                    <tr key={`skeleton-${rowIdx}`} className="animate-pulse border-b border-white/5">
+                      <td className="py-4 px-3"><div className="h-6 w-12 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-5 w-40 rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-5 w-16 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-5 w-14 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-5 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-8 w-28 mx-auto rounded-xl bg-white/10" /></td>
+                    </tr>
+                  ))}
+                </>
+              ) : (
+                sortedTableItems.map(item => {
+                  const code = item.item_code.toUpperCase();
+                  const std = getStandardCodeInfo(code);
+                  const consumed = unreplenished[code] || 0;
+                  const cartonSize = CARTON_SIZES[code] || 1;
+                  const cartons = Math.ceil(consumed / cartonSize);
+                  const pendingPOs = activePOs.filter(po =>
+                    Array.isArray(po.items) && po.items.length > 0
+                      ? po.items.some(it => String(it.itemId).toUpperCase() === code)
+                      : String(po.itemId).toUpperCase() === code
+                  ).length;
+                  const isPerPiece = cartonSize === 1;
+                  const reorderLevel = Number(item.reorder_level ?? 0);
+                  const isCritical = item.current_stock <= reorderLevel;
+                  const leadDays = item.lead_time_days;
+
+                  return (
+                    <tr
+                      key={code}
+                      className="hover:bg-white/[0.04] transition-colors border-b border-white/5"
+                    >
+                      <td className="py-3.5 px-3">
+                        <span className="font-mono font-extrabold text-sm text-white bg-white/15 border border-white/25 px-2.5 py-0.5 rounded-lg">
+                          {code}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center gap-2 text-sm font-bold text-white">
+                          {isCritical && (
+                            <span className="flex items-center gap-1.5 text-rose-400 shrink-0" title="تنبيه: الرصيد الحالي أقل من أو يساوي الحد الأدنى">
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                              </span>
+                              <AlertTriangle className="w-4 h-4 text-rose-400" />
+                            </span>
+                          )}
+                          <span>{getItemDisplayName(item)}</span>
+                        </div>
+                        <div className="text-[11px] text-white/60 font-mono" dir="ltr">{item.item_name_en || std?.nameEn || ''}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-block font-mono font-black text-lg ${isCritical ? 'text-rose-400 font-extrabold' : 'text-white'}`}
+                          dir="ltr"
+                        >
+                          {toEnglishDigits(item.current_stock)}
+                        </span>
+                        <span className="text-xs text-white/60 ms-1">{t('common.unit')}</span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-block font-mono font-bold text-base text-white/90" dir="ltr">
+                          {toEnglishDigits(item.reorder_level)}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {leadDays != null ? (
+                          <span className="text-sm font-bold text-white">
+                            <span className="font-mono">{toEnglishDigits(leadDays)}</span> يوم
+                          </span>
+                        ) : (
+                          <span className="text-white/40">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold font-mono text-base text-white">
+                          {toEnglishDigits(consumed)} <span className="text-sm font-normal text-white/70">وحدة</span>
+                        </div>
+                        <div className="text-xs text-white/50 mt-0.5">
+                          (منذ {toEnglishDigits(getDaysSinceRestock(item.last_restock_date))} أيام)
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col items-center">
+                          <div>
+                            <span className="font-mono font-black text-lg text-white">{toEnglishDigits(cartons)}</span>
+                            <span className="text-xs text-white/70 ms-1 font-semibold">
+                              {isPerPiece ? 'حبة (بالقطعة)' : (lang === 'en' ? 'cartons' : 'كرتون')}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-white/50 font-mono mt-0.5">
+                            {isPerPiece ? 'طلب بالقطعة (1:1)' : `(${toEnglishDigits(cartonSize)} وحدة/كرتون)`}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => (consumed > 0 ? handleReplenishPO(code, cartons) : handleOpenPO(item))}
+                            disabled={consumed <= 0 && !isCritical}
+                            className={`backdrop-blur-md border text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+                              isCritical
+                                ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/50'
+                                : 'bg-white/10 hover:bg-white/20 border-white/25'
+                            }`}
+                          >
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                            <span>إصدار أمر شراء</span>
+                          </button>
+                          {pendingPOs > 0 && (
+                            <span className="text-[10px] text-white/60">
+                              {toEnglishDigits(pendingPOs)} أمر شراء بانتظار الاستلام
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </section>
 
-      {filteredItems.length === 0 && (
+      {!isLoadingInventory && filteredItems.length === 0 && (
         <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-12 text-center text-white">
           <p className="text-lg font-bold drop-shadow-sm">{t('inventory.noItemsFound')}</p>
           <p className="text-xs text-white/80 mt-1 drop-shadow-sm">{t('inventory.noItemsFoundHint')}</p>
@@ -1460,7 +1534,7 @@ export default function InventoryClient({
         const cartonSize = CARTON_SIZES[code] || 1;
         const isPerPiece = cartonSize === 1;
         const totalUnits = isPerPiece ? poQuantity : poQuantity * cartonSize;
-        const unitCost = selectedItemForPO.cost_per_unit || 0.45;
+        const unitCost = selectedItemForPO.cost_per_unit || selectedItemForPO.supplier_items?.[0]?.price || 0.45;
         const currentSuppliers = itemSuppliers[code] || [];
         const consumed = unreplenished[code] || 0;
         const suggestedCartons = Math.ceil(consumed / cartonSize);
@@ -1507,22 +1581,9 @@ export default function InventoryClient({
                     value={selectedItemForPO.item_code}
                     onChange={async (e) => {
                       const newCode = e.target.value.toUpperCase();
-                      const inv = items.find(i => i.item_code.toUpperCase() === newCode);
+                      const inv = inventoryItems.find(i => i.item_code.toUpperCase() === newCode);
                       if (inv) {
                         setSelectedItemForPO(inv);
-                      } else {
-                        const raw = rawMaterialsList.find(r => r.code === newCode);
-                        if (raw) {
-                          setSelectedItemForPO({
-                            item_code: raw.code,
-                            item_name_ar: raw.nameAr,
-                            item_name_en: raw.nameEn || raw.nameAr,
-                            category_ar: raw.categoryAr || 'مواد تغليف وتشغيل',
-                            current_stock: REAL_INVENTORY_STOCK[raw.code] ?? 0,
-                            reorder_level: 2000,
-                            cost_per_unit: 0.45,
-                          });
-                        }
                       }
                       const cachedSuppliers = itemSuppliers[newCode];
                       if (cachedSuppliers && cachedSuppliers.length > 0) {
@@ -1687,7 +1748,7 @@ export default function InventoryClient({
                   onChange={(e) => setInvoiceSimItem(e.target.value)}
                   className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none"
                 >
-                  {items.map(it => (
+                  {inventoryItems.map(it => (
                     <option key={it.item_code} value={it.item_code} className="bg-zinc-900 text-white">
                       {it.item_code} - {getItemDisplayName(it)} (الرصيد: {toEnglishDigits(it.current_stock)})
                     </option>

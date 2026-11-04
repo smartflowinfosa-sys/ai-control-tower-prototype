@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Mic, MicOff, Paperclip, X, Image as ImageIcon, Send, Sparkles } from 'lucide-react';
+import { Bot, Mic, MicOff, Paperclip, X, Send, Sparkles } from 'lucide-react';
 import { mockOperationService } from '@/application/services/mockOperationService';
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage } from '@/components/common/LanguageContext';
@@ -27,12 +26,39 @@ interface Message {
   provider?: string;
 }
 
+interface SpeechRecognitionEvent {
+  results: {
+    length: number;
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
 export default function AIAssistantWidget() {
+  const { lang, isRtl } = useLanguage();
   const pathname = usePathname();
   const { data: session } = useSession();
-  if (pathname === '/login') return null;
+  const { resolveNotification } = useNotification();
 
-  const { lang, isRtl } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -42,10 +68,9 @@ export default function AIAssistantWidget() {
   // Clean initial state: completely empty
   const [messages, setMessages] = useState<Message[]>([]);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { resolveNotification } = useNotification();
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -60,12 +85,14 @@ export default function AIAssistantWidget() {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
     };
   }, []);
+
+  if (pathname === '/login') return null;
 
   // Handle Image File Selection (Multimodal)
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,14 +130,20 @@ export default function AIAssistantWidget() {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
       }
       setIsListening(false);
       return;
     }
 
+    const windowWithSpeech = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionInstance;
+      webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+    };
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       alert(
@@ -133,7 +166,7 @@ export default function AIAssistantWidget() {
         setIsListening(true);
       };
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         let transcript = '';
         for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
@@ -142,7 +175,7 @@ export default function AIAssistantWidget() {
         setInputValue(transcript);
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error('Speech Recognition Error:', event.error);
         setIsListening(false);
       };
@@ -221,7 +254,7 @@ export default function AIAssistantWidget() {
       };
 
       // Payload includes multimodal image if attached
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         prompt: textToSend.trim(),
         contextData,
       };
