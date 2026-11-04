@@ -444,149 +444,180 @@ async function fetchAndSyncBoq(
 
 /**
  * Step 3b: Fetch Packaging Report from Techrar for `targetDate` and upsert into `techrar_packaging_report`.
+ * Wrapped in resilient try/catch: if Techrar returns 500 or fails, it logs a warning and returns
+ * `{ packagingOrdersSynced: 0, packagingWarning: ... }` so the entire daily deduction does NOT crash.
  */
 async function fetchAndSyncPackaging(
   supabase: ReturnType<typeof getDbClient>,
   token: string,
   targetDate: string
-): Promise<{ packagingOrdersSynced: number }> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    app_id: '715',
-    org_id: '685',
-    Authorization: `Bearer ${token}`,
-  };
+): Promise<{ packagingOrdersSynced: number; packagingWarning?: string }> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      app_id: '715',
+      org_id: '685',
+      Authorization: `Bearer ${token}`,
+    };
 
-  const outcomes = await Promise.all(
-    PACKAGING_STATUS_CODES.map(async (st) => {
-      const payload = {
-        restaurant_id: 715,
-        date: targetDate,
-        status: st,
-        cities_ids: [4, 1, 12],
-        dispatch_branch_ids: [],
-        group_by_reference: false,
-        grouped: 0,
-        grouped_by_description: false,
-        grouped_by_size: false,
-        type: 'subscription',
-      };
+    const outcomes = await Promise.all(
+      PACKAGING_STATUS_CODES.map(async (st) => {
+        try {
+          const payload = {
+            restaurant_id: 715,
+            date: targetDate,
+            status: st,
+            cities_ids: [4, 1, 12],
+            dispatch_branch_ids: [],
+            group_by_reference: false,
+            grouped: 0,
+            grouped_by_description: false,
+            grouped_by_size: false,
+            type: 'subscription',
+          };
 
-      const res = await fetch(TECHRAR_PACKAGING_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        cache: 'no-store',
-      });
+          const res = await fetch(TECHRAR_PACKAGING_URL, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            cache: 'no-store',
+          });
 
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
-        return {
-          ok: false,
-          statusCode: st,
-          httpStatus: res.status,
-          error: errBody.slice(0, 200),
-          items: [] as RawRecord[],
-        };
-      }
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            return {
+              ok: false,
+              statusCode: st,
+              httpStatus: res.status,
+              error: errBody.slice(0, 200),
+              items: [] as RawRecord[],
+            };
+          }
 
-      const json = await res.json();
-      return {
-        ok: true,
-        statusCode: st,
-        httpStatus: 200,
-        items: extractArrayItems(json),
-      };
-    })
-  );
-
-  if (outcomes.every((o) => !o.ok)) {
-    throw new Error(
-      `Techrar Packaging API failed for all statuses on ${targetDate} (HTTP ${outcomes[0]?.httpStatus ?? 502})`
+          const json = await res.json();
+          return {
+            ok: true,
+            statusCode: st,
+            httpStatus: 200,
+            items: extractArrayItems(json),
+          };
+        } catch (fetchErr: unknown) {
+          const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          return {
+            ok: false,
+            statusCode: st,
+            httpStatus: 500,
+            error: errMsg.slice(0, 200),
+            items: [] as RawRecord[],
+          };
+        }
+      })
     );
-  }
 
-  const uniqueRows = new Map<number, PackagingDbRow>();
-  for (const outcome of outcomes) {
-    for (const raw of outcome.items) {
-      const rawUniqueId = raw.sub_order_id ?? raw.techrar_id ?? raw.id;
-      const techrarId = Number(rawUniqueId);
-      if (!Number.isFinite(techrarId) || techrarId <= 0) continue;
-
-      const subscriptionNumber = toCleanString(
-        raw.subscription_id ?? raw.subscription_number ?? raw.reference ?? ''
-      ).slice(0, 50);
-
-      const customerName = (
-        toCleanString(raw.customer_name ?? raw.client_name ?? raw.customer) || 'عميل غير مسجل'
-      ).slice(0, 255);
-
-      const district = (
-        toCleanString(raw.district_ar) ||
-        toCleanString(raw.district) ||
-        '-'
-      ).slice(0, 255);
-
-      const dispatchBranch = (
-        toCleanString(raw.dispatch_branch_name ?? raw.dispatch_branch) || '-'
-      ).slice(0, 255);
-
-      const serviceType = formatServiceType(raw).slice(0, 100);
-      const deliveryWindow = (toCleanString(raw.delivery_window) || '-').slice(0, 100);
-      const itemsCount = parsePackagingItemsCount(raw);
-      const notes =
-        toCleanString(raw.notes ?? raw.customer_notes ?? raw.delivery_notes ?? raw.comment) || '-';
-      const rowStatus = (toCleanString(raw.status) || outcome.statusCode).slice(0, 50);
-
-      uniqueRows.set(techrarId, {
-        techrar_id: techrarId,
-        subscription_number: subscriptionNumber,
-        customer_name: customerName,
-        district,
-        dispatch_branch: dispatchBranch,
-        service_type: serviceType,
-        delivery_window: deliveryWindow,
-        items_count: itemsCount,
-        notes,
-        report_date: targetDate,
-        status: rowStatus,
-      });
+    if (outcomes.every((o) => !o.ok)) {
+      const warnMsg = `Techrar Packaging API failed for all statuses on ${targetDate} (HTTP ${outcomes[0]?.httpStatus ?? 500}): ${outcomes[0]?.error || 'Upstream server error'}`;
+      console.warn(`⚠️ [Cron Daily Deduction] ${warnMsg}. Falling back to 0 packaging orders synced.`);
+      return {
+        packagingOrdersSynced: 0,
+        packagingWarning: warnMsg,
+      };
     }
-  }
 
-  const rowsToUpsert = Array.from(uniqueRows.values());
-  if (rowsToUpsert.length > 0) {
-    const CHUNK_SIZE = 500;
-    for (let i = 0; i < rowsToUpsert.length; i += CHUNK_SIZE) {
-      const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE);
-      const { error: upsertError } = await supabase
-        .from('techrar_packaging_report')
-        .upsert(chunk, { onConflict: 'techrar_id' });
+    const uniqueRows = new Map<number, PackagingDbRow>();
+    for (const outcome of outcomes) {
+      for (const raw of outcome.items) {
+        const rawUniqueId = raw.sub_order_id ?? raw.techrar_id ?? raw.id;
+        const techrarId = Number(rawUniqueId);
+        if (!Number.isFinite(techrarId) || techrarId <= 0) continue;
 
-      if (upsertError) {
-        throw new Error(
-          `Failed upserting techrar_packaging_report for ${targetDate}: ${upsertError.message}`
-        );
+        const subscriptionNumber = toCleanString(
+          raw.subscription_id ?? raw.subscription_number ?? raw.reference ?? ''
+        ).slice(0, 50);
+
+        const customerName = (
+          toCleanString(raw.customer_name ?? raw.client_name ?? raw.customer) || 'عميل غير مسجل'
+        ).slice(0, 255);
+
+        const district = (
+          toCleanString(raw.district_ar) ||
+          toCleanString(raw.district) ||
+          '-'
+        ).slice(0, 255);
+
+        const dispatchBranch = (
+          toCleanString(raw.dispatch_branch_name ?? raw.dispatch_branch) || '-'
+        ).slice(0, 255);
+
+        const serviceType = formatServiceType(raw).slice(0, 100);
+        const deliveryWindow = (toCleanString(raw.delivery_window) || '-').slice(0, 100);
+        const itemsCount = parsePackagingItemsCount(raw);
+        const notes =
+          toCleanString(raw.notes ?? raw.customer_notes ?? raw.delivery_notes ?? raw.comment) || '-';
+        const rowStatus = (toCleanString(raw.status) || outcome.statusCode).slice(0, 50);
+
+        uniqueRows.set(techrarId, {
+          techrar_id: techrarId,
+          subscription_number: subscriptionNumber,
+          customer_name: customerName,
+          district,
+          dispatch_branch: dispatchBranch,
+          service_type: serviceType,
+          delivery_window: deliveryWindow,
+          items_count: itemsCount,
+          notes,
+          report_date: targetDate,
+          status: rowStatus,
+        });
       }
     }
 
-    // Non-blocking 30-day retention cleanup
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
-      await supabase
-        .from('techrar_packaging_report')
-        .delete()
-        .lt('report_date', cutoffDate);
-    } catch {
-      // Non-fatal retention cleanup
-    }
-  }
+    const rowsToUpsert = Array.from(uniqueRows.values());
+    if (rowsToUpsert.length > 0) {
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < rowsToUpsert.length; i += CHUNK_SIZE) {
+        const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE);
+        const { error: upsertError } = await supabase
+          .from('techrar_packaging_report')
+          .upsert(chunk, { onConflict: 'techrar_id' });
 
-  return {
-    packagingOrdersSynced: rowsToUpsert.length,
-  };
+        if (upsertError) {
+          console.warn(
+            `⚠️ [Cron Daily Deduction] Warning upserting techrar_packaging_report for ${targetDate}: ${upsertError.message}`
+          );
+          return {
+            packagingOrdersSynced: 0,
+            packagingWarning: `Upsert warning: ${upsertError.message}`,
+          };
+        }
+      }
+
+      // Non-blocking 30-day retention cleanup
+      try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
+        await supabase
+          .from('techrar_packaging_report')
+          .delete()
+          .lt('report_date', cutoffDate);
+      } catch {
+        // Non-fatal retention cleanup
+      }
+    }
+
+    return {
+      packagingOrdersSynced: rowsToUpsert.length,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `⚠️ [Cron Daily Deduction] Packaging fetch exception for ${targetDate}: ${msg}. Falling back to 0 packaging orders synced.`
+    );
+    return {
+      packagingOrdersSynced: 0,
+      packagingWarning: msg,
+    };
+  }
 }
 
 async function executeScheduledDeduction(request: Request) {
@@ -639,9 +670,16 @@ async function executeScheduledDeduction(request: Request) {
       const supabase = getDbClient();
 
       // 3. Fetch & Cache Source of Truth (BOQ + Packaging) for `targetDate`
+      // Packaging fetch is resilient: failure logs a warning, defaults bagsCount = 0, and does not crash BOQ deduction
       const [boqSummary, packagingSummary] = await Promise.all([
         fetchAndSyncBoq(supabase, token, targetDate),
-        fetchAndSyncPackaging(supabase, token, targetDate),
+        fetchAndSyncPackaging(supabase, token, targetDate).catch((pkgErr: unknown) => {
+          const pkgMsg = pkgErr instanceof Error ? pkgErr.message : String(pkgErr);
+          console.warn(
+            `⚠️ [Cron Daily Deduction] Packaging fetch rejected for ${targetDate}: ${pkgMsg}. Defaulting bagsCount = 0 and proceeding with BOQ meal deduction.`
+          );
+          return { packagingOrdersSynced: 0, packagingWarning: pkgMsg };
+        }),
       ]);
 
       // 4. Strict Idempotency Check & Automated Inventory Deduction
@@ -671,6 +709,7 @@ async function executeScheduledDeduction(request: Request) {
           boq_unique_meals: boqSummary.uniqueMeals,
           boq_total_meals: boqSummary.totalMeals,
           packaging_orders_synced: packagingSummary.packagingOrdersSynced,
+          ...(packagingSummary.packagingWarning ? { packaging_warning: packagingSummary.packagingWarning } : {}),
           run_date_riyadh: riyadhDate,
           weekday_riyadh: weekday,
         };
@@ -706,7 +745,7 @@ async function executeScheduledDeduction(request: Request) {
       const bagsDeducted =
         typeof rpcObj.bags_deducted === 'number'
           ? rpcObj.bags_deducted
-          : packagingSummary.packagingOrdersSynced;
+          : (packagingSummary?.packagingOrdersSynced ?? 0);
 
       console.log(
         `✅ [Cron Daily Deduction] Successfully deducted & locked ${targetDate} (bags_deducted: ${bagsDeducted}, boq_total_meals: ${boqSummary.totalMeals})`
@@ -719,6 +758,7 @@ async function executeScheduledDeduction(request: Request) {
         boq_unique_meals: boqSummary.uniqueMeals,
         boq_total_meals: boqSummary.totalMeals,
         packaging_orders_synced: packagingSummary.packagingOrdersSynced,
+        ...(packagingSummary.packagingWarning ? { packaging_warning: packagingSummary.packagingWarning } : {}),
         run_date_riyadh: riyadhDate,
         weekday_riyadh: weekday,
         rpc_result: rpcData ?? null,
