@@ -44,7 +44,7 @@ const getItemCategory = (name: string): string => {
   return 'مواد تشغيلية وتغليف';
 };
 
-// Strictly preserves live current_stock and reorder_level from Supabase; only maps lead_time_days metadata.
+// Strictly preserves live current_stock, reorder_level, and consumed_quantity from Supabase; only maps lead_time_days metadata.
 const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInventoryItem => {
   const code = String(item.item_code || '').trim().toUpperCase();
   const firstRel = Array.isArray(item.supplier_items) ? item.supplier_items[0] : undefined;
@@ -62,6 +62,7 @@ const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInvent
     ...item,
     current_stock: Number(item.current_stock ?? 0),
     reorder_level: Number(item.reorder_level ?? 0),
+    consumed_quantity: Number(item.consumed_quantity ?? 0),
     lead_time_days: item.lead_time_days ?? LEAD_TIME_DAYS[code] ?? derivedLeadDays,
     last_restock_date: item.last_restock_date || null,
   };
@@ -875,15 +876,26 @@ export default function InventoryClient({
     return matchCat && matchSearch;
   });
 
-  // Smart Auto PO Sorting Engine (strictly driven by live current_stock & reorder_level from Supabase)
+  // Resolves live consumed_quantity from Supabase inventory_items (+ any runtime simulation delta)
+  const getItemConsumedQuantity = useCallback(
+    (item: SupabaseInventoryItem): number => {
+      const dbConsumed = Number(item.consumed_quantity ?? 0);
+      const code = String(item.item_code || '').trim().toUpperCase();
+      const localAdded = Number(unreplenished[code] ?? 0);
+      return Math.max(0, dbConsumed + localAdded);
+    },
+    [unreplenished]
+  );
+
+  // Smart Auto PO Sorting Engine (strictly driven by live current_stock, reorder_level & consumed_quantity from Supabase)
   const sortedTableItems = [...filteredItems].sort((a, b) => {
     if (sortBy === 'highest_stock') {
       return (b.current_stock ?? 0) - (a.current_stock ?? 0);
     }
 
     if (sortBy === 'most_consumed') {
-      const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
-      const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+      const consumedA = getItemConsumedQuantity(a);
+      const consumedB = getItemConsumedQuantity(b);
       if (consumedB !== consumedA) {
         return consumedB - consumedA;
       }
@@ -908,18 +920,18 @@ export default function InventoryClient({
       if (leadB !== leadA) {
         return leadB - leadA;
       }
-      // 3. Then sort by unreplenished_consumption in DESCENDING order (highest consumption first)
-      const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
-      const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+      // 3. Then sort by consumed_quantity in DESCENDING order (highest consumption first)
+      const consumedA = getItemConsumedQuantity(a);
+      const consumedB = getItemConsumedQuantity(b);
       if (consumedB !== consumedA) {
         return consumedB - consumedA;
       }
       return compareItemCodes(a.item_code, b.item_code);
     }
 
-    // 4. For non-critical items, sort by unreplenished_consumption DESCENDING, then standard P-code
-    const consumedA = unreplenished[a.item_code.toUpperCase()] || 0;
-    const consumedB = unreplenished[b.item_code.toUpperCase()] || 0;
+    // 4. For non-critical items, sort by consumed_quantity DESCENDING, then standard P-code
+    const consumedA = getItemConsumedQuantity(a);
+    const consumedB = getItemConsumedQuantity(b);
     if (consumedB !== consumedA) {
       return consumedB - consumedA;
     }
@@ -958,7 +970,7 @@ export default function InventoryClient({
 
     const csvRows = sortedTableItems.map(item => {
       const code = item.item_code.toUpperCase();
-      const consumed = unreplenished[code] || 0;
+      const consumed = getItemConsumedQuantity(item);
 
       return [
         escapeCsv(code),
@@ -986,7 +998,7 @@ export default function InventoryClient({
         : `تم تصدير تقرير الاستهلاك بنجاح (${toEnglishDigits(csvRows.length)} صنف)`
     );
     setTimeout(() => setSuccessToast(null), 3500);
-  }, [sortedTableItems, unreplenished, lang, getItemDisplayName]);
+  }, [sortedTableItems, getItemConsumedQuantity, lang, getItemDisplayName]);
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -1061,7 +1073,7 @@ export default function InventoryClient({
     }
     setSelectedItemForPO(item);
     const code = item.item_code.toUpperCase();
-    const consumed = unreplenished[code] || 0;
+    const consumed = getItemConsumedQuantity(item);
     const orderCalc = calculateSuggestedOrder(code, consumed);
 
     // Quantity defaults to Suggested Order in Cartons (الطلب المقترح)
@@ -1512,7 +1524,7 @@ export default function InventoryClient({
                 sortedTableItems.map(item => {
                   const code = item.item_code.toUpperCase();
                   const std = getStandardCodeInfo(code);
-                  const consumed = unreplenished[code] || 0;
+                  const consumed = getItemConsumedQuantity(item);
                   const orderCalc = calculateSuggestedOrder(code, consumed);
                   const pendingPOs = activePOs.filter(po =>
                     Array.isArray(po.items) && po.items.length > 0
@@ -1582,28 +1594,9 @@ export default function InventoryClient({
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        {orderCalc.needsOrder ? (
-                          <div className="flex flex-col items-center">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-black text-lg text-amber-300">
-                                {toEnglishDigits(orderCalc.suggestedCartons)}
-                              </span>
-                              <span className="text-xs text-amber-200/80 font-bold">
-                                {orderCalc.isPerPiece ? (lang === 'en' ? 'units' : 'حبة') : (lang === 'en' ? 'cartons' : 'كرتون')}
-                              </span>
-                            </div>
-                            <span className="text-[11px] text-white/70 font-mono mt-0.5" dir="ltr">
-                              {toEnglishDigits(orderCalc.totalUnitsToOrder)} {lang === 'en' ? 'units' : 'وحدة'}
-                              {!orderCalc.isPerPiece && (
-                                <span className="text-white/40 ms-1">({toEnglishDigits(orderCalc.cartonSize)}/كرتون)</span>
-                              )}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-white/40 font-mono text-base font-semibold" title="لا يوجد استهلاك — لا يتطلب إعادة طلب">
-                            —
-                          </span>
-                        )}
+                        <div className="font-bold font-mono text-base text-amber-300">
+                          {toEnglishDigits(consumed)} <span className="text-sm font-normal text-amber-200/80">وحدة</span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col items-center gap-1">
@@ -1649,7 +1642,7 @@ export default function InventoryClient({
       {/* Modal: Create Purchase Order (Smart Auto PO) */}
       {selectedItemForPO && (() => {
         const code = selectedItemForPO.item_code.toUpperCase();
-        const consumed = unreplenished[code] || 0;
+        const consumed = getItemConsumedQuantity(selectedItemForPO);
         const orderCalc = calculateSuggestedOrder(code, consumed);
         const cartonSize = CARTON_SIZES[code] || 1;
         const isPerPiece = cartonSize === 1;
@@ -1702,6 +1695,9 @@ export default function InventoryClient({
                       const inv = inventoryItems.find(i => i.item_code.toUpperCase() === newCode);
                       if (inv) {
                         setSelectedItemForPO(inv);
+                        const newConsumed = getItemConsumedQuantity(inv);
+                        const newCalc = calculateSuggestedOrder(newCode, newConsumed);
+                        setPoQuantity(Math.max(1, newCalc.needsOrder ? newCalc.suggestedCartons : 1));
                       }
                       const cachedSuppliers = itemSuppliers[newCode];
                       if (cachedSuppliers && cachedSuppliers.length > 0) {
@@ -1780,7 +1776,7 @@ export default function InventoryClient({
                       {isPerPiece ? 'الكمية المطلوبة (بالقطعة / حبة)' : 'الكمية المطلوبة (بالكرتون)'}
                     </span>
                     <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
-                      الطلب المقترح: {orderCalc.needsOrder ? `${toEnglishDigits(orderCalc.suggestedCartons)} ${isPerPiece ? 'حبة' : 'كرتون'} (${toEnglishDigits(orderCalc.totalUnitsToOrder)} وحدة)` : '— (لا يوجد استهلاك)'}
+                      الطلب المقترح: {toEnglishDigits(consumed)} وحدة{!isPerPiece && orderCalc.suggestedCartons > 0 ? ` (${toEnglishDigits(orderCalc.suggestedCartons)} كرتون)` : ''}
                     </span>
                   </label>
                   <input

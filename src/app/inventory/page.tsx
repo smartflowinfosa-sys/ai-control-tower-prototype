@@ -24,12 +24,6 @@ const getCachedPurchaseOrders = unstable_cache(
   { revalidate: 60, tags: ['purchase-orders'] }
 );
 
-const getCachedInventoryItems = unstable_cache(
-  async () => fetchInventoryItems(),
-  ['inventory-items-list'],
-  { revalidate: 60, tags: ['inventory-items'] }
-);
-
 export default async function InventoryPage() {
   let initialPurchaseOrders: SupabasePurchaseOrder[] = [];
   let initialItems: SupabaseInventoryItem[] = [];
@@ -40,7 +34,7 @@ export default async function InventoryPage() {
         console.warn('Failed to fetch purchase orders from Supabase:', err);
         return [];
       }),
-      getCachedInventoryItems().catch(err => {
+      fetchInventoryItems().catch(err => {
         console.warn('Failed to fetch inventory items from Supabase:', err);
         return [];
       }),

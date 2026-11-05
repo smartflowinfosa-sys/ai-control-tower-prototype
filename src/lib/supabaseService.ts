@@ -11,6 +11,8 @@ export interface SupabaseInventoryItem {
   category_en?: string;
   current_stock: number;
   reorder_level: number;
+  /** Daily consumed quantity deducted from stock (`consumed_quantity` column in `inventory_items`) */
+  consumed_quantity?: number;
   /** Minimum stock level / reorder point (INTEGER column `min_stock_level`) */
   min_stock_level?: number | null;
   /** Supplier lead time in days (INTEGER column `lead_time_days`) */
@@ -149,14 +151,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
   let { data, error } = await supabase
     .from('inventory_items')
     .select(`
-      item_code,
-      item_name_ar,
-      item_name_en,
-      current_stock,
-      reorder_level,
-      cost_per_unit,
-      category_ar,
-      category_en,
+      *,
       supplier_items (
         supplier_id,
         price,
@@ -174,7 +169,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
   if (error) {
     const fallback = await supabase
       .from('inventory_items')
-      .select('item_code, item_name_ar, item_name_en, current_stock, reorder_level, cost_per_unit, category_ar, category_en')
+      .select('*')
       .order('item_code', { ascending: true });
     data = fallback.data as typeof data;
     error = fallback.error;
@@ -185,7 +180,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
     throw new Error(error.message);
   }
 
-  // Strictly preserve live current_stock and reorder_level from Supabase.
+  // Strictly preserve live current_stock, reorder_level, and consumed_quantity from Supabase.
   // Only map lead_time_days from joined supplier delivery_time_hours or LEAD_TIME_DAYS policy.
   const items = ((data as unknown as SupabaseInventoryItem[]) || []).map(row => {
     const policy = getStockPolicy(row.item_code);
@@ -204,6 +199,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
       ...row,
       current_stock: Number(row.current_stock ?? 0),
       reorder_level: Number(row.reorder_level ?? 0),
+      consumed_quantity: Number(row.consumed_quantity ?? 0),
       lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? derivedSupplierLeadDays,
     };
   });
