@@ -64,31 +64,14 @@ export const getStockPolicy = (code: string) => {
 };
 
 /**
- * Mock days passed since last restock (between 3 to 10 days ago)
- * for tracking Consumption Velocity in the Smart Auto PO table.
+ * Real supplier restock days tracker (empty by default; no fake random days).
  */
-export const MOCK_RESTOCK_DAYS_AGO: Record<string, number> = {
-  P1: 5,   // 5 days ago (e.g., 1,850 units consumed since 5 days)
-  P2: 4,   // 4 days ago
-  P3: 7,   // 7 days ago
-  P4: 3,   // 3 days ago
-  P5: 8,   // 8 days ago
-  P6: 10,  // 10 days ago
-  P7: 6,   // 6 days ago
-  P8: 4,   // 4 days ago
-  P9: 9,   // 9 days ago
-  P10: 5,  // 5 days ago
-  P11: 3,  // 3 days ago
-};
+export const MOCK_RESTOCK_DAYS_AGO: Record<string, number> = {};
 
 /**
- * Generates an ISO date string for a given number of days ago.
+ * Returns null by default to avoid generating fake random restock dates.
  */
-export const getMockRestockDate = (code: string): string => {
-  const key = (code || '').trim().toUpperCase();
-  const days = MOCK_RESTOCK_DAYS_AGO[key] ?? 5;
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-};
+export const getMockRestockDate = (): string | null => null;
 
 /**
  * Calculate days passed since last restock date.
@@ -140,22 +123,9 @@ export const sortItemsByCode = <T>(
 export const UNITS_PER_CARTON = 500;
 
 /**
- * Initial unreplenished consumption counters (units consumed by the kitchen
- * since the last goods receipt for each item code).
+ * Clean unreplenished consumption counters (starts at 0 / empty by default).
  */
-export const INITIAL_UNREPLENISHED_CONSUMPTION: Record<string, number> = {
-  P1: 1850,
-  P2: 3200,
-  P3: 2100,
-  P4: 740,
-  P5: 960,
-  P6: 5200,
-  P7: 2800,
-  P8: 1300,
-  P9: 640,
-  P10: 410,
-  P11: 1200,
-};
+export const INITIAL_UNREPLENISHED_CONSUMPTION: Record<string, number> = {};
 
 export const getStandardCodeInfo = (code: string): StandardItemCode | undefined =>
   STANDARD_ITEM_CODES.find((c) => c.code === code.trim().toUpperCase());

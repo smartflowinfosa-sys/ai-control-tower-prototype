@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic';
 import { unstable_cache } from 'next/cache';
-import { SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { SupabasePurchaseOrder, SupabaseInventoryItem, fetchInventoryItems } from '@/lib/supabaseService';
 import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
 
 const InventoryClient = dynamic(() => import('./InventoryClient'), {
@@ -24,17 +24,32 @@ const getCachedPurchaseOrders = unstable_cache(
   { revalidate: 60, tags: ['purchase-orders'] }
 );
 
+const getCachedInventoryItems = unstable_cache(
+  async () => fetchInventoryItems(),
+  ['inventory-items-list'],
+  { revalidate: 60, tags: ['inventory-items'] }
+);
+
 export default async function InventoryPage() {
   let initialPurchaseOrders: SupabasePurchaseOrder[] = [];
+  let initialItems: SupabaseInventoryItem[] = [];
 
   try {
-    initialPurchaseOrders = await getCachedPurchaseOrders().catch(err => {
-      console.warn('Failed to fetch purchase orders from Supabase:', err);
-      return [];
-    });
+    const [pos, items] = await Promise.all([
+      getCachedPurchaseOrders().catch(err => {
+        console.warn('Failed to fetch purchase orders from Supabase:', err);
+        return [];
+      }),
+      getCachedInventoryItems().catch(err => {
+        console.warn('Failed to fetch inventory items from Supabase:', err);
+        return [];
+      }),
+    ]);
+    initialPurchaseOrders = pos;
+    initialItems = items;
   } catch (err: unknown) {
     console.warn('Failed to load initial purchase orders:', err);
   }
 
-  return <InventoryClient initialPurchaseOrders={initialPurchaseOrders} />;
+  return <InventoryClient initialItems={initialItems} initialPurchaseOrders={initialPurchaseOrders} />;
 }

@@ -13,13 +13,11 @@ import {
   compareItemCodes,
   CARTON_SIZES,
   LEAD_TIME_DAYS,
-  INITIAL_UNREPLENISHED_CONSUMPTION,
   getStandardCodeInfo,
-  getMockRestockDate,
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Download } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to ensure all digits are strictly English / Western (0-9), preserving negative numbers cleanly
@@ -46,7 +44,7 @@ const getItemCategory = (name: string): string => {
   return 'مواد تشغيلية وتغليف';
 };
 
-// Strictly preserves live current_stock and reorder_level from Supabase; only maps lead_time_days & restock date metadata.
+// Strictly preserves live current_stock and reorder_level from Supabase; only maps lead_time_days metadata.
 const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInventoryItem => {
   const code = String(item.item_code || '').trim().toUpperCase();
   const firstRel = Array.isArray(item.supplier_items) ? item.supplier_items[0] : undefined;
@@ -65,7 +63,58 @@ const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInvent
     current_stock: Number(item.current_stock ?? 0),
     reorder_level: Number(item.reorder_level ?? 0),
     lead_time_days: item.lead_time_days ?? LEAD_TIME_DAYS[code] ?? derivedLeadDays,
-    last_restock_date: item.last_restock_date || getMockRestockDate(code),
+    last_restock_date: item.last_restock_date || null,
+  };
+};
+
+export interface SuggestedOrderCalculation {
+  needsOrder: boolean;
+  consumedQuantity: number;
+  cartonSize: number;
+  isPerPiece: boolean;
+  suggestedCartons: number;
+  totalUnitsToOrder: number;
+}
+
+/**
+ * 1:1 Replenishment Suggested Order Logic:
+ * - Required Amount = consumed_quantity
+ * - Suggested Cartons = Math.ceil(consumed_quantity / carton_size)
+ * - If consumed_quantity is 0, displays "—" (No order needed).
+ */
+export const calculateSuggestedOrder = (
+  itemOrCode: SupabaseInventoryItem | string,
+  consumedQuantity: number = 0
+): SuggestedOrderCalculation => {
+  const code = typeof itemOrCode === 'string'
+    ? itemOrCode.trim().toUpperCase()
+    : String(itemOrCode?.item_code || '').trim().toUpperCase();
+
+  const cartonSize = CARTON_SIZES[code] || 1;
+  const isPerPiece = cartonSize === 1;
+  const consumed = Math.max(0, Number(consumedQuantity) || 0);
+
+  if (consumed === 0) {
+    return {
+      needsOrder: false,
+      consumedQuantity: 0,
+      cartonSize,
+      isPerPiece,
+      suggestedCartons: 0,
+      totalUnitsToOrder: 0,
+    };
+  }
+
+  const suggestedCartons = Math.ceil(consumed / cartonSize);
+  const totalUnitsToOrder = isPerPiece ? suggestedCartons : suggestedCartons * cartonSize;
+
+  return {
+    needsOrder: true,
+    consumedQuantity: consumed,
+    cartonSize,
+    isPerPiece,
+    suggestedCartons,
+    totalUnitsToOrder,
   };
 };
 
@@ -313,13 +362,11 @@ export default function InventoryClient({
   const [receivedItems, setReceivedItems] = useState<ReceivedItemRow[]>([]);
 
   /**
-   * Consumption-Based Replenishment flow (mock UI state):
-   * - `unreplenished` holds, per item code, the kitchen consumption that has NOT yet been replenished.
-   * - Issuing a Purchase Order does NOT reset this counter.
-   * - ONLY when the warehouse receiver enters the Item Code (e.g. P1) and the Received Quantity in the
-   *   Receipt Modal does the system add to the actual stock AND deduct/reset the unreplenished counter.
+   * Consumption-Based Replenishment flow:
+   * - Starts clean with 0 consumed quantity by default.
+   * - Daily deduction logs / receipt events dynamically update this tracker.
    */
-  const [unreplenished, setUnreplenished] = useState<Record<string, number>>(INITIAL_UNREPLENISHED_CONSUMPTION);
+  const [unreplenished, setUnreplenished] = useState<Record<string, number>>({});
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [receiverSignature, setReceiverSignature] = useState<string>('');
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState<boolean>(false);
@@ -780,12 +827,12 @@ export default function InventoryClient({
   };
 
   // Bilingual Item Name Resolver
-  const getItemDisplayName = (item: SupabaseInventoryItem): string => {
+  const getItemDisplayName = useCallback((item: SupabaseInventoryItem): string => {
     if (lang === 'en') {
       return item.item_name_en || ITEM_NAME_TRANSLATIONS[item.item_name_ar] || item.item_name_ar;
     }
     return item.item_name_ar;
-  };
+  }, [lang]);
 
   // Bilingual Category Key & Display
   const getItemCategoryKey = (item: SupabaseInventoryItem): string => {
@@ -882,6 +929,66 @@ export default function InventoryClient({
   const lowStockCount = inventoryItems.filter(i => i.current_stock <= Number(i.reorder_level ?? 0)).length;
 
   /**
+   * Manual Export for Consumption & Inventory Report:
+   * Exports the core inventory and consumption data:
+   * - الرمز (Item Code)
+   * - الصنف (Item Name)
+   * - الرصيد الحالي (Current Stock)
+   * - الحد الأدنى (Reorder Level)
+   * - الكمية المستهلكة (Consumed Quantity)
+   * to a UTF-8 BOM CSV spreadsheet file named `Daily_Consumption_Report_YYYY-MM-DD.csv`.
+   */
+  const exportConsumptionReport = useCallback(() => {
+    if (sortedTableItems.length === 0) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const headers = [
+      'الرمز',
+      'الصنف',
+      'الرصيد الحالي',
+      'الحد الأدنى',
+      'الكمية المستهلكة',
+    ];
+
+    const escapeCsv = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = sortedTableItems.map(item => {
+      const code = item.item_code.toUpperCase();
+      const consumed = unreplenished[code] || 0;
+
+      return [
+        escapeCsv(code),
+        escapeCsv(getItemDisplayName(item)),
+        escapeCsv(item.current_stock ?? 0),
+        escapeCsv(item.reorder_level ?? 0),
+        escapeCsv(consumed),
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...csvRows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Daily_Consumption_Report_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setSuccessToast(
+      lang === 'en'
+        ? `Successfully exported consumption report (${toEnglishDigits(csvRows.length)} items)`
+        : `تم تصدير تقرير الاستهلاك بنجاح (${toEnglishDigits(csvRows.length)} صنف)`
+    );
+    setTimeout(() => setSuccessToast(null), 3500);
+  }, [sortedTableItems, unreplenished, lang, getItemDisplayName]);
+
+  /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
    * When triggered:
    * A. Deducts `consumedUnits` from the item's `current_quantity` (`item.current_stock`).
@@ -954,15 +1061,13 @@ export default function InventoryClient({
     }
     setSelectedItemForPO(item);
     const code = item.item_code.toUpperCase();
-    const cartonSize = CARTON_SIZES[code] || 1;
     const consumed = unreplenished[code] || 0;
-    const calcCartons = Math.ceil(consumed / cartonSize);
+    const orderCalc = calculateSuggestedOrder(code, consumed);
 
-    // Quantity MUST default to Suggested Order in Cartons (الطلب المقترح), NOT units!
-    const reorderLevel = Number(item.reorder_level ?? 0);
+    // Quantity defaults to Suggested Order in Cartons (الطلب المقترح)
     const defaultCartons = initialCartons !== undefined && initialCartons > 0
       ? initialCartons
-      : (calcCartons > 0 ? calcCartons : Math.max(1, Math.ceil((reorderLevel - item.current_stock) / cartonSize)));
+      : (orderCalc.needsOrder ? orderCalc.suggestedCartons : 1);
 
     setPoQuantity(Math.max(1, defaultCartons));
 
@@ -1063,18 +1168,6 @@ export default function InventoryClient({
     setTimeout(() => {
       setSuccessToast(null);
     }, 4500);
-  };
-
-  // Replenishment table action: opens the PO modal pre-filled with the carton-equivalent quantity.
-  // NOTE: Issuing a PO does NOT reset the unreplenished consumption counter.
-  const handleReplenishPO = (code: string, cartons: number) => {
-    const item = inventoryItems.find(i => i.item_code.toUpperCase() === code);
-    if (!item) {
-      setSuccessToast(`لا يوجد صنف مرتبط بالرمز ${code} في المخزون`);
-      setTimeout(() => setSuccessToast(null), 4000);
-      return;
-    }
-    handleOpenPO(item, cartons);
   };
 
   return (
@@ -1257,6 +1350,18 @@ export default function InventoryClient({
               <span>{lang === 'en' ? 'Sync Live Stock' : 'تحديث الرصيد'}</span>
             </button>
 
+            {/* Manual Export Consumption Report Button */}
+            <button
+              type="button"
+              onClick={exportConsumptionReport}
+              disabled={sortedTableItems.length === 0}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-400/40 text-emerald-200 hover:text-white disabled:opacity-50"
+              title="تصدير تقرير الاستهلاك (PDF/Excel)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-300" />
+              <span>{lang === 'en' ? 'Export Consumption Report (PDF/Excel)' : 'تصدير تقرير الاستهلاك (PDF/Excel)'}</span>
+            </button>
+
             {/* Live BOM Packaging Demand Toggle */}
             <button
               type="button"
@@ -1408,14 +1513,12 @@ export default function InventoryClient({
                   const code = item.item_code.toUpperCase();
                   const std = getStandardCodeInfo(code);
                   const consumed = unreplenished[code] || 0;
-                  const cartonSize = CARTON_SIZES[code] || 1;
-                  const cartons = Math.ceil(consumed / cartonSize);
+                  const orderCalc = calculateSuggestedOrder(code, consumed);
                   const pendingPOs = activePOs.filter(po =>
                     Array.isArray(po.items) && po.items.length > 0
                       ? po.items.some(it => String(it.itemId).toUpperCase() === code)
                       : String(po.itemId).toUpperCase() === code
                   ).length;
-                  const isPerPiece = cartonSize === 1;
                   const reorderLevel = Number(item.reorder_level ?? 0);
                   const isCritical = item.current_stock <= reorderLevel;
                   const leadDays = item.lead_time_days;
@@ -1472,32 +1575,47 @@ export default function InventoryClient({
                         <div className="font-bold font-mono text-base text-white">
                           {toEnglishDigits(consumed)} <span className="text-sm font-normal text-white/70">وحدة</span>
                         </div>
-                        <div className="text-xs text-white/50 mt-0.5">
-                          (منذ {toEnglishDigits(getDaysSinceRestock(item.last_restock_date))} أيام)
-                        </div>
+                        {item.last_restock_date && (
+                          <div className="text-xs text-white/50 mt-0.5">
+                            (منذ {toEnglishDigits(getDaysSinceRestock(item.last_restock_date))} أيام)
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="flex flex-col items-center">
-                          <div>
-                            <span className="font-mono font-black text-lg text-white">{toEnglishDigits(cartons)}</span>
-                            <span className="text-xs text-white/70 ms-1 font-semibold">
-                              {isPerPiece ? 'حبة (بالقطعة)' : (lang === 'en' ? 'cartons' : 'كرتون')}
+                        {orderCalc.needsOrder ? (
+                          <div className="flex flex-col items-center">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-lg text-amber-300">
+                                {toEnglishDigits(orderCalc.suggestedCartons)}
+                              </span>
+                              <span className="text-xs text-amber-200/80 font-bold">
+                                {orderCalc.isPerPiece ? (lang === 'en' ? 'units' : 'حبة') : (lang === 'en' ? 'cartons' : 'كرتون')}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-white/70 font-mono mt-0.5" dir="ltr">
+                              {toEnglishDigits(orderCalc.totalUnitsToOrder)} {lang === 'en' ? 'units' : 'وحدة'}
+                              {!orderCalc.isPerPiece && (
+                                <span className="text-white/40 ms-1">({toEnglishDigits(orderCalc.cartonSize)}/كرتون)</span>
+                              )}
                             </span>
                           </div>
-                          <span className="text-[10px] text-white/50 font-mono mt-0.5">
-                            {isPerPiece ? 'طلب بالقطعة (1:1)' : `(${toEnglishDigits(cartonSize)} وحدة/كرتون)`}
+                        ) : (
+                          <span className="text-white/40 font-mono text-base font-semibold" title="لا يوجد استهلاك — لا يتطلب إعادة طلب">
+                            —
                           </span>
-                        </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => (consumed > 0 ? handleReplenishPO(code, cartons) : handleOpenPO(item))}
-                            disabled={consumed <= 0 && !isCritical}
+                            onClick={() => handleOpenPO(item, orderCalc.needsOrder ? orderCalc.suggestedCartons : undefined)}
+                            disabled={!orderCalc.needsOrder && !isCritical}
                             className={`backdrop-blur-md border text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                               isCritical
                                 ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/50'
+                                : orderCalc.needsOrder
+                                ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50'
                                 : 'bg-white/10 hover:bg-white/20 border-white/25'
                             }`}
                           >
@@ -1531,13 +1649,13 @@ export default function InventoryClient({
       {/* Modal: Create Purchase Order (Smart Auto PO) */}
       {selectedItemForPO && (() => {
         const code = selectedItemForPO.item_code.toUpperCase();
+        const consumed = unreplenished[code] || 0;
+        const orderCalc = calculateSuggestedOrder(code, consumed);
         const cartonSize = CARTON_SIZES[code] || 1;
         const isPerPiece = cartonSize === 1;
         const totalUnits = isPerPiece ? poQuantity : poQuantity * cartonSize;
         const unitCost = selectedItemForPO.cost_per_unit || selectedItemForPO.supplier_items?.[0]?.price || 0.45;
         const currentSuppliers = itemSuppliers[code] || [];
-        const consumed = unreplenished[code] || 0;
-        const suggestedCartons = Math.ceil(consumed / cartonSize);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
@@ -1662,7 +1780,7 @@ export default function InventoryClient({
                       {isPerPiece ? 'الكمية المطلوبة (بالقطعة / حبة)' : 'الكمية المطلوبة (بالكرتون)'}
                     </span>
                     <span className="text-[11px] text-emerald-400 font-mono font-bold" dir="ltr" lang="en">
-                      الطلب المقترح: {toEnglishDigits(suggestedCartons > 0 ? suggestedCartons : 1)} {isPerPiece ? 'حبة' : 'كرتون'}
+                      الطلب المقترح: {orderCalc.needsOrder ? `${toEnglishDigits(orderCalc.suggestedCartons)} ${isPerPiece ? 'حبة' : 'كرتون'} (${toEnglishDigits(orderCalc.totalUnitsToOrder)} وحدة)` : '— (لا يوجد استهلاك)'}
                     </span>
                   </label>
                   <input
