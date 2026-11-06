@@ -209,6 +209,146 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
   return items.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
 }
 
+export interface SupabaseConsumptionHistoryRow {
+  id?: string | number;
+  item_code: string;
+  target_date: string;
+  balance_before: number;
+  quantity_consumed: number;
+  balance_after: number;
+  created_at?: string;
+}
+
+/**
+ * Fetch historical consumption logs for a specific item from `inventory_consumption_history`
+ * filtered by optional startDate and endDate (YYYY-MM-DD).
+ */
+export async function fetchItemConsumptionHistory(
+  itemCode: string,
+  startDate?: string,
+  endDate?: string
+): Promise<SupabaseConsumptionHistoryRow[]> {
+  const code = (itemCode || '').trim().toUpperCase();
+  if (!code) return [];
+
+  // When running in the browser, call the server route which uses getSupabaseAdmin() to safely bypass RLS
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams({ item_code: code });
+    if (startDate && startDate.trim()) params.append('start_date', startDate.trim());
+    if (endDate && endDate.trim()) params.append('end_date', endDate.trim());
+
+    const res = await fetch(`/api/inventory/consumption-history?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.error || `HTTP error ${res.status}`);
+    }
+
+    const json = await res.json();
+    return ((json.data as SupabaseConsumptionHistoryRow[]) || []).map(row => ({
+      id: row.id,
+      item_code: String(row.item_code || code).toUpperCase(),
+      target_date: String(row.target_date || ''),
+      balance_before: Number(row.balance_before ?? 0),
+      quantity_consumed: Number(row.quantity_consumed ?? 0),
+      balance_after: Number(row.balance_after ?? 0),
+      created_at: row.created_at,
+    }));
+  }
+
+  // Server-side fallback
+  let query = supabase
+    .from('inventory_consumption_history')
+    .select('id, item_code, target_date, balance_before, quantity_consumed, balance_after, created_at')
+    .eq('item_code', code)
+    .order('target_date', { ascending: false });
+
+  if (startDate && startDate.trim()) {
+    query = query.gte('target_date', startDate.trim());
+  }
+  if (endDate && endDate.trim()) {
+    query = query.lte('target_date', endDate.trim());
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error(`Error fetching consumption history for ${code}:`, error.message);
+    throw new Error(error.message);
+  }
+
+  return ((data as unknown as SupabaseConsumptionHistoryRow[]) || []).map(row => ({
+    id: row.id,
+    item_code: String(row.item_code || code).toUpperCase(),
+    target_date: String(row.target_date || ''),
+    balance_before: Number(row.balance_before ?? 0),
+    quantity_consumed: Number(row.quantity_consumed ?? 0),
+    balance_after: Number(row.balance_after ?? 0),
+    created_at: row.created_at,
+  }));
+}
+
+/**
+ * Fetch aggregated consumption for all inventory items for a given date range
+ * from `inventory_consumption_history`.
+ * Returns a map of { [item_code: string]: total_quantity_consumed }.
+ */
+export async function fetchAllItemsConsumption(
+  startDate?: string,
+  endDate?: string
+): Promise<Record<string, number>> {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams();
+    if (startDate && startDate.trim()) params.append('start_date', startDate.trim());
+    if (endDate && endDate.trim()) params.append('end_date', endDate.trim());
+
+    const res = await fetch(`/api/inventory/consumption-history?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      console.warn('Failed to fetch all items consumption:', res.status);
+      return {};
+    }
+
+    const json = await res.json();
+    return (json.consumptionByItem as Record<string, number>) || {};
+  }
+
+  // Server-side fallback
+  let query = supabase
+    .from('inventory_consumption_history')
+    .select('item_code, target_date, quantity_consumed');
+
+  if (startDate && startDate.trim()) {
+    query = query.gte('target_date', startDate.trim());
+  }
+  if (endDate && endDate.trim()) {
+    query = query.lte('target_date', endDate.trim());
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.warn('Error fetching all items consumption:', error.message);
+    return {};
+  }
+
+  const map: Record<string, number> = {};
+  for (const row of (data || [])) {
+    const code = String(row.item_code || '').trim().toUpperCase();
+    if (code) {
+      map[code] = (map[code] || 0) + (Number(row.quantity_consumed) || 0);
+    }
+  }
+  return map;
+}
+
 function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): SupabaseSupplier {
   const phoneVal = overrides?.phone_number || overrides?.phone || row?.phone_number || row?.phone || '+966 12 654 3210';
   return {

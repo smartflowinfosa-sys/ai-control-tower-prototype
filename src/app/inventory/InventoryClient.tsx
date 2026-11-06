@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { SupabaseInventoryItem, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { getKdsBatches } from '@/lib/kdsProductionStore';
@@ -17,8 +17,14 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Download } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Download, Clock, Calendar } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+
+// Helper to get YYYY-MM-DD for N days ago
+const getDateStringDaysAgo = (daysAgo: number = 0): string => {
+  const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  return date.toISOString().split('T')[0];
+};
 
 // Helper to ensure all digits are strictly English / Western (0-9), preserving negative numbers cleanly
 const toEnglishDigits = (str: string | number): string => {
@@ -30,6 +36,36 @@ const toEnglishDigits = (str: string | number): string => {
   const trimmed = clean.trim();
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     return new Intl.NumberFormat('en-US', { useGrouping: true }).format(Number(trimmed));
+  }
+  return clean;
+};
+
+// Helper to strictly ensure date strings always use English / Western numerals (YYYY-MM-DD)
+const formatEnglishDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '';
+  return String(dateStr)
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+    .trim();
+};
+
+// Helper to strictly ensure all numbers in strings are English numerals (0-9)
+const toEnglishDigitsStr = (val: string | number | null | undefined): string => {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+    .trim();
+};
+
+// Helper to convert ISO date (YYYY-MM-DD) strictly to DD/MM/YYYY with English numerals
+const formatDisplayDate = (isoDate: string | null | undefined): string => {
+  if (!isoDate) return '';
+  const clean = toEnglishDigitsStr(isoDate).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const [year, month, day] = parts;
+    return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
   }
   return clean;
 };
@@ -201,10 +237,83 @@ export default function InventoryClient({
     initialSupplierMappings || {}
   );
 
+  // Total Historical Consumption for Smart Auto PO (grand total of all rows in inventory_consumption_history)
+  const [totalHistoricalConsumption, setTotalHistoricalConsumption] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchAllItemsConsumption()
+      .then(map => {
+        if (isMounted) {
+          setTotalHistoricalConsumption(map);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load total historical consumption:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Historical Consumption Drawer (Slide-over) State — defaults to Today (Start Date = Today, End Date = Today)
+  const [historyDrawerItem, setHistoryDrawerItem] = useState<SupabaseInventoryItem | null>(null);
+  const [historyStartDate, setHistoryStartDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [historyEndDate, setHistoryEndDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [historyRows, setHistoryRows] = useState<SupabaseConsumptionHistoryRow[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const loadConsumptionHistory = useCallback(
+    async (itemCode: string, start: string, end: string) => {
+      setIsLoadingHistory(true);
+      setHistoryError(null);
+      try {
+        const rows = await fetchItemConsumptionHistory(itemCode, start, end);
+        setHistoryRows(rows);
+      } catch (err: unknown) {
+        console.error('Failed to fetch item consumption history:', err);
+        setHistoryError(
+          err instanceof Error ? err.message : 'تعذر جلب سجل الاستهلاك التاريخي من قاعدة البيانات'
+        );
+        setHistoryRows([]);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    },
+    []
+  );
+
+  const handleOpenHistoryDrawer = (item: SupabaseInventoryItem) => {
+    const defaultStart = getDateStringDaysAgo(0);
+    const defaultEnd = getDateStringDaysAgo(0);
+    setHistoryStartDate(defaultStart);
+    setHistoryEndDate(defaultEnd);
+    setHistoryDrawerItem(item);
+    void loadConsumptionHistory(item.item_code, defaultStart, defaultEnd);
+  };
+
+  const handleHistoryDateChange = (newStart: string, newEnd: string) => {
+    const cleanStart = formatEnglishDate(newStart);
+    const cleanEnd = formatEnglishDate(newEnd);
+    setHistoryStartDate(cleanStart);
+    setHistoryEndDate(cleanEnd);
+    if (historyDrawerItem) {
+      void loadConsumptionHistory(historyDrawerItem.item_code, cleanStart, cleanEnd);
+    }
+  };
+
+  const totalHistoryConsumed = useMemo(
+    () => historyRows.reduce((sum, row) => sum + (Number(row.quantity_consumed) || 0), 0),
+    [historyRows]
+  );
+
   const refreshLiveInventory = useCallback(async () => {
     setIsLoadingInventory(true);
     setLiveFetchError(null);
     try {
+      void fetchAllItemsConsumption().then(map => setTotalHistoricalConsumption(map));
       const liveRows = await fetchInventoryItems();
       const normalized = liveRows
         .map(normalizeLiveInventoryItem)
@@ -876,15 +985,16 @@ export default function InventoryClient({
     return matchCat && matchSearch;
   });
 
-  // Resolves live consumed_quantity from Supabase inventory_items (+ any runtime simulation delta)
+  // Resolves total historical consumed_quantity from inventory_consumption_history (grand total of all rows) (+ any runtime simulation delta)
   const getItemConsumedQuantity = useCallback(
     (item: SupabaseInventoryItem): number => {
-      const dbConsumed = Number(item.consumed_quantity ?? 0);
       const code = String(item.item_code || '').trim().toUpperCase();
+      const historyTotal = totalHistoricalConsumption[code];
+      const baseConsumed = historyTotal !== undefined ? Number(historyTotal) : Number(item.consumed_quantity ?? 0);
       const localAdded = Number(unreplenished[code] ?? 0);
-      return Math.max(0, dbConsumed + localAdded);
+      return Math.max(0, baseConsumed + localAdded);
     },
-    [unreplenished]
+    [totalHistoricalConsumption, unreplenished]
   );
 
   // Smart Auto PO Sorting Engine (strictly driven by live current_stock, reorder_level & consumed_quantity from Supabase)
@@ -1557,6 +1667,15 @@ export default function InventoryClient({
                             </span>
                           )}
                           <span>{getItemDisplayName(item)}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHistoryDrawer(item)}
+                            title="سجل الاستهلاك التاريخي (🕒)"
+                            aria-label={`عرض سجل الاستهلاك للصنف ${getItemDisplayName(item)}`}
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-teal-500/25 border border-white/15 hover:border-teal-400/50 text-white/75 hover:text-teal-200 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-teal-300" />
+                          </button>
                         </div>
                         <div className="text-[11px] text-white/60 font-mono" dir="ltr">{item.item_name_en || std?.nameEn || ''}</div>
                       </td>
@@ -2286,6 +2405,242 @@ export default function InventoryClient({
                 </button>
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* Slide-over Drawer: Detailed Consumption History */}
+      {historyDrawerItem && (() => {
+        const itemCode = historyDrawerItem.item_code.toUpperCase();
+        const stdInfo = getStandardCodeInfo(itemCode);
+
+        return (
+          <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`${getItemDisplayName(historyDrawerItem)} ${itemCode}`}>
+            {/* Backdrop */}
+            <div
+              onClick={() => setHistoryDrawerItem(null)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+            />
+
+            {/* Right-side Slide-over Glassmorphism Panel */}
+            <aside
+              dir="rtl"
+              className="relative z-10 w-full max-w-xl h-full bg-zinc-950/88 backdrop-blur-2xl border-r border-white/20 shadow-[0_0_70px_rgba(0,0,0,0.85)] flex flex-col text-white animate-in slide-in-from-right duration-300"
+            >
+              {/* Drawer Header with Item Name & Code */}
+              <div className="p-5 sm:p-6 border-b border-white/15 bg-white/[0.03]">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/40 text-teal-300">
+                        <Clock className="w-4 h-4" />
+                      </span>
+                      <h3 className="text-base sm:text-lg font-extrabold text-white">
+                        {getItemDisplayName(historyDrawerItem)} {itemCode}
+                      </h3>
+                    </div>
+                    {historyDrawerItem.item_name_en || stdInfo?.nameEn ? (
+                      <p className="text-xs text-white/50 font-mono" dir="ltr">
+                        {historyDrawerItem.item_name_en || stdInfo?.nameEn}
+                      </p>
+                    ) : null}
+
+                    {/* Live Balance: الرصيد المتبقي: */}
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-500/10 border border-teal-400/30 text-xs sm:text-sm mt-1">
+                      <span className="text-white/80 font-bold">الرصيد المتبقي:</span>
+                      <strong className="font-mono font-black text-teal-300 text-sm sm:text-base" dir="ltr">
+                        {toEnglishDigits(historyDrawerItem.current_stock)}
+                      </strong>
+                      <span className="text-white/60 text-xs">وحدة</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryDrawerItem(null)}
+                    className="text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center w-9 h-9 shrink-0"
+                    aria-label="إغلاق"
+                    title="إغلاق"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Range Filter & Presets */}
+              <div className="p-4 sm:p-5 border-b border-white/15 bg-white/[0.02] space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white/85">
+                    <Calendar className="w-3.5 h-3.5 text-teal-300" />
+                    <span>تحديد الفترة:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = getDateStringDaysAgo(0);
+                        handleHistoryDateChange(today, today);
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 cursor-pointer transition-colors"
+                    >
+                      اليوم
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleHistoryDateChange(getDateStringDaysAgo(1), getDateStringDaysAgo(0))}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
+                    >
+                      آخر يومين
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleHistoryDateChange(getDateStringDaysAgo(6), getDateStringDaysAgo(0))}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
+                    >
+                      آخر 7 أيام
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleHistoryDateChange('', '')}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
+                    >
+                      الكل
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-white/75">
+                      من تاريخ (Start Date)
+                    </label>
+                    <div className="relative flex items-center bg-white/8 hover:bg-white/12 border border-white/20 focus-within:border-teal-400/60 rounded-xl px-3 py-2 cursor-pointer transition-all">
+                      <Calendar className="w-3.5 h-3.5 text-teal-300 me-2 shrink-0 pointer-events-none" />
+                      <span dir="ltr" className="font-mono text-xs font-bold text-white select-none tracking-wider">
+                        {formatDisplayDate(historyStartDate) || 'DD/MM/YYYY'}
+                      </span>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        lang="en"
+                        value={toEnglishDigitsStr(historyStartDate)}
+                        onChange={(e) => handleHistoryDateChange(toEnglishDigitsStr(e.target.value), historyEndDate)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-white/75">
+                      إلى تاريخ (End Date)
+                    </label>
+                    <div className="relative flex items-center bg-white/8 hover:bg-white/12 border border-white/20 focus-within:border-teal-400/60 rounded-xl px-3 py-2 cursor-pointer transition-all">
+                      <Calendar className="w-3.5 h-3.5 text-teal-300 me-2 shrink-0 pointer-events-none" />
+                      <span dir="ltr" className="font-mono text-xs font-bold text-white select-none tracking-wider">
+                        {formatDisplayDate(historyEndDate) || 'DD/MM/YYYY'}
+                      </span>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        lang="en"
+                        value={toEnglishDigitsStr(historyEndDate)}
+                        onChange={(e) => handleHistoryDateChange(historyStartDate, toEnglishDigitsStr(e.target.value))}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Body: History Table */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+                {isLoadingHistory ? (
+                  <div className="py-16 flex flex-col items-center justify-center gap-3 text-white/80">
+                    <Loader2 className="w-7 h-7 animate-spin text-teal-300" />
+                    <span className="text-xs font-bold">جاري تحميل سجل الاستهلاك...</span>
+                  </div>
+                ) : historyError ? (
+                  <div className="rounded-2xl bg-rose-500/15 border border-rose-400/35 p-4 text-center space-y-2">
+                    <AlertTriangle className="w-6 h-6 text-rose-300 mx-auto" />
+                    <p className="text-xs font-bold text-rose-200">{historyError}</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        loadConsumptionHistory(historyDrawerItem.item_code, historyStartDate, historyEndDate)
+                      }
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+                    >
+                      إعادة المحاولة
+                    </button>
+                  </div>
+                ) : historyRows.length === 0 ? (
+                  <div className="py-16 px-4 text-center rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+                    <Clock className="w-8 h-8 text-white/40 mx-auto" />
+                    <p className="text-sm font-bold text-white/90">
+                      لا توجد سجلات استهلاك مسجلة في هذه الفترة
+                    </p>
+                    <p className="text-xs text-white/60">
+                      جرّب اختيار تاريخ آخر أو النقر على «الكل» لعرض كافة السجلات.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-white/15 bg-white/[0.03]">
+                    <table className="w-full text-center border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="bg-white/8 border-b border-white/15 text-white font-bold">
+                          <th className="py-3 px-3">التاريخ</th>
+                          <th className="py-3 px-3">الرصيد الافتتاحي</th>
+                          <th className="py-3 px-3">الكمية المستهلكة</th>
+                          <th className="py-3 px-3">الرصيد المتبقي</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/8">
+                        {historyRows.map((row, idx) => (
+                          <tr
+                            key={`${row.item_code}-${row.target_date}-${row.id || idx}`}
+                            className="hover:bg-white/[0.05] transition-colors"
+                          >
+                            <td className="py-3 px-3 font-mono font-bold text-white" dir="ltr">
+                              <span dir="ltr" className="font-mono">{formatDisplayDate(row.target_date)}</span>
+                            </td>
+                            <td className="py-3 px-3 font-mono text-white/85" dir="ltr">
+                              {toEnglishDigits(row.balance_before)}
+                            </td>
+                            <td className="py-3 px-3 font-mono font-black text-amber-300" dir="ltr">
+                              {toEnglishDigits(row.quantity_consumed)}
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold text-emerald-300" dir="ltr">
+                              {toEnglishDigits(row.balance_after)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-white/10 border-t border-white/20 font-extrabold text-white">
+                          <td className="py-3 px-3 text-right" colSpan={2}>
+                            إجمالي المستهلك للفترة:
+                          </td>
+                          <td className="py-3 px-3 font-mono text-amber-300 text-base" dir="ltr">
+                            {toEnglishDigits(totalHistoryConsumed)}
+                          </td>
+                          <td className="py-3 px-3 text-xs text-white/70">وحدة</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="p-4 border-t border-white/15 bg-white/[0.03] flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryDrawerItem(null)}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all cursor-pointer"
+                >
+                  إغلاق النافذة
+                </button>
+              </div>
+            </aside>
           </div>
         );
       })()}
