@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
-import { getKdsBatches } from '@/lib/kdsProductionStore';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
@@ -17,7 +16,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Clock, Calendar } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to get YYYY-MM-DD for N days ago
@@ -507,33 +506,7 @@ export default function InventoryClient({
       .sort((a, b) => compareItemCodes(a.code, b.code));
   }, [inventoryItems]);
 
-  // Real Supabase BOM Packaging Demand State for KDS
-  const [bomDemand, setBomDemand] = useState<Array<{
-    item_code: string;
-    item_name_ar: string;
-    required_units: number;
-    current_stock: number;
-    is_shortage: boolean;
-    shortage_units: number;
-  }>>([]);
-  const [showBomDemand, setShowBomDemand] = useState(false);
 
-
-
-  useEffect(() => {
-    const syncDemand = () => {
-      const kdsBatches = getKdsBatches();
-      calculatePackagingDemand(kdsBatches, inventoryItems).then(res => {
-        setBomDemand(res);
-      }).catch(err => console.error('Error fetching BOM demand:', err));
-    };
-
-    syncDemand();
-    window.addEventListener('kds_batches_updated', syncDemand);
-    return () => {
-      window.removeEventListener('kds_batches_updated', syncDemand);
-    };
-  }, [inventoryItems]);
 
   useEffect(() => {
     const handleStorageError: EventListener = (event) => {
@@ -1728,16 +1701,13 @@ export default function InventoryClient({
         className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 sm:p-7 space-y-4"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/15">
-          <div className="flex flex-wrap items-baseline gap-2.5">
+          <div className="flex items-center gap-2.5">
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               Smart Auto PO
             </h2>
-            <span className="text-xs sm:text-sm font-bold text-white/85">
-              (محرك بناء أوامر الشراء التلقائي بناءً على الاستهلاك)
-            </span>
           </div>
 
-          {/* Controls: Live Refresh, BOM Demand Toggle & Sorting */}
+          {/* Controls: Live Refresh, Date Picker, Export PDF & Sorting */}
           <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
             <button
               type="button"
@@ -1782,23 +1752,6 @@ export default function InventoryClient({
               </button>
             </div>
 
-            {/* Live BOM Packaging Demand Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowBomDemand(!showBomDemand)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                showBomDemand
-                  ? 'bg-teal-500/25 border-teal-400/40 text-teal-200 shadow-sm'
-                  : 'bg-white/10 hover:bg-white/15 border-white/20 text-white/90 hover:text-white'
-              }`}
-            >
-              <Layers3 className="w-3.5 h-3.5 text-teal-300" />
-              <span>{lang === 'en' ? 'BOM Demand (KDS Batches)' : 'احتياج التغليف لخطة المطبخ (BOM)'}</span>
-              <span className="font-mono bg-teal-500/20 px-1.5 py-0.5 rounded text-[10px] text-teal-300 font-bold border border-teal-400/20" dir="ltr">
-                {toEnglishDigits(bomDemand.reduce((acc, d) => acc + d.required_units, 0))} units
-              </span>
-            </button>
-
             {/* Sorting Dropdown Menu */}
             <div className="flex items-center gap-2">
               <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">
@@ -1827,64 +1780,6 @@ export default function InventoryClient({
             </div>
           </div>
         </div>
-
-        {/* Live BOM Packaging Demand Panel */}
-        {showBomDemand && (
-          <div className="bg-teal-500/10 border border-teal-400/30 rounded-2xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Box className="w-4 h-4 text-teal-300" />
-                <h3 className="text-sm font-bold text-white">
-                  {lang === 'en' ? 'Kitchen BOM Packaging Demand vs Stock' : 'مطابقة استهلاك مواد التغليف مع خطة وجبات اليوم (BOM)'}
-                </h3>
-              </div>
-              <span className="text-[11px] text-teal-200/80 font-mono">
-                Real-time Supabase bom_packaging join
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-              {bomDemand.map(d => {
-                const invItem = inventoryItems.find(i => i.item_code.toUpperCase() === d.item_code);
-                return (
-                  <div
-                    key={d.item_code}
-                    className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all ${
-                      d.is_shortage
-                        ? 'bg-rose-500/15 border-rose-400/40 text-rose-200'
-                        : 'bg-white/5 border-white/15 text-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-mono">
-                      <span className="font-bold text-teal-300">{d.item_code}</span>
-                      <span className="text-[10px] text-white/60"><span className="inline-block" dir="ltr">{toEnglishDigits(d.current_stock)}</span> في المستودع</span>
-                    </div>
-                    <div className="font-bold truncate text-[11px]" title={d.item_name_ar}>
-                      {d.item_name_ar}
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/10 font-mono">
-                      <span className="text-white/70">المطلوب للوجبات:</span>
-                      <span className="font-bold text-white">{toEnglishDigits(d.required_units)}</span>
-                    </div>
-                    {d.is_shortage ? (
-                      <button
-                        type="button"
-                        onClick={() => invItem && handleOpenPO(invItem, Math.ceil(d.shortage_units / (CARTON_SIZES[d.item_code] || 1)))}
-                        className="w-full mt-1 py-1 rounded bg-rose-500/30 hover:bg-rose-500/50 border border-rose-400/50 text-[10px] font-bold text-rose-100 cursor-pointer transition-colors"
-                      >
-                        طلب تعويض (+{toEnglishDigits(d.shortage_units)})
-                      </button>
-                    ) : (
-                      <span className="block text-center text-[10px] text-emerald-300 font-bold bg-emerald-500/10 rounded py-0.5 border border-emerald-400/20">
-                        مغطى بالكامل ✓
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
           <table className="w-full text-center border-collapse">
