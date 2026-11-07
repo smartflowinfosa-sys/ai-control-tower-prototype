@@ -17,7 +17,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Download, Clock, Calendar } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Layers3, Box, Clock, Calendar } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to get YYYY-MM-DD for N days ago
@@ -1051,64 +1051,361 @@ export default function InventoryClient({
   const lowStockCount = inventoryItems.filter(i => i.current_stock <= Number(i.reorder_level ?? 0)).length;
 
   /**
-   * Manual Export for Consumption & Inventory Report:
-   * Exports the core inventory and consumption data:
-   * - الرمز (Item Code)
-   * - الصنف (Item Name)
-   * - الرصيد الحالي (Current Stock)
-   * - الحد الأدنى (Reorder Level)
-   * - الكمية المستهلكة (Consumed Quantity)
-   * to a UTF-8 BOM CSV spreadsheet file named `Daily_Consumption_Report_YYYY-MM-DD.csv`.
+   * PDF Export for Daily Consumption Report (Ayman Email Report identical format):
+   * Maps over inventory_items and outputs 5 columns (RTL):
+   * 1. الرمز (item_code)
+   * 2. اسم الصنف (item_name_ar)
+   * 3. الرصيد الافتتاحي (Opening Balance = current_stock + consumed_quantity)
+   * 4. الكمية المستهلكة (consumed_quantity) [Highlighted in green if > 0]
+   * 5. الرصيد الحالي (current_stock)
    */
-  const exportConsumptionReport = useCallback(() => {
-    if (sortedTableItems.length === 0) return;
+  const exportConsumptionReportPdf = useCallback(() => {
+    const itemsToExport = (sortedTableItems.length > 0 ? sortedTableItems : inventoryItems)
+      .slice()
+      .sort((a, b) => compareItemCodes(a.item_code, b.item_code));
 
-    const today = new Date().toISOString().split('T')[0];
-    const headers = [
-      'الرمز',
-      'الصنف',
-      'الرصيد الحالي',
-      'الحد الأدنى',
-      'الكمية المستهلكة',
-    ];
+    if (itemsToExport.length === 0) {
+      setSuccessToast(lang === 'en' ? 'No inventory items to export' : 'لا توجد أصناف لتصدير التقرير');
+      setTimeout(() => setSuccessToast(null), 3000);
+      return;
+    }
 
-    const escapeCsv = (val: string | number | null | undefined): string => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
+    const todayIso = new Date().toISOString().split('T')[0];
+    const displayDate = formatDisplayDate(todayIso);
+
+    const escapeHtml = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return '';
+      return String(val)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     };
 
-    const csvRows = sortedTableItems.map(item => {
-      const code = item.item_code.toUpperCase();
-      const consumed = getItemConsumedQuantity(item);
+    let totalOpening = 0;
+    let totalConsumed = 0;
+    let totalCurrent = 0;
+    let activeConsumedCount = 0;
 
-      return [
-        escapeCsv(code),
-        escapeCsv(getItemDisplayName(item)),
-        escapeCsv(item.current_stock ?? 0),
-        escapeCsv(item.reorder_level ?? 0),
-        escapeCsv(consumed),
-      ].join(',');
-    });
+    const rowsHtml = itemsToExport
+      .map(item => {
+        const code = (item.item_code || '').trim().toUpperCase();
+        const name = item.item_name_ar || getItemDisplayName(item);
+        const consumed = getItemConsumedQuantity(item);
+        const current = Number(item.current_stock ?? 0);
+        const opening = current + consumed;
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...csvRows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Daily_Consumption_Report_${today}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+        totalOpening += opening;
+        totalConsumed += consumed;
+        totalCurrent += current;
+        if (consumed > 0) activeConsumedCount++;
+
+        const isConsumed = consumed > 0;
+
+        return `
+        <tr>
+          <td style="text-align:center;"><span class="item-code">${escapeHtml(code)}</span></td>
+          <td class="item-name">${escapeHtml(name)}</td>
+          <td class="num-cell" style="text-align:center;">${toEnglishDigits(opening)}</td>
+          <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;">${toEnglishDigits(consumed)}</td>
+          <td class="num-cell" style="text-align:center;">${toEnglishDigits(current)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>تقرير الاستهلاك اليومي للمخزون - ${escapeHtml(displayDate)}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      direction: rtl;
+      color: #0f172a;
+      background: #ffffff;
+      margin: 0;
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2.5px solid #059669;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .brand-sub {
+      font-size: 11px;
+      font-weight: 700;
+      color: #059669;
+      margin-bottom: 3px;
+    }
+    .report-title {
+      font-size: 22px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 0;
+    }
+    .header-meta {
+      text-align: left;
+      font-size: 11px;
+      color: #475569;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .date-badge {
+      display: inline-block;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 800;
+      color: #0f172a;
+      direction: ltr;
+      text-align: center;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .metrics-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric-card {
+      flex: 1;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .metric-card.highlight {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+    }
+    .metric-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+    .metric-card.highlight .metric-label {
+      color: #047857;
+    }
+    .metric-value {
+      font-size: 15px;
+      font-weight: 900;
+      color: #0f172a;
+      font-family: monospace;
+    }
+    .metric-card.highlight .metric-value {
+      color: #059669;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #1e293b !important;
+      color: #ffffff !important;
+      font-weight: 800;
+      font-size: 12px;
+    }
+    th:nth-child(1), td:nth-child(1) {
+      width: 12%;
+      text-align: center;
+    }
+    th:nth-child(2), td:nth-child(2) {
+      width: 34%;
+      text-align: right;
+    }
+    th:nth-child(3), td:nth-child(3) {
+      width: 18%;
+      text-align: center;
+    }
+    th:nth-child(4), td:nth-child(4) {
+      width: 18%;
+      text-align: center;
+    }
+    th:nth-child(5), td:nth-child(5) {
+      width: 18%;
+      text-align: center;
+    }
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    .item-code {
+      font-family: monospace;
+      font-weight: 800;
+      color: #0f172a;
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .item-name {
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .num-cell {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .consumed-cell {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .consumed-active {
+      color: #047857 !important;
+      background-color: #d1fae5 !important;
+      font-weight: 900;
+    }
+    .consumed-zero {
+      color: #94a3b8 !important;
+    }
+    .total-row td {
+      background-color: #f1f5f9 !important;
+      font-weight: 900;
+      font-size: 13px;
+      border-top: 2px solid #0f172a;
+    }
+    .footer {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-container">
+    <div>
+      <div class="brand-sub">برج المراقبة والتحكم | Zahi Mawzoon Control Tower</div>
+      <h1 class="report-title">تقرير الاستهلاك اليومي للمخزون</h1>
+    </div>
+    <div class="header-meta">
+      <div><strong>التاريخ:</strong> <span class="date-badge">${escapeHtml(displayDate)}</span></div>
+      <div><strong>إجمالي الأصناف:</strong> ${toEnglishDigits(itemsToExport.length)} صنف</div>
+    </div>
+  </div>
+
+  <div class="metrics-row">
+    <div class="metric-card">
+      <div class="metric-label">الرصيد الافتتاحي الكلي</div>
+      <div class="metric-value">${toEnglishDigits(totalOpening)}</div>
+    </div>
+    <div class="metric-card highlight">
+      <div class="metric-label">إجمالي المستهلك اليوم</div>
+      <div class="metric-value">${toEnglishDigits(totalConsumed)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">الرصيد الحالي المتبقي</div>
+      <div class="metric-value">${toEnglishDigits(totalCurrent)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">أصناف تم استهلاكها اليوم</div>
+      <div class="metric-value">${toEnglishDigits(activeConsumedCount)} / ${toEnglishDigits(itemsToExport.length)}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>الرمز</th>
+        <th>اسم الصنف</th>
+        <th>الرصيد الافتتاحي</th>
+        <th>الكمية المستهلكة</th>
+        <th>الرصيد الحالي</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+    <tfoot>
+      <tr class="total-row">
+        <td colspan="2" style="text-align:center;font-weight:800;">الإجمالي الكلي</td>
+        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(totalOpening)}</td>
+        <td class="consumed-cell consumed-active" style="text-align:center;font-weight:900;">${toEnglishDigits(totalConsumed)}</td>
+        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(totalCurrent)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    <div>نظام برج التحكم الذكي (Smart Auto PO) - تم إنشاء التقرير آلياً ومطابقته مع استهلاك اليوم</div>
+    <div>تاريخ الإصدار: ${escapeHtml(displayDate)}</div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    const printWin = window.open('', '_blank', 'width=1000,height=900');
+    if (!printWin) {
+      let iframe = document.getElementById('consumption-report-print-iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'consumption-report-print-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+      }
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write(htmlDoc);
+        doc.close();
+      }
+    } else {
+      printWin.document.open();
+      printWin.document.write(htmlDoc);
+      printWin.document.close();
+    }
 
     setSuccessToast(
       lang === 'en'
-        ? `Successfully exported consumption report (${toEnglishDigits(csvRows.length)} items)`
-        : `تم تصدير تقرير الاستهلاك بنجاح (${toEnglishDigits(csvRows.length)} صنف)`
+        ? `Preparing PDF report for ${toEnglishDigits(itemsToExport.length)} items...`
+        : `تم تجهيز تقرير PDF للاستهلاك (${toEnglishDigits(itemsToExport.length)} صنف) بنجاح`
     );
     setTimeout(() => setSuccessToast(null), 3500);
-  }, [sortedTableItems, getItemConsumedQuantity, lang, getItemDisplayName]);
+  }, [sortedTableItems, inventoryItems, getItemConsumedQuantity, getItemDisplayName, lang]);
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -1472,16 +1769,16 @@ export default function InventoryClient({
               <span>{lang === 'en' ? 'Sync Live Stock' : 'تحديث الرصيد'}</span>
             </button>
 
-            {/* Manual Export Consumption Report Button */}
+            {/* Manual Export Consumption Report Button (PDF) */}
             <button
               type="button"
-              onClick={exportConsumptionReport}
-              disabled={sortedTableItems.length === 0}
+              onClick={exportConsumptionReportPdf}
+              disabled={sortedTableItems.length === 0 && inventoryItems.length === 0}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-400/40 text-emerald-200 hover:text-white disabled:opacity-50"
-              title="تصدير تقرير الاستهلاك (PDF/Excel)"
+              title="تصدير تقرير الاستهلاك (PDF)"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-300" />
-              <span>{lang === 'en' ? 'Export Consumption Report (PDF/Excel)' : 'تصدير تقرير الاستهلاك (PDF/Excel)'}</span>
+              <FileText className="w-3.5 h-3.5 text-emerald-300" />
+              <span>{lang === 'en' ? 'Export Consumption Report (PDF)' : 'تصدير تقرير الاستهلاك (PDF)'}</span>
             </button>
 
             {/* Live BOM Packaging Demand Toggle */}
