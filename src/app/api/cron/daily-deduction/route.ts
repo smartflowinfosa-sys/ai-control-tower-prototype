@@ -735,10 +735,20 @@ async function executeScheduledDeduction(request: Request) {
       }
 
       // Execute daily inventory deduction RPC for `targetDate`
-      const { data: rpcData, error: rpcError } = await supabase.rpc(
+      // Uses updated `p_target_date` parameter to avoid column reference ambiguity, with fallback to `target_date`
+      let { data: rpcData, error: rpcError } = await supabase.rpc(
         'process_daily_inventory_deduction',
-        { target_date: targetDate }
+        { p_target_date: targetDate }
       );
+
+      if (rpcError && rpcError.code === 'PGRST202') {
+        const fallbackRes = await supabase.rpc(
+          'process_daily_inventory_deduction',
+          { target_date: targetDate }
+        );
+        rpcData = fallbackRes.data;
+        rpcError = fallbackRes.error;
+      }
 
       if (rpcError) {
         throw new Error(
