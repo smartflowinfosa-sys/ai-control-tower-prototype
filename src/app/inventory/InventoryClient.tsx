@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder, calculatePackagingDemand } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { getKdsBatches } from '@/lib/kdsProductionStore';
@@ -264,6 +264,11 @@ export default function InventoryClient({
   const [historyRows, setHistoryRows] = useState<SupabaseConsumptionHistoryRow[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+
+  // PDF Report Date Filter State (specifically for PDF Export, defaults strictly to Today's date)
+  const [pdfStartDate, setPdfStartDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [pdfEndDate, setPdfEndDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
 
   const loadConsumptionHistory = useCallback(
     async (itemCode: string, start: string, end: string) => {
@@ -1051,74 +1056,130 @@ export default function InventoryClient({
   const lowStockCount = inventoryItems.filter(i => i.current_stock <= Number(i.reorder_level ?? 0)).length;
 
   /**
-   * PDF Export for Daily Consumption Report (Ayman Email Report identical format):
-   * Maps over inventory_items and outputs 5 columns (RTL):
-   * 1. الرمز (item_code)
-   * 2. اسم الصنف (item_name_ar)
-   * 3. الرصيد الافتتاحي (Opening Balance = current_stock + consumed_quantity)
-   * 4. الكمية المستهلكة (consumed_quantity) [Highlighted in green if > 0]
-   * 5. الرصيد الحالي (current_stock)
+   * PDF Export for Daily Consumption Report (Physical Cross-Check Report):
+   * 1. Fetches data strictly from `inventory_consumption_history` for [pdfStartDate, pdfEndDate].
+   * 2. Maps `item_code` from history with `inventory_items` to get `item_name_ar`.
+   * 3. 5 Columns in exact Right-To-Left order:
+   *    - الرمز (item_code)
+   *    - اسم الصنف (item_name_ar)
+   *    - الرصيد الافتتاحي (balance_before from history)
+   *    - الكمية المستهلكة (quantity_consumed from history)
+   *    - الرصيد الحالي (balance_after from history)
+   * 4. Grand Totals row accurately sums balance_before, quantity_consumed, balance_after.
    */
-  const exportConsumptionReportPdf = useCallback(() => {
-    const itemsToExport = (sortedTableItems.length > 0 ? sortedTableItems : inventoryItems)
-      .slice()
-      .sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+  const exportConsumptionReportPdf = useCallback(async () => {
+    setIsExportingPdf(true);
 
-    if (itemsToExport.length === 0) {
-      setSuccessToast(lang === 'en' ? 'No inventory items to export' : 'لا توجد أصناف لتصدير التقرير');
-      setTimeout(() => setSuccessToast(null), 3000);
-      return;
-    }
+    try {
+      const start = (pdfStartDate || getDateStringDaysAgo(0)).trim();
+      const end = (pdfEndDate || start).trim();
+      const displayDate = start === end
+        ? formatDisplayDate(start)
+        : `من ${formatDisplayDate(start)} إلى ${formatDisplayDate(end)}`;
 
-    const todayIso = new Date().toISOString().split('T')[0];
-    const displayDate = formatDisplayDate(todayIso);
+      // 1. Fetch from inventory_consumption_history based on selected date in Date Picker
+      const historyRecords = await fetchConsumptionHistoryByDateRange(start, end);
 
-    const escapeHtml = (val: string | number | null | undefined): string => {
-      if (val === null || val === undefined) return '';
-      return String(val)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    };
+      if (!historyRecords || historyRecords.length === 0) {
+        setSuccessToast(
+          lang === 'en'
+            ? `No consumption history records found for ${displayDate}.`
+            : `لا توجد سجلات استهلاك تاريخية محفوظة للتاريخ المحدد (${displayDate}). يرجى اختيار تاريخ تم فيه خصم المخزون.`
+        );
+        setTimeout(() => setSuccessToast(null), 4500);
+        return;
+      }
 
-    let totalOpening = 0;
-    let totalConsumed = 0;
-    let totalCurrent = 0;
-    let activeConsumedCount = 0;
-
-    const rowsHtml = itemsToExport
-      .map(item => {
+      // 2. Map item_code from history with inventory_items array to get item_name_ar
+      const itemNameMap = new Map<string, string>();
+      for (const item of inventoryItems) {
         const code = (item.item_code || '').trim().toUpperCase();
-        const name = item.item_name_ar || getItemDisplayName(item);
-        const consumed = getItemConsumedQuantity(item);
-        const current = Number(item.current_stock ?? 0);
-        const opening = current + consumed;
+        if (code) {
+          itemNameMap.set(code, item.item_name_ar || getItemDisplayName(item));
+        }
+      }
 
-        totalOpening += opening;
-        totalConsumed += consumed;
-        totalCurrent += current;
-        if (consumed > 0) activeConsumedCount++;
+      const getItemNameAr = (code: string): string => {
+        const c = code.trim().toUpperCase();
+        if (itemNameMap.has(c)) return itemNameMap.get(c)!;
+        const std = getStandardCodeInfo(c);
+        return std?.nameAr || c;
+      };
 
-        const isConsumed = consumed > 0;
+      // Group records by item_code (in case multiple days in range)
+      const itemsByCode = new Map<string, SupabaseConsumptionHistoryRow[]>();
+      for (const row of historyRecords) {
+        const code = String(row.item_code || '').trim().toUpperCase();
+        if (!code) continue;
+        if (!itemsByCode.has(code)) {
+          itemsByCode.set(code, []);
+        }
+        itemsByCode.get(code)!.push(row);
+      }
 
-        return `
-        <tr>
-          <td style="text-align:center;"><span class="item-code">${escapeHtml(code)}</span></td>
-          <td class="item-name">${escapeHtml(name)}</td>
-          <td class="num-cell" style="text-align:center;">${toEnglishDigits(opening)}</td>
-          <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;">${toEnglishDigits(consumed)}</td>
-          <td class="num-cell" style="text-align:center;">${toEnglishDigits(current)}</td>
-        </tr>`;
-      })
-      .join('');
+      // 3. Prepare Report Data with exact RTL columns:
+      // [item_code] | [item_name_ar] | [balance_before] | [quantity_consumed] | [balance_after]
+      const reportRows: Array<{
+        item_code: string;
+        item_name_ar: string;
+        balance_before: number;
+        quantity_consumed: number;
+        balance_after: number;
+      }> = [];
 
-    const htmlDoc = `<!DOCTYPE html>
+      for (const [code, rowsForCode] of itemsByCode.entries()) {
+        rowsForCode.sort((a, b) => (a.target_date || '').localeCompare(b.target_date || '') || ((Number(a.id) || 0) - (Number(b.id) || 0)));
+        const earliest = rowsForCode[0];
+        const latest = rowsForCode[rowsForCode.length - 1];
+        const totalConsumed = rowsForCode.reduce((acc, r) => acc + Number(r.quantity_consumed ?? 0), 0);
+
+        reportRows.push({
+          item_code: code,
+          item_name_ar: getItemNameAr(code),
+          balance_before: Number(earliest.balance_before ?? 0),
+          quantity_consumed: totalConsumed,
+          balance_after: Number(latest.balance_after ?? 0),
+        });
+      }
+
+      // Sort by standard item codes (P1, P2, ... P11)
+      reportRows.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+
+      // 4. Grand Totals row accurately summing balance_before, quantity_consumed, and balance_after
+      const grandTotalBefore = reportRows.reduce((acc, r) => acc + r.balance_before, 0);
+      const grandTotalConsumed = reportRows.reduce((acc, r) => acc + r.quantity_consumed, 0);
+      const grandTotalAfter = reportRows.reduce((acc, r) => acc + r.balance_after, 0);
+      const activeConsumedCount = reportRows.filter(r => r.quantity_consumed > 0).length;
+
+      const escapeHtml = (val: string | number | null | undefined): string => {
+        if (val === null || val === undefined) return '';
+        return String(val)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
+      const tableRowsHtml = reportRows
+        .map(row => {
+          const isConsumed = row.quantity_consumed > 0;
+          return `
+          <tr>
+            <td style="text-align:center;"><span class="item-code">${escapeHtml(row.item_code)}</span></td>
+            <td class="item-name">${escapeHtml(row.item_name_ar)}</td>
+            <td class="num-cell" style="text-align:center;">${toEnglishDigits(row.balance_before)}</td>
+            <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;">${toEnglishDigits(row.quantity_consumed)}</td>
+            <td class="num-cell" style="text-align:center;">${toEnglishDigits(row.balance_after)}</td>
+          </tr>`;
+        })
+        .join('');
+
+      const htmlDoc = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <title>تقرير الاستهلاك اليومي للمخزون - ${escapeHtml(displayDate)}</title>
+  <title>تقرير الاستهلاك ومطابقة المخزون - ${escapeHtml(displayDate)}</title>
   <style>
     @page {
       size: A4 portrait;
@@ -1179,6 +1240,16 @@ export default function InventoryClient({
       text-align: center;
       font-family: monospace;
       font-size: 13px;
+    }
+    .source-badge {
+      display: inline-block;
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
     }
     .metrics-row {
       display: flex;
@@ -1308,29 +1379,30 @@ export default function InventoryClient({
     <div>
       <div class="brand-sub">برج المراقبة والتحكم | Zahi Mawzoon Control Tower</div>
       <h1 class="report-title">تقرير الاستهلاك اليومي للمخزون</h1>
+      <span class="source-badge">مطابقة الجرد الفعلي مع استهلاك النظام (سجل الحركات التاريخي)</span>
     </div>
     <div class="header-meta">
-      <div><strong>التاريخ:</strong> <span class="date-badge">${escapeHtml(displayDate)}</span></div>
-      <div><strong>إجمالي الأصناف:</strong> ${toEnglishDigits(itemsToExport.length)} صنف</div>
+      <div><strong>تاريخ التقرير:</strong> <span class="date-badge">${escapeHtml(displayDate)}</span></div>
+      <div><strong>عدد الأصناف:</strong> ${toEnglishDigits(reportRows.length)} صنف</div>
     </div>
   </div>
 
   <div class="metrics-row">
     <div class="metric-card">
-      <div class="metric-label">الرصيد الافتتاحي الكلي</div>
-      <div class="metric-value">${toEnglishDigits(totalOpening)}</div>
+      <div class="metric-label">إجمالي الرصيد الافتتاحي</div>
+      <div class="metric-value">${toEnglishDigits(grandTotalBefore)}</div>
     </div>
     <div class="metric-card highlight">
-      <div class="metric-label">إجمالي المستهلك اليوم</div>
-      <div class="metric-value">${toEnglishDigits(totalConsumed)}</div>
+      <div class="metric-label">إجمالي الكمية المستهلكة</div>
+      <div class="metric-value">${toEnglishDigits(grandTotalConsumed)}</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">الرصيد الحالي المتبقي</div>
-      <div class="metric-value">${toEnglishDigits(totalCurrent)}</div>
+      <div class="metric-label">إجمالي الرصيد الحالي</div>
+      <div class="metric-value">${toEnglishDigits(grandTotalAfter)}</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">أصناف تم استهلاكها اليوم</div>
-      <div class="metric-value">${toEnglishDigits(activeConsumedCount)} / ${toEnglishDigits(itemsToExport.length)}</div>
+      <div class="metric-label">أصناف تم استهلاكها</div>
+      <div class="metric-value">${toEnglishDigits(activeConsumedCount)} / ${toEnglishDigits(reportRows.length)}</div>
     </div>
   </div>
 
@@ -1345,20 +1417,20 @@ export default function InventoryClient({
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml}
+      ${tableRowsHtml}
     </tbody>
     <tfoot>
       <tr class="total-row">
-        <td colspan="2" style="text-align:center;font-weight:800;">الإجمالي الكلي</td>
-        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(totalOpening)}</td>
-        <td class="consumed-cell consumed-active" style="text-align:center;font-weight:900;">${toEnglishDigits(totalConsumed)}</td>
-        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(totalCurrent)}</td>
+        <td colspan="2" style="text-align:center;font-weight:900;">الإجمالي الكلي</td>
+        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalBefore)}</td>
+        <td class="consumed-cell consumed-active" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalConsumed)}</td>
+        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalAfter)}</td>
       </tr>
     </tfoot>
   </table>
 
   <div class="footer">
-    <div>نظام برج التحكم الذكي (Smart Auto PO) - تم إنشاء التقرير آلياً ومطابقته مع استهلاك اليوم</div>
+    <div>نظام برج التحكم الذكي (Smart Auto PO) - مستخرج من جدول سجل الاستهلاك التاريخي (inventory_consumption_history) لمطابقة الجرد الفعلي</div>
     <div>تاريخ الإصدار: ${escapeHtml(displayDate)}</div>
   </div>
 
@@ -1373,39 +1445,51 @@ export default function InventoryClient({
 </body>
 </html>`;
 
-    const printWin = window.open('', '_blank', 'width=1000,height=900');
-    if (!printWin) {
-      let iframe = document.getElementById('consumption-report-print-iframe') as HTMLIFrameElement;
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'consumption-report-print-iframe';
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
+      const printWin = window.open('', '_blank', 'width=1000,height=900');
+      if (!printWin) {
+        let iframe = document.getElementById('consumption-report-print-iframe') as HTMLIFrameElement;
+        if (!iframe) {
+          iframe = document.createElement('iframe');
+          iframe.id = 'consumption-report-print-iframe';
+          iframe.style.position = 'fixed';
+          iframe.style.right = '0';
+          iframe.style.bottom = '0';
+          iframe.style.width = '0';
+          iframe.style.height = '0';
+          iframe.style.border = '0';
+          document.body.appendChild(iframe);
+        }
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(htmlDoc);
+          doc.close();
+        }
+      } else {
+        printWin.document.open();
+        printWin.document.write(htmlDoc);
+        printWin.document.close();
       }
-      const doc = iframe.contentWindow?.document;
-      if (doc) {
-        doc.open();
-        doc.write(htmlDoc);
-        doc.close();
-      }
-    } else {
-      printWin.document.open();
-      printWin.document.write(htmlDoc);
-      printWin.document.close();
-    }
 
-    setSuccessToast(
-      lang === 'en'
-        ? `Preparing PDF report for ${toEnglishDigits(itemsToExport.length)} items...`
-        : `تم تجهيز تقرير PDF للاستهلاك (${toEnglishDigits(itemsToExport.length)} صنف) بنجاح`
-    );
-    setTimeout(() => setSuccessToast(null), 3500);
-  }, [sortedTableItems, inventoryItems, getItemConsumedQuantity, getItemDisplayName, lang]);
+      setSuccessToast(
+        lang === 'en'
+          ? `PDF report prepared successfully for ${toEnglishDigits(reportRows.length)} items (${displayDate})`
+          : `تم تجهيز تقرير PDF لـ (${toEnglishDigits(reportRows.length)}) صنف لتاريخ (${displayDate}) بنجاح`
+      );
+      setTimeout(() => setSuccessToast(null), 3500);
+    } catch (err: unknown) {
+      console.error('Error generating consumption history PDF report:', err);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setSuccessToast(
+        lang === 'en'
+          ? `Failed generating PDF: ${msg}`
+          : `تعذر إنشاء تقرير PDF: ${msg}`
+      );
+      setTimeout(() => setSuccessToast(null), 4000);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [pdfStartDate, pdfEndDate, inventoryItems, getItemDisplayName, lang]);
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -1769,17 +1853,49 @@ export default function InventoryClient({
               <span>{lang === 'en' ? 'Sync Live Stock' : 'تحديث الرصيد'}</span>
             </button>
 
-            {/* Manual Export Consumption Report Button (PDF) */}
-            <button
-              type="button"
-              onClick={exportConsumptionReportPdf}
-              disabled={sortedTableItems.length === 0 && inventoryItems.length === 0}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-400/40 text-emerald-200 hover:text-white disabled:opacity-50"
-              title="تصدير تقرير الاستهلاك (PDF)"
-            >
-              <FileText className="w-3.5 h-3.5 text-emerald-300" />
-              <span>{lang === 'en' ? 'Export Consumption Report (PDF)' : 'تصدير تقرير الاستهلاك (PDF)'}</span>
-            </button>
+            {/* PDF Report Date Picker & Export Button (Strictly defaults to Today) */}
+            <div className="flex flex-wrap items-center gap-2 bg-white/[0.08] hover:bg-white/[0.12] border border-emerald-400/30 rounded-xl px-2.5 py-1.5 shadow-sm transition-all">
+              <div className="flex items-center gap-1.5 text-xs text-white/90">
+                <Calendar className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                <span className="font-bold text-[11px] text-white/80 shrink-0">
+                  {lang === 'en' ? 'Report Date:' : 'تاريخ التقرير:'}
+                </span>
+                <input
+                  type="date"
+                  value={pdfStartDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPdfStartDate(val);
+                    if (pdfEndDate < val) setPdfEndDate(val);
+                  }}
+                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
+                  title={lang === 'en' ? 'Start Date' : 'تاريخ البداية'}
+                />
+                <span className="text-white/40 font-bold">-</span>
+                <input
+                  type="date"
+                  value={pdfEndDate}
+                  onChange={(e) => setPdfEndDate(e.target.value)}
+                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
+                  title={lang === 'en' ? 'End Date' : 'تاريخ النهاية'}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={exportConsumptionReportPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border bg-emerald-600/30 hover:bg-emerald-600/50 border-emerald-400/50 text-emerald-200 hover:text-white disabled:opacity-50 shadow-sm"
+                title={lang === 'en' ? 'Export Consumption Report (PDF)' : 'تصدير تقرير الاستهلاك (PDF)'}
+              >
+                {isExportingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 text-emerald-300 animate-spin" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5 text-emerald-300" />
+                )}
+                <span>{lang === 'en' ? 'Export PDF' : 'تصدير تقرير الاستهلاك (PDF)'}</span>
+              </button>
+            </div>
 
             {/* Live BOM Packaging Demand Toggle */}
             <button

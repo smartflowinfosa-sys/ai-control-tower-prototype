@@ -293,6 +293,76 @@ export async function fetchItemConsumptionHistory(
 }
 
 /**
+ * Fetch detailed consumption history rows for all items within a date range
+ * from `inventory_consumption_history`.
+ */
+export async function fetchConsumptionHistoryByDateRange(
+  startDate?: string,
+  endDate?: string
+): Promise<SupabaseConsumptionHistoryRow[]> {
+  const start = (startDate || '').trim();
+  const end = (endDate || '').trim();
+
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams();
+    if (start) params.append('start_date', start);
+    if (end) params.append('end_date', end);
+
+    const res = await fetch(`/api/inventory/consumption-history?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      console.warn('Failed to fetch consumption history by date range:', res.status);
+      return [];
+    }
+
+    const json = await res.json();
+    return ((json.data as SupabaseConsumptionHistoryRow[]) || []).map(row => ({
+      id: row.id,
+      item_code: String(row.item_code || '').toUpperCase(),
+      target_date: String(row.target_date || ''),
+      balance_before: Number(row.balance_before ?? 0),
+      quantity_consumed: Number(row.quantity_consumed ?? 0),
+      balance_after: Number(row.balance_after ?? 0),
+      created_at: row.created_at,
+    }));
+  }
+
+  // Server-side fallback
+  let query = supabase
+    .from('inventory_consumption_history')
+    .select('id, item_code, target_date, balance_before, quantity_consumed, balance_after, created_at')
+    .order('target_date', { ascending: true })
+    .order('item_code', { ascending: true });
+
+  if (start) {
+    query = query.gte('target_date', start);
+  }
+  if (end) {
+    query = query.lte('target_date', end);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.warn('Error fetching consumption history by date range:', error.message);
+    return [];
+  }
+
+  return ((data as unknown as SupabaseConsumptionHistoryRow[]) || []).map(row => ({
+    id: row.id,
+    item_code: String(row.item_code || '').toUpperCase(),
+    target_date: String(row.target_date || ''),
+    balance_before: Number(row.balance_before ?? 0),
+    quantity_consumed: Number(row.quantity_consumed ?? 0),
+    balance_after: Number(row.balance_after ?? 0),
+    created_at: row.created_at,
+  }));
+}
+
+/**
  * Fetch aggregated consumption for all inventory items for a given date range
  * from `inventory_consumption_history`.
  * Returns a map of { [item_code: string]: total_quantity_consumed }.
