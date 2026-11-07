@@ -265,9 +265,8 @@ export default function InventoryClient({
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // PDF Report Date Filter State (specifically for PDF Export, defaults strictly to Today's date)
-  const [pdfStartDate, setPdfStartDate] = useState<string>(() => getDateStringDaysAgo(0));
-  const [pdfEndDate, setPdfEndDate] = useState<string>(() => getDateStringDaysAgo(0));
+  // PDF Report Single Date Filter State (specifically for daily PDF Export, defaults strictly to Today's date)
+  const [pdfReportDate, setPdfReportDate] = useState<string>(() => getDateStringDaysAgo(0));
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
 
   const loadConsumptionHistory = useCallback(
@@ -1057,7 +1056,7 @@ export default function InventoryClient({
 
   /**
    * PDF Export for Daily Consumption Report (Physical Cross-Check Report):
-   * 1. Fetches data strictly from `inventory_consumption_history` for [pdfStartDate, pdfEndDate].
+   * 1. Fetches data strictly from `inventory_consumption_history` for the selected single day (pdfReportDate).
    * 2. Maps `item_code` from history with `inventory_items` to get `item_name_ar`.
    * 3. 5 Columns in exact Right-To-Left order:
    *    - الرمز (item_code)
@@ -1065,20 +1064,18 @@ export default function InventoryClient({
    *    - الرصيد الافتتاحي (balance_before from history)
    *    - الكمية المستهلكة (quantity_consumed from history)
    *    - الرصيد الحالي (balance_after from history)
-   * 4. Grand Totals row accurately sums balance_before, quantity_consumed, balance_after.
+   * 4. Numbers strictly formatted in standard English digits (0-9).
+   * 5. No grand totals row.
    */
   const exportConsumptionReportPdf = useCallback(async () => {
     setIsExportingPdf(true);
 
     try {
-      const start = (pdfStartDate || getDateStringDaysAgo(0)).trim();
-      const end = (pdfEndDate || start).trim();
-      const displayDate = start === end
-        ? formatDisplayDate(start)
-        : `من ${formatDisplayDate(start)} إلى ${formatDisplayDate(end)}`;
+      const targetDate = (pdfReportDate || getDateStringDaysAgo(0)).trim();
+      const displayDate = formatDisplayDate(targetDate);
 
-      // 1. Fetch from inventory_consumption_history based on selected date in Date Picker
-      const historyRecords = await fetchConsumptionHistoryByDateRange(start, end);
+      // 1. Fetch from inventory_consumption_history based on selected single date
+      const historyRecords = await fetchConsumptionHistoryByDateRange(targetDate, targetDate);
 
       if (!historyRecords || historyRecords.length === 0) {
         setSuccessToast(
@@ -1106,7 +1103,7 @@ export default function InventoryClient({
         return std?.nameAr || c;
       };
 
-      // Group records by item_code (in case multiple days in range)
+      // Group records by item_code (in case multiple records exist for the day)
       const itemsByCode = new Map<string, SupabaseConsumptionHistoryRow[]>();
       for (const row of historyRecords) {
         const code = String(row.item_code || '').trim().toUpperCase();
@@ -1145,11 +1142,6 @@ export default function InventoryClient({
       // Sort by standard item codes (P1, P2, ... P11)
       reportRows.sort((a, b) => compareItemCodes(a.item_code, b.item_code));
 
-      // 4. Grand Totals row accurately summing balance_before, quantity_consumed, and balance_after
-      const grandTotalBefore = reportRows.reduce((acc, r) => acc + r.balance_before, 0);
-      const grandTotalConsumed = reportRows.reduce((acc, r) => acc + r.quantity_consumed, 0);
-      const grandTotalAfter = reportRows.reduce((acc, r) => acc + r.balance_after, 0);
-
       const escapeHtml = (val: string | number | null | undefined): string => {
         if (val === null || val === undefined) return '';
         return String(val)
@@ -1165,11 +1157,11 @@ export default function InventoryClient({
           const isConsumed = row.quantity_consumed > 0;
           return `
           <tr>
-            <td style="text-align:center;"><span class="item-code">${escapeHtml(row.item_code)}</span></td>
+            <td style="text-align:center;"><span class="item-code" dir="ltr">${escapeHtml(row.item_code)}</span></td>
             <td class="item-name">${escapeHtml(row.item_name_ar)}</td>
-            <td class="num-cell" style="text-align:center;">${toEnglishDigits(row.balance_before)}</td>
-            <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;">${toEnglishDigits(row.quantity_consumed)}</td>
-            <td class="num-cell" style="text-align:center;">${toEnglishDigits(row.balance_after)}</td>
+            <td class="num-cell" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.balance_before)}</span></td>
+            <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.quantity_consumed)}</span></td>
+            <td class="num-cell" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.balance_after)}</span></td>
           </tr>`;
         })
         .join('');
@@ -1178,7 +1170,7 @@ export default function InventoryClient({
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <title>تقرير الاستهلاك اليومي للمخزون - ${escapeHtml(displayDate)}</title>
+  <title></title>
   <style>
     @page {
       size: A4 portrait;
@@ -1285,14 +1277,18 @@ export default function InventoryClient({
       font-weight: 700;
       color: #1e293b;
     }
+    .num-cell, .consumed-cell, .date-badge, .item-code {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, monospace;
+      direction: ltr !important;
+      unicode-bidi: isolate;
+      font-variant-numeric: tabular-nums;
+    }
     .num-cell {
-      font-family: monospace;
       font-size: 13px;
       font-weight: 700;
       color: #334155;
     }
     .consumed-cell {
-      font-family: monospace;
       font-size: 13px;
       font-weight: 800;
     }
@@ -1304,12 +1300,6 @@ export default function InventoryClient({
     .consumed-zero {
       color: #94a3b8 !important;
     }
-    .total-row td {
-      background-color: #f1f5f9 !important;
-      font-weight: 900;
-      font-size: 13px;
-      border-top: 2px solid #0f172a;
-    }
   </style>
 </head>
 <body>
@@ -1317,7 +1307,7 @@ export default function InventoryClient({
     <h1 class="report-title">تقرير الاستهلاك اليومي للمخزون</h1>
     <div class="report-date">
       <span>تاريخ التقرير:</span>
-      <span class="date-badge">${escapeHtml(displayDate)}</span>
+      <span class="date-badge"><span dir="ltr">${toEnglishDigitsStr(displayDate)}</span></span>
     </div>
   </div>
 
@@ -1334,18 +1324,13 @@ export default function InventoryClient({
     <tbody>
       ${tableRowsHtml}
     </tbody>
-    <tfoot>
-      <tr class="total-row">
-        <td colspan="2" style="text-align:center;font-weight:900;">الإجمالي الكلي</td>
-        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalBefore)}</td>
-        <td class="consumed-cell consumed-active" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalConsumed)}</td>
-        <td class="num-cell" style="text-align:center;font-weight:900;">${toEnglishDigits(grandTotalAfter)}</td>
-      </tr>
-    </tfoot>
   </table>
 
   <script>
     window.onload = function() {
+      try {
+        document.title = "";
+      } catch (e) {}
       setTimeout(function() {
         window.focus();
         window.print();
@@ -1373,11 +1358,13 @@ export default function InventoryClient({
         if (doc) {
           doc.open();
           doc.write(htmlDoc);
+          doc.title = '';
           doc.close();
         }
       } else {
         printWin.document.open();
         printWin.document.write(htmlDoc);
+        printWin.document.title = '';
         printWin.document.close();
       }
 
@@ -1399,7 +1386,7 @@ export default function InventoryClient({
     } finally {
       setIsExportingPdf(false);
     }
-  }, [pdfStartDate, pdfEndDate, inventoryItems, getItemDisplayName, lang]);
+  }, [pdfReportDate, inventoryItems, getItemDisplayName, lang]);
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -1763,31 +1750,19 @@ export default function InventoryClient({
               <span>{lang === 'en' ? 'Sync Live Stock' : 'تحديث الرصيد'}</span>
             </button>
 
-            {/* PDF Report Date Picker & Export Button (Strictly defaults to Today) */}
+            {/* PDF Report Single Date Picker & Export Button (Strictly defaults to Today) */}
             <div className="flex flex-wrap items-center gap-2 bg-white/[0.08] hover:bg-white/[0.12] border border-emerald-400/30 rounded-xl px-2.5 py-1.5 shadow-sm transition-all">
               <div className="flex items-center gap-1.5 text-xs text-white/90">
                 <Calendar className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                 <span className="font-bold text-[11px] text-white/80 shrink-0">
-                  {lang === 'en' ? 'Report Date:' : 'تاريخ التقرير:'}
+                  {lang === 'en' ? 'Date:' : 'تاريخ التقرير:'}
                 </span>
                 <input
                   type="date"
-                  value={pdfStartDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setPdfStartDate(val);
-                    if (pdfEndDate < val) setPdfEndDate(val);
-                  }}
-                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
-                  title={lang === 'en' ? 'Start Date' : 'تاريخ البداية'}
-                />
-                <span className="text-white/40 font-bold">-</span>
-                <input
-                  type="date"
-                  value={pdfEndDate}
-                  onChange={(e) => setPdfEndDate(e.target.value)}
-                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
-                  title={lang === 'en' ? 'End Date' : 'تاريخ النهاية'}
+                  value={pdfReportDate}
+                  onChange={(e) => setPdfReportDate(e.target.value)}
+                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2.5 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
+                  title={lang === 'en' ? 'Report Date' : 'تاريخ التقرير'}
                 />
               </div>
 
