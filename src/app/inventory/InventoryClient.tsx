@@ -1149,7 +1149,6 @@ export default function InventoryClient({
       const grandTotalBefore = reportRows.reduce((acc, r) => acc + r.balance_before, 0);
       const grandTotalConsumed = reportRows.reduce((acc, r) => acc + r.quantity_consumed, 0);
       const grandTotalAfter = reportRows.reduce((acc, r) => acc + r.balance_after, 0);
-      const activeConsumedCount = reportRows.filter(r => r.quantity_consumed > 0).length;
 
       const escapeHtml = (val: string | number | null | undefined): string => {
         if (val === null || val === undefined) return '';
@@ -1179,7 +1178,7 @@ export default function InventoryClient({
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <title>تقرير الاستهلاك ومطابقة المخزون - ${escapeHtml(displayDate)}</title>
+  <title>تقرير الاستهلاك اليومي للمخزون - ${escapeHtml(displayDate)}</title>
   <style>
     @page {
       size: A4 portrait;
@@ -1204,35 +1203,29 @@ export default function InventoryClient({
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 2.5px solid #059669;
-      padding-bottom: 12px;
-      margin-bottom: 14px;
-    }
-    .brand-sub {
-      font-size: 11px;
-      font-weight: 700;
-      color: #059669;
-      margin-bottom: 3px;
+      border-bottom: 2px solid #059669;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
     }
     .report-title {
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 900;
       color: #0f172a;
       margin: 0;
     }
-    .header-meta {
-      text-align: left;
-      font-size: 11px;
-      color: #475569;
+    .report-date {
       display: flex;
-      flex-direction: column;
-      gap: 3px;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
     }
     .date-badge {
       display: inline-block;
       background: #f1f5f9;
       border: 1px solid #cbd5e1;
-      padding: 4px 10px;
+      padding: 3px 8px;
       border-radius: 6px;
       font-weight: 800;
       color: #0f172a;
@@ -1241,55 +1234,9 @@ export default function InventoryClient({
       font-family: monospace;
       font-size: 13px;
     }
-    .source-badge {
-      display: inline-block;
-      background: #ecfdf5;
-      color: #047857;
-      border: 1px solid #a7f3d0;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 700;
-    }
-    .metrics-row {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .metric-card {
-      flex: 1;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 8px 10px;
-      text-align: center;
-    }
-    .metric-card.highlight {
-      background: #ecfdf5;
-      border-color: #a7f3d0;
-    }
-    .metric-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: #64748b;
-      margin-bottom: 2px;
-    }
-    .metric-card.highlight .metric-label {
-      color: #047857;
-    }
-    .metric-value {
-      font-size: 15px;
-      font-weight: 900;
-      color: #0f172a;
-      font-family: monospace;
-    }
-    .metric-card.highlight .metric-value {
-      color: #059669;
-    }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 14px;
     }
     th, td {
       border: 1px solid #cbd5e1;
@@ -1363,46 +1310,14 @@ export default function InventoryClient({
       font-size: 13px;
       border-top: 2px solid #0f172a;
     }
-    .footer {
-      border-top: 1px solid #e2e8f0;
-      padding-top: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 10px;
-      color: #64748b;
-    }
   </style>
 </head>
 <body>
   <div class="header-container">
-    <div>
-      <div class="brand-sub">برج المراقبة والتحكم | Zahi Mawzoon Control Tower</div>
-      <h1 class="report-title">تقرير الاستهلاك اليومي للمخزون</h1>
-      <span class="source-badge">مطابقة الجرد الفعلي مع استهلاك النظام (سجل الحركات التاريخي)</span>
-    </div>
-    <div class="header-meta">
-      <div><strong>تاريخ التقرير:</strong> <span class="date-badge">${escapeHtml(displayDate)}</span></div>
-      <div><strong>عدد الأصناف:</strong> ${toEnglishDigits(reportRows.length)} صنف</div>
-    </div>
-  </div>
-
-  <div class="metrics-row">
-    <div class="metric-card">
-      <div class="metric-label">إجمالي الرصيد الافتتاحي</div>
-      <div class="metric-value">${toEnglishDigits(grandTotalBefore)}</div>
-    </div>
-    <div class="metric-card highlight">
-      <div class="metric-label">إجمالي الكمية المستهلكة</div>
-      <div class="metric-value">${toEnglishDigits(grandTotalConsumed)}</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">إجمالي الرصيد الحالي</div>
-      <div class="metric-value">${toEnglishDigits(grandTotalAfter)}</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">أصناف تم استهلاكها</div>
-      <div class="metric-value">${toEnglishDigits(activeConsumedCount)} / ${toEnglishDigits(reportRows.length)}</div>
+    <h1 class="report-title">تقرير الاستهلاك اليومي للمخزون</h1>
+    <div class="report-date">
+      <span>تاريخ التقرير:</span>
+      <span class="date-badge">${escapeHtml(displayDate)}</span>
     </div>
   </div>
 
@@ -1428,11 +1343,6 @@ export default function InventoryClient({
       </tr>
     </tfoot>
   </table>
-
-  <div class="footer">
-    <div>نظام برج التحكم الذكي (Smart Auto PO) - مستخرج من جدول سجل الاستهلاك التاريخي (inventory_consumption_history) لمطابقة الجرد الفعلي</div>
-    <div>تاريخ الإصدار: ${escapeHtml(displayDate)}</div>
-  </div>
 
   <script>
     window.onload = function() {
