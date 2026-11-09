@@ -16,7 +16,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 // Helper to get YYYY-MM-DD for N days ago
@@ -487,6 +487,16 @@ export default function InventoryClient({
   const [, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Manual Inventory Adjustment State
+  const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState<boolean>(false);
+  const [adjItemCode, setAdjItemCode] = useState<string>('');
+  const [adjType, setAdjType] = useState<'add' | 'deduct'>('add');
+  const [adjQuantity, setAdjQuantity] = useState<number | string>(1);
+  const [adjReason, setAdjReason] = useState<string>('تسويق');
+  const [adjNotes, setAdjNotes] = useState<string>('');
+  const [isSubmittingAdj, setIsSubmittingAdj] = useState<boolean>(false);
+  const [adjError, setAdjError] = useState<string | null>(null);
+
   // Live inventory items list from Supabase `inventory_items`
   interface RawMaterialItem {
     code: string;
@@ -910,6 +920,87 @@ export default function InventoryClient({
       setReceiptError(err instanceof Error ? err.message : 'حدث خطأ أثناء تأكيد الاستلام');
     } finally {
       setIsSubmittingReceipt(false);
+    }
+  };
+
+  const handleOpenManualAdjustment = (preselectedItemCode?: string) => {
+    const fallbackCode = inventoryItems[0]?.item_code || 'P1';
+    setAdjItemCode(preselectedItemCode || fallbackCode);
+    setAdjType('add');
+    setAdjQuantity(1);
+    setAdjReason('تسويق');
+    setAdjNotes('');
+    setAdjError(null);
+    setIsAdjustmentModalOpen(true);
+  };
+
+  const handleManualAdjustmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdjError(null);
+
+    if (!adjItemCode) {
+      setAdjError(lang === 'en' ? 'Please select an item.' : 'يرجى تحديد الصنف المراد تسويته.');
+      return;
+    }
+
+    const numQty = Number(adjQuantity);
+    if (!Number.isFinite(numQty) || numQty <= 0) {
+      setAdjError(lang === 'en' ? 'Quantity must be greater than 0.' : 'يجب إدخال كمية صحيحة أكبر من صفر.');
+      return;
+    }
+
+    if (!adjReason) {
+      setAdjError(lang === 'en' ? 'Please select a reason.' : 'يرجى اختيار سبب التسوية.');
+      return;
+    }
+
+    const selectedItem = inventoryItems.find(
+      i => (i.item_code || '').toUpperCase() === adjItemCode.toUpperCase()
+    );
+
+    try {
+      setIsSubmittingAdj(true);
+
+      const res = await fetch('/api/inventory/adjust', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          item_code: adjItemCode,
+          adjustment_type: adjType,
+          quantity: numQty,
+          reason: adjReason,
+          notes: adjNotes,
+        }),
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok || !resData?.success) {
+        throw new Error(resData?.error || 'فشلت عملية التسوية المخزنية');
+      }
+
+      const itemLabel = selectedItem ? (selectedItem.item_name_ar || adjItemCode) : adjItemCode;
+      const actionLabel = adjType === 'add' ? 'إضافة' : 'خصم';
+      const successMsg = lang === 'en'
+        ? `Stock adjusted successfully: ${adjType === 'add' ? '+' : '-'}${toEnglishDigits(numQty)} units for (${adjItemCode}).`
+        : `تمت التسوية بنجاح: ${actionLabel} ${toEnglishDigits(numQty)} وحدة للصنف (${adjItemCode} - ${itemLabel})`;
+
+      setSuccessToast(successMsg);
+      setTimeout(() => setSuccessToast(null), 5000);
+
+      setIsAdjustmentModalOpen(false);
+      setAdjNotes('');
+      setAdjError(null);
+
+      // Immediately refresh live stock from database
+      await refreshLiveInventory();
+    } catch (err: unknown) {
+      console.error('Manual adjustment error:', err);
+      setAdjError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع أثناء حفظ التسوية');
+    } finally {
+      setIsSubmittingAdj(false);
     }
   };
 
@@ -1752,6 +1843,17 @@ export default function InventoryClient({
               </button>
             </div>
 
+            {/* Manual Inventory Adjustment Button */}
+            <button
+              type="button"
+              onClick={() => handleOpenManualAdjustment()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-400/30 text-indigo-200 hover:text-white shadow-sm"
+              title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تسوية يدوية للمخزون'}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
+              <span>{lang === 'en' ? 'Manual Adjustment' : 'تسوية يدوية'}</span>
+            </button>
+
             {/* Sorting Dropdown Menu */}
             <div className="flex items-center gap-2">
               <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">
@@ -1868,6 +1970,15 @@ export default function InventoryClient({
                             className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-teal-500/25 border border-white/15 hover:border-teal-400/50 text-white/75 hover:text-teal-200 transition-all cursor-pointer active:scale-95"
                           >
                             <Clock className="w-3.5 h-3.5 text-teal-300" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenManualAdjustment(item.item_code)}
+                            title={lang === 'en' ? `Manual adjustment for ${code}` : `تسوية يدوية للصنف ${code}`}
+                            aria-label={`تسوية يدوية للصنف ${getItemDisplayName(item)}`}
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-indigo-500/25 border border-white/15 hover:border-indigo-400/50 text-white/75 hover:text-indigo-200 transition-all cursor-pointer active:scale-95"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
                           </button>
                         </div>
                         <div className="text-[11px] text-white/60 font-mono" dir="ltr">{item.item_name_en || std?.nameEn || ''}</div>
@@ -2597,6 +2708,243 @@ export default function InventoryClient({
                   {t('inventory.modalCancelBtn')}
                 </button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal: Manual Inventory Adjustment (تسوية يدوية للمخزون) */}
+      {isAdjustmentModalOpen && (() => {
+        const selectedItem = inventoryItems.find(
+          i => (i.item_code || '').toUpperCase() === adjItemCode.toUpperCase()
+        );
+        const currentStock = selectedItem ? Number(selectedItem.current_stock ?? 0) : 0;
+        const numQty = Number(adjQuantity) || 0;
+        const projectedStock = adjType === 'add' ? currentStock + numQty : currentStock - numQty;
+        const willBeNegative = adjType === 'deduct' && numQty > currentStock;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="font-sans bg-black/80 backdrop-blur-2xl rounded-3xl w-full max-w-lg lg:max-w-xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
+              {/* Modal Header */}
+              <div className="flex justify-between items-center border-b border-white/15 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/20 border border-indigo-400/40 rounded-xl text-indigo-300 shrink-0 shadow-inner">
+                    <SlidersHorizontal className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
+                      <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تسوية يدوية للمخزون'}</span>
+                    </h3>
+                    <p className="text-[11px] text-white/70 font-medium">
+                      {lang === 'en'
+                        ? 'Adjust stock balance directly and log the reason in the audit trail.'
+                        : 'تعديل رصيد الصنف مباشرة وتسجيل السبب في سجل العمليات التاريخي.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isSubmittingAdj) {
+                      setIsAdjustmentModalOpen(false);
+                      setAdjError(null);
+                    }
+                  }}
+                  disabled={isSubmittingAdj}
+                  className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                  aria-label={t('common.close')}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Error Banner */}
+              {adjError && (
+                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 flex items-center gap-2 text-xs text-rose-200 animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-300" />
+                  <span>{adjError}</span>
+                </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleManualAdjustmentSubmit} className="space-y-4">
+                {/* 1. Item Selection */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Select Inventory Item:' : 'اختر صنف المخزون المراد تسويته:'}
+                  </label>
+                  <select
+                    value={adjItemCode}
+                    onChange={(e) => setAdjItemCode(e.target.value)}
+                    disabled={isSubmittingAdj}
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                  >
+                    {inventoryItems.map((item) => (
+                      <option key={item.item_code} value={item.item_code} className="bg-zinc-900 text-white py-1">
+                        [{item.item_code}] {item.item_name_ar || getItemDisplayName(item)} — (الرصيد: {toEnglishDigits(item.current_stock)})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Selected Item Stock Card Preview */}
+                  {selectedItem && (
+                    <div className="bg-white/[0.04] border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="font-bold text-white">{getItemDisplayName(selectedItem)}</div>
+                        <div className="text-[11px] text-white/60 font-mono" dir="ltr">{selectedItem.item_code}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-white/60 font-medium">{lang === 'en' ? 'Current Stock' : 'الرصيد الفعلي الحالي'}</div>
+                        <div className="text-sm font-mono font-black text-emerald-300" dir="ltr">
+                          {toEnglishDigits(currentStock)} <span className="text-[10px] font-normal text-white/70">{t('common.unit')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Operation Type (Add / Deduct) */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Adjustment Type:' : 'نوع العملية:'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setAdjType('add')}
+                      disabled={isSubmittingAdj}
+                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                        adjType === 'add'
+                          ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.25)] ring-1 ring-emerald-400/50'
+                          : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <PlusCircle className={`w-4 h-4 ${adjType === 'add' ? 'text-emerald-300' : 'text-white/60'}`} />
+                      <span>{lang === 'en' ? 'Add Stock (+)' : 'إضافة رصيد (+)'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjType('deduct')}
+                      disabled={isSubmittingAdj}
+                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                        adjType === 'deduct'
+                          ? 'bg-rose-500/25 border-rose-400 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.25)] ring-1 ring-rose-400/50'
+                          : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <MinusCircle className={`w-4 h-4 ${adjType === 'deduct' ? 'text-rose-300' : 'text-white/60'}`} />
+                      <span>{lang === 'en' ? 'Deduct Stock (-)' : 'خصم رصيد (-)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Quantity Input & Projected Stock Preview */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Quantity (Units):' : 'الكمية المراد تسويتها (بالوحدة):'}
+                    </label>
+                    {selectedItem && (
+                      <span className="text-[11px] font-mono text-white/70">
+                        {lang === 'en' ? 'Projected:' : 'الرصيد المتوقع بعد العملية:'}{' '}
+                        <strong className={`font-black ${willBeNegative ? 'text-rose-400' : 'text-indigo-300'}`} dir="ltr">
+                          {toEnglishDigits(projectedStock)}
+                        </strong>
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={adjQuantity}
+                    onChange={(e) => setAdjQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    disabled={isSubmittingAdj}
+                    required
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark]"
+                    placeholder="1"
+                  />
+                  {willBeNegative && (
+                    <p className="text-[11px] text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{lang === 'en' ? 'Notice: Deducting this quantity exceeds current stock.' : 'تنبيه: الكمية المخصومة أكبر من الرصيد الفعلي المتوفر حالياً.'}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* 4. Reason Dropdown */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Adjustment Reason:' : 'سبب التسوية:'}
+                  </label>
+                  <select
+                    value={adjReason}
+                    onChange={(e) => setAdjReason(e.target.value)}
+                    disabled={isSubmittingAdj}
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                  >
+                    <option value="تسويق" className="bg-zinc-900 text-white">تسويق (Marketing)</option>
+                    <option value="تعويض عميل" className="bg-zinc-900 text-white">تعويض عميل (Customer Compensation)</option>
+                    <option value="توالف" className="bg-zinc-900 text-white">توالف (Spoilage)</option>
+                    <option value="استلام مشتريات" className="bg-zinc-900 text-white">استلام مشتريات (New Stock / Purchases)</option>
+                    <option value="أخرى" className="bg-zinc-900 text-white">أخرى (Other)</option>
+                  </select>
+                </div>
+
+                {/* 5. Notes */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Notes / Justification (Optional):' : 'ملاحظات وتفاصيل إضافية (اختياري):'}
+                  </label>
+                  <textarea
+                    value={adjNotes}
+                    onChange={(e) => setAdjNotes(e.target.value)}
+                    disabled={isSubmittingAdj}
+                    rows={2}
+                    placeholder={
+                      lang === 'en'
+                        ? 'e.g. Voucher number, receiver name, campaign details...'
+                        : 'مثال: رقم إذن الصرف، اسم المستلم، تفاصيل الحملة الإعلانية...'
+                    }
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none"
+                  />
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isSubmittingAdj) {
+                        setIsAdjustmentModalOpen(false);
+                        setAdjError(null);
+                      }
+                    }}
+                    disabled={isSubmittingAdj}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAdj || !adjItemCode || !adjQuantity || Number(adjQuantity) <= 0}
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold rounded-xl border border-indigo-400/50 shadow-lg shadow-indigo-500/25 transition-all text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmittingAdj ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                        <span>{lang === 'en' ? 'Processing...' : 'جاري الحفظ...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span>{lang === 'en' ? 'Confirm Adjustment' : 'تأكيد التسوية'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         );
