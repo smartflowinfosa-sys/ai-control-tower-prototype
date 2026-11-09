@@ -104,12 +104,55 @@ const DEFAULT_BRANCHES = [
   'مكة المكرمة (فرع التوصيل)',
 ];
 
+/**
+ * Fixed comprehensive list of all known Zahi packages.
+ * Always populated in the Package Name filter dropdown regardless of current date data.
+ */
+export const DEFAULT_PACKAGE_NAMES = [
+  'الكل',
+  // غداء ومنيو العمل
+  'غداء العمل - وجبة رئيسية + 1 سناك',
+  'منيو العمل - 1 وجبة عمل+ 1 سناك',
+
+  // باقات نزول الوزن
+  'نزول وزن - فطور + وجبة رئيسية + 1 سناك',
+  'نزول وزن - وجبتين + 1 سناك',
+  'نزول وزن - فطور + وجبتين رئيسية + 1 سناك',
+  'نزول وزن - 3 وجبات رئيسية + 1 سناك',
+
+  // باقات التخسيس المضاعف
+  'تخسيس مضاعف - فطور + وجبة رئيسية + 1 سناك',
+  'تخسيس مضاعف - وجبتين + 1 سناك',
+  'تخسيس مضاعف - 1 فطور + وجبتين رئيسية + 1 سناك',
+  'تخسيس مضاعف - 3 وجبات رئيسية + 1 سناك',
+
+  // باقات لو كارب (Low Carb)
+  'لو كارب - فطور + وجبة رئيسية + 1 سناك',
+  'لو كارب - وجبتين + 1 سناك',
+  'لو كارب - 1 فطور + وجبتين رئيسية + 1 سناك',
+  'لو كارب - 3 وجبات رئيسية + 1 سناك',
+
+  // باقات لايف ستايل (Lifestyle)
+  'لايف ستايل - فطور + وجبة رئيسية + 1 سناك',
+  'لايف ستايل - وجبتين + 1 سناك',
+  'لايف ستايل - فطور + وجبتين رئيسية + 1 سناك',
+  'لايف ستايل - 3 وجبات رئيسية + 1 سناك',
+];
+
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 
 function normalizeAr(text: string): string {
   return text.trim().replace(/ة/g, 'ه').replace(/[أإآ]/g, 'ا').toLowerCase();
+}
+
+function normalizePackageName(text: string): string {
+  return normalizeAr(text)
+    .replace(/\+/g, ' + ')
+    .replace(/-/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function escapeCsvCell(value: string | number | null | undefined): string {
@@ -394,16 +437,18 @@ export default function PackagingClient() {
   }, [rows]);
 
   const packageNameOptions = useMemo(() => {
-    const set = new Set<string>(['الكل']);
+    const set = new Set<string>(DEFAULT_PACKAGE_NAMES);
     for (const r of rows) {
       const name = (r.packageName || r.planName || '').trim();
       if (name && name !== '-') {
-        set.add(name);
+        const norm = normalizePackageName(name);
+        const alreadyExists = Array.from(set).some((p) => normalizePackageName(p) === norm);
+        if (!alreadyExists) {
+          set.add(name);
+        }
       }
     }
-    const [all, ...rest] = Array.from(set);
-    rest.sort((a, b) => a.localeCompare(b, 'ar'));
-    return [all, ...rest].map((v) => ({ value: v, label: v }));
+    return Array.from(set).map((v) => ({ value: v, label: v }));
   }, [rows]);
 
   // Instant in-memory filtering (prevents redundant external API calls)
@@ -431,7 +476,9 @@ export default function PackagingClient() {
       // Package Name filter
       if (packageNameFilter !== 'الكل') {
         const itemPkg = (r.packageName || r.planName || '').trim();
-        if (normalizeAr(itemPkg) !== normalizeAr(packageNameFilter)) return false;
+        if (normalizePackageName(itemPkg) !== normalizePackageName(packageNameFilter)) {
+          return false;
+        }
       }
 
       // Service Type filter
