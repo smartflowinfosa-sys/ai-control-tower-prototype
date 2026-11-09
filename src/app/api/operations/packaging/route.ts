@@ -35,6 +35,7 @@ export interface PackagingDbRow {
   techrar_id: number;
   subscription_number: string;
   customer_name: string;
+  package_name?: string;
   district: string;
   dispatch_branch: string;
   service_type: string;
@@ -201,10 +202,21 @@ function transformTechrarItem(
     ? toCleanString(cityObj.name_ar) || toCleanString(cityObj.name_en)
     : toCleanString(raw.city);
 
+  const packageName = (
+    toCleanString(raw.package_name) ||
+    toCleanString(raw.name_ar) ||
+    toCleanString(raw.name) ||
+    toCleanString(raw.subscription_name) ||
+    toCleanString(raw.plan_name) ||
+    toCleanString(raw.name_en) ||
+    '-'
+  ).slice(0, 255);
+
   const dbRow: PackagingDbRow = {
     techrar_id: techrarId,
     subscription_number: subscriptionNumber,
     customer_name: customerName,
+    package_name: packageName,
     district,
     dispatch_branch: dispatchBranch,
     service_type: serviceType,
@@ -216,7 +228,7 @@ function transformTechrarItem(
   };
 
   const meta: ExtraPackagingMeta = {
-    plan_name: toCleanString(raw.name_ar) || toCleanString(raw.name_en) || '-',
+    plan_name: packageName,
     subscription_days: subscriptionDays,
     district_group: toCleanString(raw.district_group) || '-',
     item_1: mealNames[0] || '-',

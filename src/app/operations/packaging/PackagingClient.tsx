@@ -32,6 +32,7 @@ interface ApiPackagingItem {
   techrar_id?: number;
   subscription_number?: string;
   customer_name?: string;
+  package_name?: string;
   district?: string;
   dispatch_branch?: string;
   service_type?: string;
@@ -58,6 +59,7 @@ interface PackagingTableRow {
   techrarId: number;
   subscriptionNumber: string;
   customerName: string;
+  packageName: string;
   planName: string;
   notes: string;
   itemsCount: number;
@@ -142,12 +144,14 @@ function triggerCsvDownload(filename: string, headers: string[], rows: (string |
 
 function mapApiRow(item: ApiPackagingItem, index: number): PackagingTableRow {
   const techrarId = Number(item.techrar_id ?? index + 1);
+  const pkgName = item.package_name || item.plan_name || '-';
   return {
     key: `${item.id || techrarId}-${index}`,
     techrarId,
     subscriptionNumber: item.subscription_number || '-',
     customerName: item.customer_name || '-',
-    planName: item.plan_name || '-',
+    packageName: pkgName,
+    planName: pkgName,
     notes: item.notes || '-',
     itemsCount: Number.isFinite(Number(item.items_count)) ? Number(item.items_count) : 0,
     subscriptionDays:
@@ -434,6 +438,7 @@ export default function PackagingClient() {
         const haystack = [
           r.subscriptionNumber,
           r.customerName,
+          r.packageName,
           r.planName,
           r.notes,
           r.district,
@@ -515,7 +520,7 @@ export default function PackagingClient() {
       'الرقم',
       'رقم الاشتراك',
       'اسم العميل',
-      'الاسم',
+      'اسم الباقة',
       'ملاحظات',
       'عدد الأصناف',
       'عدد أيام الاشتراك',
@@ -651,7 +656,7 @@ export default function PackagingClient() {
         <th>الرقم</th>
         <th>رقم الاشتراك</th>
         <th>اسم العميل</th>
-        <th>الاسم</th>
+        <th>اسم الباقة</th>
         <th>ملاحظات</th>
         <th>عدد الأصناف</th>
         <th>عدد أيام الاشتراك</th>
@@ -701,7 +706,7 @@ export default function PackagingClient() {
       'الرقم',
       'رقم الاشتراك',
       'اسم العميل',
-      'الاسم',
+      'اسم الباقة',
       'ملاحظات',
       'الحي',
       'نافذة التوصيل',
@@ -763,7 +768,7 @@ export default function PackagingClient() {
       'الرقم',
       'رقم الاشتراك',
       'اسم العميل',
-      'الباقة (الاسم)',
+      'اسم الباقة',
       'عدد الأصناف',
       'الصنف 1',
       'الصنف 2',
@@ -1118,7 +1123,7 @@ export default function PackagingClient() {
                 <th scope="col" className="py-3.5 px-3 text-center w-14">الرقم</th>
                 <th scope="col" className="py-3.5 px-3">رقم الاشتراك</th>
                 <th scope="col" className="py-3.5 px-3 min-w-[200px] max-w-[220px]">اسم العميل</th>
-                <th scope="col" className="py-3.5 px-3 min-w-[200px] max-w-[240px]">الاسم</th>
+                <th scope="col" className="py-3.5 px-3 min-w-[200px] max-w-[240px]">اسم الباقة</th>
                 <th scope="col" className="py-3.5 px-2 w-[100px] max-w-[120px]">ملاحظات</th>
                 <th scope="col" className="py-3.5 px-3 text-center">عدد الأصناف</th>
                 <th scope="col" className="py-3.5 px-3 text-center">عدد أيام الاشتراك</th>
@@ -1185,9 +1190,9 @@ export default function PackagingClient() {
                         {row.customerName}
                       </td>
 
-                      {/* 4. الاسم (Wrapping enabled) */}
+                      {/* 4. اسم الباقة (Wrapping enabled) */}
                       <td className="py-3 px-3 text-xs text-white/90 min-w-[200px] max-w-[240px] whitespace-normal break-words leading-snug">
-                        {row.planName}
+                        {row.packageName || row.planName}
                       </td>
 
                       {/* 5. ملاحظات (Narrow width with truncation) */}

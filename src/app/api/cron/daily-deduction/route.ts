@@ -36,6 +36,7 @@ interface PackagingDbRow {
   techrar_id: number;
   subscription_number: string;
   customer_name: string;
+  package_name?: string;
   district: string;
   dispatch_branch: string;
   service_type: string;
@@ -545,6 +546,16 @@ async function fetchAndSyncPackaging(
           toCleanString(raw.customer_name ?? raw.client_name ?? raw.customer) || 'عميل غير مسجل'
         ).slice(0, 255);
 
+        const packageName = (
+          toCleanString(raw.package_name) ||
+          toCleanString(raw.name_ar) ||
+          toCleanString(raw.name) ||
+          toCleanString(raw.subscription_name) ||
+          toCleanString(raw.plan_name) ||
+          toCleanString(raw.name_en) ||
+          '-'
+        ).slice(0, 255);
+
         const district = (
           toCleanString(raw.district_ar) ||
           toCleanString(raw.district) ||
@@ -566,6 +577,7 @@ async function fetchAndSyncPackaging(
           techrar_id: techrarId,
           subscription_number: subscriptionNumber,
           customer_name: customerName,
+          package_name: packageName,
           district,
           dispatch_branch: dispatchBranch,
           service_type: serviceType,
