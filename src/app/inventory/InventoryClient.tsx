@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from 'react';
 import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
@@ -24,8 +24,17 @@ import timezone from 'dayjs/plugin/timezone';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.locale('en');
 
 const SAUDI_TZ = 'Asia/Riyadh';
+
+// Enforce standard English font & Western Arabic numerals (0-9) via CSS & OpenType features
+const englishNumericStyle: CSSProperties = {
+  fontFamily: 'var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
+  fontFeatureSettings: '"locl" 0, "lnum" 1, "tnum" 1',
+  fontVariantNumeric: 'lining-nums tabular-nums',
+  direction: 'ltr',
+};
 
 const ZAHI_PACKAGE_OPTIONS = [
   'غداء العمل - وجبة رئيسية + 1 سناك',
@@ -58,12 +67,14 @@ const getDateStringDaysAgo = (daysAgo: number = 0): string => {
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
+    return Number(str).toLocaleString('en-US');
   }
-  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str)
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
   const trimmed = clean.trim();
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(Number(trimmed));
+    return Number(trimmed).toLocaleString('en-US');
   }
   return clean;
 };
@@ -516,9 +527,9 @@ export default function InventoryClient({
   const [, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Manual Inventory Adjustment & Subscription Deconstruction Modal State
+  // Manual Inventory Adjustment & Subscription Requests Modal State
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState<boolean>(false);
-  const [adjActiveTab, setAdjActiveTab] = useState<'single' | 'deconstruct'>('single');
+  const [adjActiveTab, setAdjActiveTab] = useState<'single' | 'deconstruct'>('deconstruct');
   const [adjItemCode, setAdjItemCode] = useState<string>('');
   const [adjType, setAdjType] = useState<'add' | 'deduct'>('add');
   const [adjQuantity, setAdjQuantity] = useState<number | string>(1);
@@ -999,7 +1010,7 @@ export default function InventoryClient({
     }
   };
 
-  const handleOpenManualAdjustment = (preselectedItemCode?: string, initialTab: 'single' | 'deconstruct' = 'single') => {
+  const handleOpenManualAdjustment = (preselectedItemCode?: string, initialTab: 'single' | 'deconstruct' = 'deconstruct') => {
     const fallbackCode = inventoryItems[0]?.item_code || 'P1';
     setAdjActiveTab(initialTab);
     setAdjItemCode(preselectedItemCode || fallbackCode);
@@ -1023,7 +1034,7 @@ export default function InventoryClient({
         isCutoffExceeded: false,
       };
     }
-    const deliveryDayAST = dayjs.tz(cleanDate, SAUDI_TZ).startOf('day');
+    const deliveryDayAST = dayjs.tz(cleanDate, SAUDI_TZ).locale('en').startOf('day');
     if (!deliveryDayAST.isValid()) {
       return {
         isValid: false,
@@ -1032,15 +1043,16 @@ export default function InventoryClient({
         isCutoffExceeded: false,
       };
     }
-    const prepDayAST = deliveryDayAST.subtract(2, 'day');
+    const prepDayAST = deliveryDayAST.subtract(2, 'day').locale('en');
     const cutoffDeadlineAST = prepDayAST.hour(21).minute(0).second(0).millisecond(0);
-    const nowAST = dayjs().tz(SAUDI_TZ);
+    const nowAST = dayjs().tz(SAUDI_TZ).locale('en');
     const isCutoffExceeded = nowAST.isAfter(cutoffDeadlineAST);
 
+    const prepDayFormatted = toEnglishDigitsStr(prepDayAST.locale('en').format('YYYY-MM-DD'));
     return {
       isValid: true,
-      prepDay: prepDayAST.format('YYYY-MM-DD'),
-      cutoffFormatted: `${prepDayAST.format('YYYY-MM-DD')} (09:00 PM AST)`,
+      prepDay: prepDayFormatted,
+      cutoffFormatted: `${prepDayFormatted} (09:00 PM AST)`,
       isCutoffExceeded,
     };
   }, [deconstructTargetDate]);
@@ -2287,9 +2299,9 @@ export default function InventoryClient({
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleOpenManualAdjustment(item.item_code)}
-                            title={lang === 'en' ? `Manual adjustment for ${code}` : `تسوية يدوية للصنف ${code}`}
-                            aria-label={`تسوية يدوية للصنف ${getItemDisplayName(item)}`}
+                            onClick={() => handleOpenManualAdjustment(item.item_code, 'single')}
+                            title={lang === 'en' ? `Adjust stock for ${code}` : `تعديل رصيد الصنف ${code}`}
+                            aria-label={`تعديل رصيد الصنف ${getItemDisplayName(item)}`}
                             className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-indigo-500/25 border border-white/15 hover:border-indigo-400/50 text-white/75 hover:text-indigo-200 transition-all cursor-pointer active:scale-95"
                           >
                             <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
@@ -3043,7 +3055,13 @@ export default function InventoryClient({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="font-sans bg-black/85 backdrop-blur-2xl rounded-3xl w-full max-w-2xl lg:max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.75)] relative flex flex-col">
+            <div
+              className="font-sans bg-black/85 backdrop-blur-2xl rounded-3xl w-full max-w-2xl lg:max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.75)] relative flex flex-col tabular-nums"
+              style={{
+                fontFeatureSettings: '"locl" 0, "lnum" 1, "tnum" 1',
+                fontVariantNumeric: 'lining-nums tabular-nums',
+              }}
+            >
               {/* Modal Header */}
               <div className="flex justify-between items-center border-b border-white/15 pb-3.5">
                 <div className="flex items-center gap-3">
@@ -3056,8 +3074,8 @@ export default function InventoryClient({
                     </h3>
                     <p className="text-[11px] text-white/70 font-medium">
                       {lang === 'en'
-                        ? 'Single item adjustment or bulk subscription deconstruction with Smart Cut-off protection.'
-                        : 'تعديل رصيد صنف مفرد أو إرجاع وتفكيك اشتراك كامل وفق منطق الإغلاق الذكي (BOM).'}
+                        ? 'Manage subscriber meal cancellation or adjust single item balance with Smart Cut-off protection.'
+                        : 'إدارة طلبات المشتركين وتفكيك الوجبات أو تعديل رصيد صنف محدد وفق منطق الإغلاق الذكي (BOM).'}
                     </p>
                   </div>
                 </div>
@@ -3079,22 +3097,7 @@ export default function InventoryClient({
 
               {/* 2 DISTINCT TABS SWITCHER */}
               <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-white/[0.04] border border-white/15 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAdjActiveTab('single');
-                    setAdjError(null);
-                  }}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                    adjActiveTab === 'single'
-                      ? 'bg-indigo-600/40 border border-indigo-400/60 text-white shadow-[0_0_20px_rgba(99,102,241,0.25)]'
-                      : 'text-white/65 hover:text-white hover:bg-white/5 border border-transparent'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-4 h-4 text-indigo-300 shrink-0" />
-                  <span>تعديل صنف مفرد</span>
-                </button>
-
+                {/* TAB 1: إدارة طلبات المشتركين (Subscription Requests / Deconstruction - DEFAULT) */}
                 <button
                   type="button"
                   onClick={() => {
@@ -3108,7 +3111,24 @@ export default function InventoryClient({
                   }`}
                 >
                   <Package className="w-4 h-4 text-emerald-300 shrink-0" />
-                  <span>إرجاع وتفكيك اشتراك</span>
+                  <span>{lang === 'en' ? 'Subscriber Requests' : 'إدارة طلبات المشتركين'}</span>
+                </button>
+
+                {/* TAB 2: تعديل رصيد صنف محدد (Single Item Adjustment) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjActiveTab('single');
+                    setAdjError(null);
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    adjActiveTab === 'single'
+                      ? 'bg-indigo-600/40 border border-indigo-400/60 text-white shadow-[0_0_20px_rgba(99,102,241,0.25)]'
+                      : 'text-white/65 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-indigo-300 shrink-0" />
+                  <span>{lang === 'en' ? 'Item Balance Adjustment' : 'تعديل رصيد صنف محدد'}</span>
                 </button>
               </div>
 
@@ -3121,7 +3141,397 @@ export default function InventoryClient({
               )}
 
               {/* ========================================================================
-                  TAB 1: تعديل صنف مفرد (Single Item Adjustment)
+                  TAB 1: إدارة طلبات المشتركين (Subscription Requests / Deconstruction)
+                 ======================================================================== */}
+              {adjActiveTab === 'deconstruct' && (
+                <form onSubmit={handleDeconstructSubmit} className="space-y-4">
+                  {/* 1. Inputs: Subscription ID & Target Date + Fetch Meal Data Button */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-white/[0.03] border border-white/15 rounded-2xl p-3.5">
+                    <div className="sm:col-span-5 space-y-1.5">
+                      <label className="block text-xs font-bold text-white/90">
+                        رقم الاشتراك (Subscription ID):
+                      </label>
+                      <input
+                        type="text"
+                        value={deconstructSubId}
+                        onChange={(e) => {
+                          setDeconstructSubId(toEnglishDigitsStr(e.target.value));
+                          setDeconstructFetched(false);
+                        }}
+                        disabled={isSubmittingAdj || isFetchingMealData}
+                        placeholder="مثال: 2703326 أو 2578389"
+                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-mono font-bold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 tabular-nums"
+                        style={englishNumericStyle}
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4 space-y-1.5">
+                      <label className="block text-xs font-bold text-white/90">
+                        تاريخ الإلغاء (Target Date):
+                      </label>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        lang="en"
+                        value={deconstructTargetDate}
+                        onChange={(e) => {
+                          setDeconstructTargetDate(formatEnglishDate(e.target.value));
+                          setDeconstructFetched(false);
+                          setIsDeconstructAdminOverride(false);
+                        }}
+                        disabled={isSubmittingAdj || isFetchingMealData}
+                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer tabular-nums"
+                        style={englishNumericStyle}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3 flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleFetchMealData()}
+                        disabled={isFetchingMealData || isSubmittingAdj || !deconstructSubId.trim()}
+                        className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-extrabold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/50 text-emerald-100 hover:text-white transition-all cursor-pointer shadow-sm disabled:opacity-45 disabled:cursor-not-allowed"
+                      >
+                        {isFetchingMealData ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300 shrink-0" />
+                            <span>جاري الجلب...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            <span>جلب بيانات الوجبة</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Prep Day & Cut-off Time Info Bar */}
+                    {deconstructCutoffState.isValid && (
+                      <div className="sm:col-span-12 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] text-white/75">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+                          <span>يوم التحضير في المطبخ (قبل التوصيل بيومين):</span>
+                          <strong className="font-mono text-white tabular-nums" style={englishNumericStyle} dir="ltr">
+                            {deconstructCutoffState.prepDay}
+                          </strong>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span>آخر موعد مسموح للإرجاع للمخزون:</span>
+                          <strong
+                            className={`font-mono tabular-nums ${
+                              isCutoffExceeded ? 'text-rose-300' : 'text-emerald-300'
+                            }`}
+                            style={englishNumericStyle}
+                            dir="ltr"
+                          >
+                            {deconstructCutoffState.cutoffFormatted}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. THE SMART BLOCK LOGIC (UI Level) */}
+                  {isCutoffExceeded && (
+                    <div className="bg-rose-950/80 border-2 border-rose-500/60 rounded-2xl p-4 space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.2)] animate-in fade-in">
+                      <div className="flex items-start gap-3">
+                        <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="text-xs sm:text-sm font-extrabold text-rose-100 leading-relaxed">
+                            ⚠️ تم تحضير الوجبة مسبقاً (تجاوزت الساعة{' '}
+                            <span className="font-mono font-black" style={englishNumericStyle} dir="ltr">09:00 PM</span>{' '}
+                            من يوم التحضير). لا يمكن إرجاع المواد للمخزون.
+                          </p>
+                          <p className="text-[11px] text-rose-200/80">
+                            نظراً لتجاوز موعد الإغلاق النهائي ليوم التحضير ({' '}
+                            <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">{deconstructCutoffState.prepDay}</span>{' '}
+                            -{' '}
+                            <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">09:00 PM</span>{' '}
+                            بتوقيت السعودية)، تم استهلاك وتغليف المواد فعلياً في المطبخ.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Admin Override Checkbox (Only shown if logged-in user is Admin) */}
+                      {isAdminUser && (
+                        <label className="flex items-center gap-2.5 pt-2.5 border-t border-rose-400/30 cursor-pointer select-none group">
+                          <input
+                            type="checkbox"
+                            checked={isDeconstructAdminOverride}
+                            onChange={(e) => setIsDeconstructAdminOverride(e.target.checked)}
+                            disabled={isSubmittingAdj}
+                            className="w-4 h-4 rounded border-rose-300 bg-black/50 text-amber-500 focus:ring-amber-400 cursor-pointer"
+                          />
+                          <span className="text-xs font-extrabold text-amber-200 group-hover:text-amber-100 transition-colors">
+                            تجاوز المنع كمدير (إلغاء وتوجيه الوجبة للتوالف)
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. PREVIEW CARD: Shown if meal data fetched AND (before cut-off time OR Admin Override is checked) */}
+                  {canShowDeconstructPreview && deconstructSubInfo && (
+                    <div className="bg-white/[0.04] border border-white/15 rounded-2xl p-4 space-y-3.5 animate-in fade-in">
+                      {/* Subscriber & Package Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-white/10">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 tabular-nums" style={englishNumericStyle} dir="ltr">
+                              #{toEnglishDigitsStr(deconstructSubInfo.subscription_number)}
+                            </span>
+                            <span className="text-sm font-extrabold text-white">
+                              {deconstructSubInfo.customer_name}
+                            </span>
+                            {deconstructSubInfo.found_in_db ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 border border-teal-400/30 text-teal-200">
+                                مسجل في قاعدة البيانات
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/30 text-amber-200">
+                                محاكاة حسب الباقة القياسية
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-white/65 mt-1">
+                            الحي: {deconstructSubInfo.district} | فترة التوصيل:{' '}
+                            <span dir="ltr" className="font-mono tabular-nums" style={englishNumericStyle}>
+                              {toEnglishDigitsStr(deconstructSubInfo.delivery_window)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Package Selector (pre-filled with subscriber's package, changeable) */}
+                        <div className="w-full sm:w-72">
+                          <label className="block text-[10px] font-bold text-white/70 mb-1">
+                            الباقة المسجلة للمشترك:
+                          </label>
+                          <select
+                            value={deconstructSubInfo.package_name}
+                            onChange={(e) => void handleFetchMealData(e.target.value)}
+                            disabled={isFetchingMealData || isSubmittingAdj}
+                            className="w-full bg-black/50 border border-white/20 rounded-xl px-2.5 py-1.5 text-xs font-bold text-emerald-200 focus:outline-none focus:ring-1 focus:ring-emerald-400 [color-scheme:dark] cursor-pointer"
+                          >
+                            {!ZAHI_PACKAGE_OPTIONS.includes(deconstructSubInfo.package_name) && (
+                              <option value={deconstructSubInfo.package_name} className="bg-zinc-900 text-white">
+                                {deconstructSubInfo.package_name}
+                              </option>
+                            )}
+                            {ZAHI_PACKAGE_OPTIONS.map((pkg) => (
+                              <option key={pkg} value={pkg} className="bg-zinc-900 text-white">
+                                {pkg}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Meal Slots from BOM */}
+                      {deconstructMealSlots.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-extrabold text-white/90 flex items-center justify-between">
+                            <span>مكونات وجبات الباقة (مرتبطة بجدول BOM التغليف):</span>
+                            <span className="text-[11px] font-mono text-emerald-300 tabular-nums" style={englishNumericStyle} dir="ltr">
+                              {Number(deconstructMealSlots.length).toLocaleString('en-US')} وجبات/أصناف
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {deconstructMealSlots.map((slot) => (
+                              <div
+                                key={slot.slot_index}
+                                className="bg-black/35 border border-white/10 rounded-xl p-2.5 space-y-1"
+                              >
+                                <div className="text-[10px] font-bold text-indigo-300">
+                                  {toEnglishDigitsStr(slot.slot_label)}
+                                </div>
+                                <select
+                                  value={slot.selected_meal_code}
+                                  onChange={(e) =>
+                                    handleDeconstructMealSlotChange(slot.slot_index, e.target.value)
+                                  }
+                                  disabled={isSubmittingAdj}
+                                  className="w-full bg-white/5 border border-white/15 rounded-lg px-2 py-1 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 [color-scheme:dark] cursor-pointer"
+                                >
+                                  {deconstructMenuList.map((m) => (
+                                    <option
+                                      key={m.meal_code}
+                                      value={m.meal_code}
+                                      className="bg-zinc-900 text-white"
+                                    >
+                                      [{m.meal_code}] {m.meal_name_ar}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Deconstructed Packaging Items Table (P8 + P7 + BOM Items) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                            <PackageCheck className="w-4 h-4 text-emerald-300" />
+                            <span>
+                              {isCutoffExceeded && isDeconstructAdminOverride
+                                ? 'معاينة المواد التي سيتم توثيق توجيهها للتوالف (P8 + P7 + BOM):'
+                                : 'معاينة المواد التي سيتم إرجاعها للمخزون الفعلي (P8 + P7 + BOM):'}
+                            </span>
+                          </h4>
+                          <span className="text-[11px] font-mono font-bold text-emerald-300 tabular-nums" style={englishNumericStyle} dir="ltr">
+                            Total: {deconstructItems.reduce((s, i) => s + i.quantity, 0).toLocaleString('en-US')} units
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-white/15 bg-black/30">
+                          <table className="w-full text-right text-xs">
+                            <thead>
+                              <tr className="border-b border-white/15 bg-white/[0.06] text-white/80 font-extrabold">
+                                <th className="py-2 px-3">الرمز</th>
+                                <th className="py-2 px-3">اسم الصنف</th>
+                                <th className="py-2 px-3">المصدر (منطق الباقة / BOM)</th>
+                                <th className="py-2 px-3 text-center">الكمية</th>
+                                <th className="py-2 px-3 text-center">الرصيد بعد العملية</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {deconstructItems.map((item) => {
+                                const liveItem = inventoryItems.find(
+                                  (inv) => inv.item_code.toUpperCase() === item.item_code.toUpperCase()
+                                );
+                                const curStock = liveItem
+                                  ? Number(liveItem.current_stock ?? 0)
+                                  : item.current_stock;
+                                const afterStock =
+                                  isCutoffExceeded && isDeconstructAdminOverride
+                                    ? curStock
+                                    : curStock + item.quantity;
+
+                                return (
+                                  <tr key={item.item_code} className="hover:bg-white/[0.04]">
+                                    <td className="py-2 px-3 font-mono font-black text-white" style={englishNumericStyle} dir="ltr">
+                                      <span className="bg-white/15 border border-white/25 px-2 py-0.5 rounded-md">
+                                        {item.item_code}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 font-bold text-white">
+                                      {item.item_name_ar}
+                                    </td>
+                                    <td className="py-2 px-3 text-[11px] text-white/70">
+                                      {toEnglishDigitsStr(item.source)}
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-mono font-black tabular-nums" style={englishNumericStyle} dir="ltr">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-lg border ${
+                                          isCutoffExceeded && isDeconstructAdminOverride
+                                            ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
+                                            : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                        }`}
+                                      >
+                                        {isCutoffExceeded && isDeconstructAdminOverride
+                                          ? `~${Number(item.quantity).toLocaleString('en-US')} (redirect)`
+                                          : `+${Number(item.quantity).toLocaleString('en-US')}`}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-mono font-bold text-white/90 tabular-nums" style={englishNumericStyle} dir="ltr">
+                                      {Number(curStock).toLocaleString('en-US')} →{' '}
+                                      <strong
+                                        className={
+                                          isCutoffExceeded && isDeconstructAdminOverride
+                                            ? 'text-amber-300'
+                                            : 'text-emerald-300'
+                                        }
+                                      >
+                                        {Number(afterStock).toLocaleString('en-US')}
+                                      </strong>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Optional Notes */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-white/85">
+                          ملاحظات إضافية (اختياري):
+                        </label>
+                        <input
+                          type="text"
+                          value={deconstructNotes}
+                          onChange={(e) => setDeconstructNotes(e.target.value)}
+                          disabled={isSubmittingAdj}
+                          placeholder="مثال: طلب إلغاء من خدمة العملاء..."
+                          className="w-full bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Modal Footer Actions for Tab 1 */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isSubmittingAdj && !isFetchingMealData) {
+                          setIsAdjustmentModalOpen(false);
+                          setAdjError(null);
+                        }
+                      }}
+                      disabled={isSubmittingAdj || isFetchingMealData}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {t('common.cancel')}
+                    </button>
+
+                    {/* Submit button:
+                        - Hidden if Cut-off is exceeded AND Admin Override is NOT checked!
+                        - If before Cut-off: "تأكيد الإرجاع" (submits bulk 'add')
+                        - If after Cut-off + Admin Override checked: "تأكيد وتوجيه الوجبة" (submits bulk 'redirect') */}
+                    {(!isCutoffExceeded || isDeconstructAdminOverride) && (
+                      <button
+                        type="submit"
+                        disabled={
+                          isSubmittingAdj ||
+                          isFetchingMealData ||
+                          !deconstructFetched ||
+                          deconstructItems.length === 0
+                        }
+                        className={`flex items-center gap-2 px-5 py-2.5 font-extrabold rounded-xl border shadow-lg transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                          isCutoffExceeded && isDeconstructAdminOverride
+                            ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white border-amber-300/50 shadow-amber-500/25'
+                            : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-500/25'
+                        }`}
+                      >
+                        {isSubmittingAdj ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>جاري التنفيذ...</span>
+                          </>
+                        ) : isCutoffExceeded && isDeconstructAdminOverride ? (
+                          <>
+                            <ShieldAlert className="w-4 h-4 text-white" />
+                            <span>تأكيد وتوجيه الوجبة</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-white" />
+                            <span>تأكيد الإرجاع</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
+
+              {/* ========================================================================
+                  TAB 2: تعديل رصيد صنف محدد (Single Item Adjustment)
                  ======================================================================== */}
               {adjActiveTab === 'single' && (
                 <form onSubmit={handleManualAdjustmentSubmit} className="space-y-4">
@@ -3138,7 +3548,7 @@ export default function InventoryClient({
                     >
                       {inventoryItems.map((item) => (
                         <option key={item.item_code} value={item.item_code} className="bg-zinc-900 text-white py-1">
-                          [{item.item_code}] {item.item_name_ar || getItemDisplayName(item)} — (الرصيد: {toEnglishDigits(item.current_stock)})
+                          [{item.item_code}] {item.item_name_ar || getItemDisplayName(item)} — (الرصيد: {Number(item.current_stock ?? 0).toLocaleString('en-US')})
                         </option>
                       ))}
                     </select>
@@ -3148,12 +3558,12 @@ export default function InventoryClient({
                       <div className="bg-white/[0.04] border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
                         <div>
                           <div className="font-bold text-white">{getItemDisplayName(selectedItem)}</div>
-                          <div className="text-[11px] text-white/60 font-mono" dir="ltr">{selectedItem.item_code}</div>
+                          <div className="text-[11px] text-white/60 font-mono" style={englishNumericStyle} dir="ltr">{selectedItem.item_code}</div>
                         </div>
                         <div className="text-right">
                           <div className="text-[10px] text-white/60 font-medium">{lang === 'en' ? 'Current Stock' : 'الرصيد الفعلي الحالي'}</div>
-                          <div className="text-sm font-mono font-black text-emerald-300" dir="ltr">
-                            {toEnglishDigits(currentStock)} <span className="text-[10px] font-normal text-white/70">{t('common.unit')}</span>
+                          <div className="text-sm font-mono font-black text-emerald-300 tabular-nums" style={englishNumericStyle} dir="ltr">
+                            {Number(currentStock).toLocaleString('en-US')} <span className="text-[10px] font-normal text-white/70">{t('common.unit')}</span>
                           </div>
                         </div>
                       </div>
@@ -3204,8 +3614,8 @@ export default function InventoryClient({
                       {selectedItem && (
                         <span className="text-[11px] font-mono text-white/70">
                           {lang === 'en' ? 'Projected:' : 'الرصيد المتوقع بعد العملية:'}{' '}
-                          <strong className={`font-black ${willBeNegative ? 'text-rose-400' : 'text-indigo-300'}`} dir="ltr">
-                            {toEnglishDigits(projectedStock)}
+                          <strong className={`font-black font-mono tabular-nums ${willBeNegative ? 'text-rose-400' : 'text-indigo-300'}`} style={englishNumericStyle} dir="ltr">
+                            {Number(projectedStock).toLocaleString('en-US')}
                           </strong>
                         </span>
                       )}
@@ -3214,11 +3624,13 @@ export default function InventoryClient({
                       type="number"
                       min="1"
                       step="1"
+                      dir="ltr"
                       value={adjQuantity}
-                      onChange={(e) => setAdjQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      onChange={(e) => setAdjQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(toEnglishDigitsStr(e.target.value), 10) || 1))}
                       disabled={isSubmittingAdj}
                       required
-                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark]"
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] tabular-nums"
+                      style={englishNumericStyle}
                       placeholder="1"
                     />
                     {willBeNegative && (
@@ -3299,382 +3711,6 @@ export default function InventoryClient({
                         </>
                       )}
                     </button>
-                  </div>
-                </form>
-              )}
-
-              {/* ========================================================================
-                  TAB 2: إرجاع وتفكيك اشتراك (Subscription Deconstruction)
-                 ======================================================================== */}
-              {adjActiveTab === 'deconstruct' && (
-                <form onSubmit={handleDeconstructSubmit} className="space-y-4">
-                  {/* 1. Inputs: Subscription ID & Target Date + Fetch Meal Data Button */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-white/[0.03] border border-white/15 rounded-2xl p-3.5">
-                    <div className="sm:col-span-5 space-y-1.5">
-                      <label className="block text-xs font-bold text-white/90">
-                        رقم الاشتراك (Subscription ID):
-                      </label>
-                      <input
-                        type="text"
-                        value={deconstructSubId}
-                        onChange={(e) => {
-                          setDeconstructSubId(e.target.value);
-                          setDeconstructFetched(false);
-                        }}
-                        disabled={isSubmittingAdj || isFetchingMealData}
-                        placeholder="مثال: 2703326 أو 2578389"
-                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-mono font-bold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-4 space-y-1.5">
-                      <label className="block text-xs font-bold text-white/90">
-                        تاريخ الإلغاء (Target Date):
-                      </label>
-                      <input
-                        type="date"
-                        value={deconstructTargetDate}
-                        onChange={(e) => {
-                          setDeconstructTargetDate(e.target.value);
-                          setDeconstructFetched(false);
-                          setIsDeconstructAdminOverride(false);
-                        }}
-                        disabled={isSubmittingAdj || isFetchingMealData}
-                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-3 flex items-end">
-                      <button
-                        type="button"
-                        onClick={() => void handleFetchMealData()}
-                        disabled={isFetchingMealData || isSubmittingAdj || !deconstructSubId.trim()}
-                        className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-extrabold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/50 text-emerald-100 hover:text-white transition-all cursor-pointer shadow-sm disabled:opacity-45 disabled:cursor-not-allowed"
-                      >
-                        {isFetchingMealData ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300 shrink-0" />
-                            <span>جاري الجلب...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                            <span>جلب بيانات الوجبة</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Prep Day & Cut-off Time Info Bar */}
-                    {deconstructCutoffState.isValid && (
-                      <div className="sm:col-span-12 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] text-white/75">
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
-                          <span>يوم التحضير في المطبخ (قبل التوصيل بيومين):</span>
-                          <strong className="font-mono text-white" dir="ltr">
-                            {deconstructCutoffState.prepDay}
-                          </strong>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span>آخر موعد مسموح للإرجاع للمخزون:</span>
-                          <strong
-                            className={`font-mono ${
-                              isCutoffExceeded ? 'text-rose-300' : 'text-emerald-300'
-                            }`}
-                            dir="ltr"
-                          >
-                            {deconstructCutoffState.cutoffFormatted}
-                          </strong>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 2. THE SMART BLOCK LOGIC (UI Level) */}
-                  {isCutoffExceeded && (
-                    <div className="bg-rose-950/80 border-2 border-rose-500/60 rounded-2xl p-4 space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.2)] animate-in fade-in">
-                      <div className="flex items-start gap-3">
-                        <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                          <p className="text-xs sm:text-sm font-extrabold text-rose-100 leading-relaxed">
-                            ⚠️ تم تحضير الوجبة مسبقاً (تجاوزت الساعة 9 مساءً من يوم التحضير). لا يمكن إرجاع المواد للمخزون.
-                          </p>
-                          <p className="text-[11px] text-rose-200/80">
-                            نظراً لتجاوز موعد الإغلاق النهائي ليوم التحضير ({deconstructCutoffState.prepDay} - 9:00 مساءً بتوقيت السعودية)، تم استهلاك وتغليف المواد فعلياً في المطبخ.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Admin Override Checkbox (Only shown if logged-in user is Admin) */}
-                      {isAdminUser && (
-                        <label className="flex items-center gap-2.5 pt-2.5 border-t border-rose-400/30 cursor-pointer select-none group">
-                          <input
-                            type="checkbox"
-                            checked={isDeconstructAdminOverride}
-                            onChange={(e) => setIsDeconstructAdminOverride(e.target.checked)}
-                            disabled={isSubmittingAdj}
-                            className="w-4 h-4 rounded border-rose-300 bg-black/50 text-amber-500 focus:ring-amber-400 cursor-pointer"
-                          />
-                          <span className="text-xs font-extrabold text-amber-200 group-hover:text-amber-100 transition-colors">
-                            تجاوز المنع كمدير (إلغاء وتوجيه الوجبة للتوالف)
-                          </span>
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 3. PREVIEW CARD: Shown if meal data fetched AND (before cut-off time OR Admin Override is checked) */}
-                  {canShowDeconstructPreview && deconstructSubInfo && (
-                    <div className="bg-white/[0.04] border border-white/15 rounded-2xl p-4 space-y-3.5 animate-in fade-in">
-                      {/* Subscriber & Package Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-white/10">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200" dir="ltr">
-                              #{deconstructSubInfo.subscription_number}
-                            </span>
-                            <span className="text-sm font-extrabold text-white">
-                              {deconstructSubInfo.customer_name}
-                            </span>
-                            {deconstructSubInfo.found_in_db ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 border border-teal-400/30 text-teal-200">
-                                مسجل في قاعدة البيانات
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/30 text-amber-200">
-                                محاكاة حسب الباقة القياسية
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-white/65 mt-1">
-                            الحي: {deconstructSubInfo.district} | فترة التوصيل: <span dir="ltr">{deconstructSubInfo.delivery_window}</span>
-                          </div>
-                        </div>
-
-                        {/* Package Selector (pre-filled with subscriber's package, changeable) */}
-                        <div className="w-full sm:w-72">
-                          <label className="block text-[10px] font-bold text-white/70 mb-1">
-                            الباقة المسجلة للمشترك:
-                          </label>
-                          <select
-                            value={deconstructSubInfo.package_name}
-                            onChange={(e) => void handleFetchMealData(e.target.value)}
-                            disabled={isFetchingMealData || isSubmittingAdj}
-                            className="w-full bg-black/50 border border-white/20 rounded-xl px-2.5 py-1.5 text-xs font-bold text-emerald-200 focus:outline-none focus:ring-1 focus:ring-emerald-400 [color-scheme:dark] cursor-pointer"
-                          >
-                            {!ZAHI_PACKAGE_OPTIONS.includes(deconstructSubInfo.package_name) && (
-                              <option value={deconstructSubInfo.package_name} className="bg-zinc-900 text-white">
-                                {deconstructSubInfo.package_name}
-                              </option>
-                            )}
-                            {ZAHI_PACKAGE_OPTIONS.map((pkg) => (
-                              <option key={pkg} value={pkg} className="bg-zinc-900 text-white">
-                                {pkg}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Meal Slots from BOM */}
-                      {deconstructMealSlots.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-extrabold text-white/90 flex items-center justify-between">
-                            <span>مكونات وجبات الباقة (مرتبطة بجدول BOM التغليف):</span>
-                            <span className="text-[11px] font-mono text-emerald-300">
-                              {toEnglishDigits(deconstructMealSlots.length)} وجبات/أصناف
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {deconstructMealSlots.map((slot) => (
-                              <div
-                                key={slot.slot_index}
-                                className="bg-black/35 border border-white/10 rounded-xl p-2.5 space-y-1"
-                              >
-                                <div className="text-[10px] font-bold text-indigo-300">
-                                  {slot.slot_label}
-                                </div>
-                                <select
-                                  value={slot.selected_meal_code}
-                                  onChange={(e) =>
-                                    handleDeconstructMealSlotChange(slot.slot_index, e.target.value)
-                                  }
-                                  disabled={isSubmittingAdj}
-                                  className="w-full bg-white/5 border border-white/15 rounded-lg px-2 py-1 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 [color-scheme:dark] cursor-pointer"
-                                >
-                                  {deconstructMenuList.map((m) => (
-                                    <option
-                                      key={m.meal_code}
-                                      value={m.meal_code}
-                                      className="bg-zinc-900 text-white"
-                                    >
-                                      [{m.meal_code}] {m.meal_name_ar}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Deconstructed Packaging Items Table (P8 + P7 + BOM Items) */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
-                            <PackageCheck className="w-4 h-4 text-emerald-300" />
-                            <span>
-                              {isCutoffExceeded && isDeconstructAdminOverride
-                                ? 'معاينة المواد التي سيتم توثيق توجيهها للتوالف (P8 + P7 + BOM):'
-                                : 'معاينة المواد التي سيتم إرجاعها للمخزون الفعلي (P8 + P7 + BOM):'}
-                            </span>
-                          </h4>
-                          <span className="text-[11px] font-mono font-bold text-emerald-300" dir="ltr">
-                            Total: {toEnglishDigits(deconstructItems.reduce((s, i) => s + i.quantity, 0))} units
-                          </span>
-                        </div>
-
-                        <div className="overflow-x-auto rounded-xl border border-white/15 bg-black/30">
-                          <table className="w-full text-right text-xs">
-                            <thead>
-                              <tr className="border-b border-white/15 bg-white/[0.06] text-white/80 font-extrabold">
-                                <th className="py-2 px-3">الرمز</th>
-                                <th className="py-2 px-3">اسم الصنف</th>
-                                <th className="py-2 px-3">المصدر (منطق الباقة / BOM)</th>
-                                <th className="py-2 px-3 text-center">الكمية</th>
-                                <th className="py-2 px-3 text-center">الرصيد بعد العملية</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/10">
-                              {deconstructItems.map((item) => {
-                                const liveItem = inventoryItems.find(
-                                  (inv) => inv.item_code.toUpperCase() === item.item_code.toUpperCase()
-                                );
-                                const curStock = liveItem
-                                  ? Number(liveItem.current_stock ?? 0)
-                                  : item.current_stock;
-                                const afterStock =
-                                  isCutoffExceeded && isDeconstructAdminOverride
-                                    ? curStock
-                                    : curStock + item.quantity;
-
-                                return (
-                                  <tr key={item.item_code} className="hover:bg-white/[0.04]">
-                                    <td className="py-2 px-3 font-mono font-black text-white" dir="ltr">
-                                      <span className="bg-white/15 border border-white/25 px-2 py-0.5 rounded-md">
-                                        {item.item_code}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 font-bold text-white">
-                                      {item.item_name_ar}
-                                    </td>
-                                    <td className="py-2 px-3 text-[11px] text-white/70">
-                                      {item.source}
-                                    </td>
-                                    <td className="py-2 px-3 text-center font-mono font-black" dir="ltr">
-                                      <span
-                                        className={`px-2 py-0.5 rounded-lg border ${
-                                          isCutoffExceeded && isDeconstructAdminOverride
-                                            ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
-                                            : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
-                                        }`}
-                                      >
-                                        {isCutoffExceeded && isDeconstructAdminOverride
-                                          ? `~${toEnglishDigits(item.quantity)} (redirect)`
-                                          : `+${toEnglishDigits(item.quantity)}`}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-center font-mono font-bold text-white/90" dir="ltr">
-                                      {toEnglishDigits(curStock)} →{' '}
-                                      <strong
-                                        className={
-                                          isCutoffExceeded && isDeconstructAdminOverride
-                                            ? 'text-amber-300'
-                                            : 'text-emerald-300'
-                                        }
-                                      >
-                                        {toEnglishDigits(afterStock)}
-                                      </strong>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* Optional Notes */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-white/85">
-                          ملاحظات إضافية (اختياري):
-                        </label>
-                        <input
-                          type="text"
-                          value={deconstructNotes}
-                          onChange={(e) => setDeconstructNotes(e.target.value)}
-                          disabled={isSubmittingAdj}
-                          placeholder="مثال: طلب إلغاء من خدمة العملاء..."
-                          className="w-full bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Modal Footer Actions for Tab 2 */}
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isSubmittingAdj && !isFetchingMealData) {
-                          setIsAdjustmentModalOpen(false);
-                          setAdjError(null);
-                        }
-                      }}
-                      disabled={isSubmittingAdj || isFetchingMealData}
-                      className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
-                    >
-                      {t('common.cancel')}
-                    </button>
-
-                    {/* Submit button:
-                        - Hidden if Cut-off is exceeded AND Admin Override is NOT checked!
-                        - If before Cut-off: "تأكيد الإرجاع" (submits bulk 'add')
-                        - If after Cut-off + Admin Override checked: "تأكيد وتوجيه الوجبة" (submits bulk 'redirect') */}
-                    {(!isCutoffExceeded || isDeconstructAdminOverride) && (
-                      <button
-                        type="submit"
-                        disabled={
-                          isSubmittingAdj ||
-                          isFetchingMealData ||
-                          !deconstructFetched ||
-                          deconstructItems.length === 0
-                        }
-                        className={`flex items-center gap-2 px-5 py-2.5 font-extrabold rounded-xl border shadow-lg transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
-                          isCutoffExceeded && isDeconstructAdminOverride
-                            ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white border-amber-300/50 shadow-amber-500/25'
-                            : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-500/25'
-                        }`}
-                      >
-                        {isSubmittingAdj ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            <span>جاري التنفيذ...</span>
-                          </>
-                        ) : isCutoffExceeded && isDeconstructAdminOverride ? (
-                          <>
-                            <ShieldAlert className="w-4 h-4 text-white" />
-                            <span>تأكيد وتوجيه الوجبة</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-white" />
-                            <span>تأكيد الإرجاع</span>
-                          </>
-                        )}
-                      </button>
-                    )}
                   </div>
                 </form>
               )}
