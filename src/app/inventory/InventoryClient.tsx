@@ -16,8 +16,37 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const SAUDI_TZ = 'Asia/Riyadh';
+
+const ZAHI_PACKAGE_OPTIONS = [
+  'غداء العمل - وجبة رئيسية + 1 سناك',
+  'منيو العمل - 1 وجبة عمل+ 1 سناك',
+  'نزول وزن - فطور + وجبة رئيسية + 1 سناك',
+  'نزول وزن - وجبتين + 1 سناك',
+  'نزول وزن - فطور + وجبتين رئيسية + 1 سناك',
+  'نزول وزن - 3 وجبات رئيسية + 1 سناك',
+  'تخسيس مضاعف - فطور + وجبة رئيسية + 1 سناك',
+  'تخسيس مضاعف - وجبتين + 1 سناك',
+  'تخسيس مضاعف - 1 فطور + وجبتين رئيسية + 1 سناك',
+  'تخسيس مضاعف - 3 وجبات رئيسية + 1 سناك',
+  'لو كارب - فطور + وجبة رئيسية + 1 سناك',
+  'لو كارب - وجبتين + 1 سناك',
+  'لو كارب - 1 فطور + وجبتين رئيسية + 1 سناك',
+  'لو كارب - 3 وجبات رئيسية + 1 سناك',
+  'لايف ستايل - فطور + وجبة رئيسية + 1 سناك',
+  'لايف ستايل - وجبتين + 1 سناك',
+  'لايف ستايل - فطور + وجبتين رئيسية + 1 سناك',
+  'لايف ستايل - 3 وجبات رئيسية + 1 سناك',
+];
 
 // Helper to get YYYY-MM-DD for N days ago
 const getDateStringDaysAgo = (daysAgo: number = 0): string => {
@@ -487,8 +516,9 @@ export default function InventoryClient({
   const [, setStorageNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Manual Inventory Adjustment State
+  // Manual Inventory Adjustment & Subscription Deconstruction Modal State
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState<boolean>(false);
+  const [adjActiveTab, setAdjActiveTab] = useState<'single' | 'deconstruct'>('single');
   const [adjItemCode, setAdjItemCode] = useState<string>('');
   const [adjType, setAdjType] = useState<'add' | 'deduct'>('add');
   const [adjQuantity, setAdjQuantity] = useState<number | string>(1);
@@ -496,6 +526,52 @@ export default function InventoryClient({
   const [adjNotes, setAdjNotes] = useState<string>('');
   const [isSubmittingAdj, setIsSubmittingAdj] = useState<boolean>(false);
   const [adjError, setAdjError] = useState<string | null>(null);
+
+  // Tab 2: Subscription Deconstruction (إرجاع وتفكيك اشتراك) State
+  const [deconstructSubId, setDeconstructSubId] = useState<string>('');
+  const [deconstructTargetDate, setDeconstructTargetDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [deconstructNotes, setDeconstructNotes] = useState<string>('');
+  const [isFetchingMealData, setIsFetchingMealData] = useState<boolean>(false);
+  const [deconstructFetched, setDeconstructFetched] = useState<boolean>(false);
+  const [isDeconstructAdminOverride, setIsDeconstructAdminOverride] = useState<boolean>(false);
+  const [deconstructSubInfo, setDeconstructSubInfo] = useState<{
+    found_in_db: boolean;
+    subscription_number: string;
+    customer_name: string;
+    package_name: string;
+    items_count: number;
+    district: string;
+    delivery_window: string;
+    report_date: string;
+    matched_report_date: string | null;
+    status: string;
+  } | null>(null);
+  const [deconstructMealSlots, setDeconstructMealSlots] = useState<
+    Array<{
+      slot_index: number;
+      slot_label: string;
+      category_filter: string;
+      selected_meal_code: string;
+      selected_meal_name_ar: string;
+    }>
+  >([]);
+  const [deconstructMenuList, setDeconstructMenuList] = useState<
+    Array<{
+      meal_code: string;
+      meal_name_ar: string;
+      category_ar: string;
+      bom: Array<{ inventory_item_code: string; quantity_used: number }>;
+    }>
+  >([]);
+  const [deconstructItems, setDeconstructItems] = useState<
+    Array<{
+      item_code: string;
+      item_name_ar: string;
+      quantity: number;
+      source: string;
+      current_stock: number;
+    }>
+  >([]);
 
   // Live inventory items list from Supabase `inventory_items`
   interface RawMaterialItem {
@@ -923,15 +999,251 @@ export default function InventoryClient({
     }
   };
 
-  const handleOpenManualAdjustment = (preselectedItemCode?: string) => {
+  const handleOpenManualAdjustment = (preselectedItemCode?: string, initialTab: 'single' | 'deconstruct' = 'single') => {
     const fallbackCode = inventoryItems[0]?.item_code || 'P1';
+    setAdjActiveTab(initialTab);
     setAdjItemCode(preselectedItemCode || fallbackCode);
     setAdjType('add');
     setAdjQuantity(1);
     setAdjReason('تسويق');
     setAdjNotes('');
     setAdjError(null);
+    setIsDeconstructAdminOverride(false);
     setIsAdjustmentModalOpen(true);
+  };
+
+  // UI-level Smart Block Cut-off calculation (Prep Day = Target Date minus 2 days; Cut-off = 9:00 PM AST)
+  const deconstructCutoffState = useMemo(() => {
+    const cleanDate = formatEnglishDate(deconstructTargetDate).split('T')[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+      return {
+        isValid: false,
+        prepDay: '',
+        cutoffFormatted: '',
+        isCutoffExceeded: false,
+      };
+    }
+    const deliveryDayAST = dayjs.tz(cleanDate, SAUDI_TZ).startOf('day');
+    if (!deliveryDayAST.isValid()) {
+      return {
+        isValid: false,
+        prepDay: '',
+        cutoffFormatted: '',
+        isCutoffExceeded: false,
+      };
+    }
+    const prepDayAST = deliveryDayAST.subtract(2, 'day');
+    const cutoffDeadlineAST = prepDayAST.hour(21).minute(0).second(0).millisecond(0);
+    const nowAST = dayjs().tz(SAUDI_TZ);
+    const isCutoffExceeded = nowAST.isAfter(cutoffDeadlineAST);
+
+    return {
+      isValid: true,
+      prepDay: prepDayAST.format('YYYY-MM-DD'),
+      cutoffFormatted: `${prepDayAST.format('YYYY-MM-DD')} (09:00 PM AST)`,
+      isCutoffExceeded,
+    };
+  }, [deconstructTargetDate]);
+
+  const userRoleUpper = String((session?.user as { role?: string } | undefined)?.role || '').toUpperCase();
+  const isAdminUser = !session?.user || userRoleUpper === 'ADMIN' || userRoleUpper === 'SUPERADMIN';
+
+  const handleFetchMealData = async (
+    overridePkg?: string,
+    overrideMealCodes?: string[]
+  ) => {
+    setAdjError(null);
+    const cleanSubId = toEnglishDigitsStr(deconstructSubId).trim();
+    if (!cleanSubId) {
+      setAdjError('يرجى إدخال رقم الاشتراك أولاً قبل جلب بيانات الوجبة.');
+      return;
+    }
+    const cleanDate = formatEnglishDate(deconstructTargetDate).split('T')[0];
+    if (!cleanDate) {
+      setAdjError('يرجى تحديد تاريخ الإلغاء أولاً.');
+      return;
+    }
+
+    try {
+      setIsFetchingMealData(true);
+      const params = new URLSearchParams({
+        subscription_id: cleanSubId,
+        target_date: cleanDate,
+      });
+      if (overridePkg) {
+        params.set('package_name', overridePkg);
+      }
+      if (overrideMealCodes && overrideMealCodes.length > 0) {
+        params.set('meal_codes', overrideMealCodes.join(','));
+      }
+
+      const res = await fetch(`/api/inventory/adjust?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || 'تعذر جلب بيانات الوجبة للاشتراك المحدد');
+      }
+
+      setDeconstructSubInfo(data.subscription || null);
+      setDeconstructMealSlots(data.meal_slots || []);
+      setDeconstructMenuList(data.menu_items || []);
+      setDeconstructItems(data.deconstructed_items || []);
+      setDeconstructFetched(true);
+    } catch (err: unknown) {
+      console.error('Error fetching subscription meal data:', err);
+      setAdjError(err instanceof Error ? err.message : 'حدث خطأ أثناء جلب بيانات الوجبة');
+    } finally {
+      setIsFetchingMealData(false);
+    }
+  };
+
+  const handleDeconstructMealSlotChange = (slotIndex: number, newMealCode: string) => {
+    const updatedSlots = deconstructMealSlots.map((slot) => {
+      if (slot.slot_index !== slotIndex) return slot;
+      const foundMeal = deconstructMenuList.find((m) => m.meal_code === newMealCode);
+      return {
+        ...slot,
+        selected_meal_code: newMealCode,
+        selected_meal_name_ar: foundMeal?.meal_name_ar || slot.selected_meal_name_ar,
+      };
+    });
+    setDeconstructMealSlots(updatedSlots);
+
+    // Recalculate BOM items client-side immediately
+    const pkgName = deconstructSubInfo?.package_name || '';
+    const p8Qty = 1;
+    const p7Qty = pkgName.includes('غداء العمل') || pkgName.includes('منيو العمل') ? 1 : 2;
+
+    const map = new Map<string, { quantity: number; sources: Set<string> }>();
+    const addComp = (code: string, qty: number, src: string) => {
+      const upper = code.toUpperCase();
+      const cur = map.get(upper) || { quantity: 0, sources: new Set<string>() };
+      cur.quantity += qty;
+      cur.sources.add(src);
+      map.set(upper, cur);
+    };
+
+    addComp('P8', p8Qty, 'كيس التوصيل الأساسي (1 لكل اشتراك)');
+    addComp('P7', p7Qty, 'أدوات المائدة حسب الباقة');
+
+    for (const slot of updatedSlots) {
+      const mealObj = deconstructMenuList.find((m) => m.meal_code === slot.selected_meal_code);
+      const bomRows = mealObj?.bom || [];
+      if (bomRows.length > 0) {
+        for (const b of bomRows) {
+          addComp(b.inventory_item_code, b.quantity_used, `${slot.slot_label}: ${slot.selected_meal_name_ar}`);
+        }
+      } else {
+        addComp('P1', 1, slot.slot_label);
+        addComp('P6', 1, slot.slot_label);
+      }
+    }
+
+    const recalculated = Array.from(map.entries())
+      .map(([code, info]) => {
+        const liveItem = inventoryItems.find((i) => i.item_code.toUpperCase() === code);
+        const std = getStandardCodeInfo(code);
+        return {
+          item_code: code,
+          item_name_ar: liveItem?.item_name_ar || std?.nameAr || code,
+          quantity: info.quantity,
+          source: Array.from(info.sources).join(' + '),
+          current_stock: Number(liveItem?.current_stock ?? 0),
+        };
+      })
+      .sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+
+    setDeconstructItems(recalculated);
+  };
+
+  const handleDeconstructSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdjError(null);
+
+    const cleanSubId = toEnglishDigitsStr(deconstructSubId).trim();
+    if (!cleanSubId) {
+      setAdjError('يرجى إدخال رقم الاشتراك.');
+      return;
+    }
+
+    if (!deconstructFetched || deconstructItems.length === 0) {
+      setAdjError('يرجى الضغط على "جلب بيانات الوجبة" أولاً لعرض المواد المراد إرجاعها.');
+      return;
+    }
+
+    const isAfterCutoff = deconstructCutoffState.isCutoffExceeded;
+    if (isAfterCutoff && !isDeconstructAdminOverride) {
+      setAdjError(
+        '⚠️ تم تحضير الوجبة مسبقاً (تجاوزت الساعة 9 مساءً من يوم التحضير). لا يمكن إرجاع المواد للمخزون.'
+      );
+      return;
+    }
+
+    // Before cut-off -> bulk 'add'; After cut-off with Admin Override -> bulk 'redirect'
+    const actionType: 'add' | 'redirect' = isAfterCutoff ? 'redirect' : 'add';
+    const pkgLabel = deconstructSubInfo?.package_name || 'باقة اشتراك';
+    const reasonText =
+      actionType === 'redirect'
+        ? 'إلغاء وتوجيه وجبة للتوالف (تجاوز إداري)'
+        : 'إرجاع وتفكيك اشتراك';
+    const defaultNote =
+      deconstructNotes.trim() ||
+      `تفكيك اشتراك #${cleanSubId} (${pkgLabel}) - تاريخ التوصيل: ${deconstructTargetDate}`;
+
+    const payload = deconstructItems.map((item) => ({
+      item_code: item.item_code,
+      adjustment_type: actionType,
+      quantity: item.quantity,
+      reason: reasonText,
+      notes: `${defaultNote} [${item.source}]`,
+      reference_id: cleanSubId,
+      target_date: deconstructTargetDate,
+      isAdminOverride: isDeconstructAdminOverride,
+      allowRedirect: actionType === 'redirect',
+    }));
+
+    try {
+      setIsSubmittingAdj(true);
+
+      const res = await fetch('/api/inventory/adjust', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok || !resData?.success) {
+        throw new Error(resData?.message || resData?.error || 'فشلت عملية تفكيك الاشتراك');
+      }
+
+      const totalUnits = deconstructItems.reduce((sum, i) => sum + i.quantity, 0);
+      const toastMsg =
+        actionType === 'redirect'
+          ? `تم توجيه وجبة الاشتراك (#${cleanSubId}) للتوالف وتوثيق (${toEnglishDigits(deconstructItems.length)}) أصناف في السجل دون إرجاع للمخزون الفعلي.`
+          : `تم إرجاع وتفكيك الاشتراك (#${cleanSubId}) بنجاح: تمت إعادة (${toEnglishDigits(totalUnits)}) وحدة موزعة على (${toEnglishDigits(deconstructItems.length)}) أصناف إلى المخزون الفعلي ✨`;
+
+      setSuccessToast(toastMsg);
+      setTimeout(() => setSuccessToast(null), 5500);
+
+      setIsAdjustmentModalOpen(false);
+      setDeconstructFetched(false);
+      setDeconstructNotes('');
+      setIsDeconstructAdminOverride(false);
+      setAdjError(null);
+
+      await refreshLiveInventory();
+    } catch (err: unknown) {
+      console.error('Subscription deconstruction error:', err);
+      setAdjError(err instanceof Error ? err.message : 'حدث خطأ أثناء تنفيذ عملية تفكيك الاشتراك');
+    } finally {
+      setIsSubmittingAdj(false);
+    }
   };
 
   const handleManualAdjustmentSubmit = async (e: React.FormEvent) => {
@@ -966,19 +1278,21 @@ export default function InventoryClient({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          item_code: adjItemCode,
-          adjustment_type: adjType,
-          quantity: numQty,
-          reason: adjReason,
-          notes: adjNotes,
-        }),
+        body: JSON.stringify([
+          {
+            item_code: adjItemCode,
+            adjustment_type: adjType,
+            quantity: numQty,
+            reason: adjReason,
+            notes: adjNotes,
+          },
+        ]),
       });
 
       const resData = await res.json().catch(() => null);
 
       if (!res.ok || !resData?.success) {
-        throw new Error(resData?.error || 'فشلت عملية التسوية المخزنية');
+        throw new Error(resData?.message || resData?.error || 'فشلت عملية التسوية المخزنية');
       }
 
       const itemLabel = selectedItem ? (selectedItem.item_name_ar || adjItemCode) : adjItemCode;
@@ -1848,10 +2162,10 @@ export default function InventoryClient({
               type="button"
               onClick={() => handleOpenManualAdjustment()}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-400/30 text-indigo-200 hover:text-white shadow-sm"
-              title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تسوية يدوية للمخزون'}
+              title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
-              <span>{lang === 'en' ? 'Manual Adjustment' : 'تسوية يدوية'}</span>
+              <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
             </button>
 
             {/* Sorting Dropdown Menu */}
@@ -2713,7 +3027,7 @@ export default function InventoryClient({
         );
       })()}
 
-      {/* Modal: Manual Inventory Adjustment (تسوية يدوية للمخزون) */}
+      {/* Modal: Manual Inventory Adjustment & Subscription Deconstruction (تعديل يدوي للمخزون) */}
       {isAdjustmentModalOpen && (() => {
         const selectedItem = inventoryItems.find(
           i => (i.item_code || '').toUpperCase() === adjItemCode.toUpperCase()
@@ -2723,39 +3037,78 @@ export default function InventoryClient({
         const projectedStock = adjType === 'add' ? currentStock + numQty : currentStock - numQty;
         const willBeNegative = adjType === 'deduct' && numQty > currentStock;
 
+        const isCutoffExceeded = deconstructCutoffState.isCutoffExceeded;
+        const canShowDeconstructPreview =
+          deconstructFetched && (!isCutoffExceeded || isDeconstructAdminOverride);
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="font-sans bg-black/80 backdrop-blur-2xl rounded-3xl w-full max-w-lg lg:max-w-xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
+            <div className="font-sans bg-black/85 backdrop-blur-2xl rounded-3xl w-full max-w-2xl lg:max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.75)] relative flex flex-col">
               {/* Modal Header */}
-              <div className="flex justify-between items-center border-b border-white/15 pb-3">
+              <div className="flex justify-between items-center border-b border-white/15 pb-3.5">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-indigo-500/20 border border-indigo-400/40 rounded-xl text-indigo-300 shrink-0 shadow-inner">
                     <SlidersHorizontal className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
-                      <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تسوية يدوية للمخزون'}</span>
+                      <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
                     </h3>
                     <p className="text-[11px] text-white/70 font-medium">
                       {lang === 'en'
-                        ? 'Adjust stock balance directly and log the reason in the audit trail.'
-                        : 'تعديل رصيد الصنف مباشرة وتسجيل السبب في سجل العمليات التاريخي.'}
+                        ? 'Single item adjustment or bulk subscription deconstruction with Smart Cut-off protection.'
+                        : 'تعديل رصيد صنف مفرد أو إرجاع وتفكيك اشتراك كامل وفق منطق الإغلاق الذكي (BOM).'}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isSubmittingAdj) {
+                    if (!isSubmittingAdj && !isFetchingMealData) {
                       setIsAdjustmentModalOpen(false);
                       setAdjError(null);
                     }
                   }}
-                  disabled={isSubmittingAdj}
+                  disabled={isSubmittingAdj || isFetchingMealData}
                   className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
                   aria-label={t('common.close')}
                 >
                   <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* 2 DISTINCT TABS SWITCHER */}
+              <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-white/[0.04] border border-white/15 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjActiveTab('single');
+                    setAdjError(null);
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    adjActiveTab === 'single'
+                      ? 'bg-indigo-600/40 border border-indigo-400/60 text-white shadow-[0_0_20px_rgba(99,102,241,0.25)]'
+                      : 'text-white/65 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-indigo-300 shrink-0" />
+                  <span>تعديل صنف مفرد</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjActiveTab('deconstruct');
+                    setAdjError(null);
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    adjActiveTab === 'deconstruct'
+                      ? 'bg-emerald-600/35 border border-emerald-400/60 text-white shadow-[0_0_20px_rgba(16,185,129,0.25)]'
+                      : 'text-white/65 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <Package className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span>إرجاع وتفكيك اشتراك</span>
                 </button>
               </div>
 
@@ -2767,184 +3120,564 @@ export default function InventoryClient({
                 </div>
               )}
 
-              {/* Form */}
-              <form onSubmit={handleManualAdjustmentSubmit} className="space-y-4">
-                {/* 1. Item Selection */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-white/90">
-                    {lang === 'en' ? 'Select Inventory Item:' : 'اختر صنف المخزون المراد تسويته:'}
-                  </label>
-                  <select
-                    value={adjItemCode}
-                    onChange={(e) => setAdjItemCode(e.target.value)}
-                    disabled={isSubmittingAdj}
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
-                  >
-                    {inventoryItems.map((item) => (
-                      <option key={item.item_code} value={item.item_code} className="bg-zinc-900 text-white py-1">
-                        [{item.item_code}] {item.item_name_ar || getItemDisplayName(item)} — (الرصيد: {toEnglishDigits(item.current_stock)})
-                      </option>
-                    ))}
-                  </select>
+              {/* ========================================================================
+                  TAB 1: تعديل صنف مفرد (Single Item Adjustment)
+                 ======================================================================== */}
+              {adjActiveTab === 'single' && (
+                <form onSubmit={handleManualAdjustmentSubmit} className="space-y-4">
+                  {/* 1. Item Selection */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Select Inventory Item:' : 'اختر صنف المخزون (P1 - P11):'}
+                    </label>
+                    <select
+                      value={adjItemCode}
+                      onChange={(e) => setAdjItemCode(e.target.value)}
+                      disabled={isSubmittingAdj}
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                    >
+                      {inventoryItems.map((item) => (
+                        <option key={item.item_code} value={item.item_code} className="bg-zinc-900 text-white py-1">
+                          [{item.item_code}] {item.item_name_ar || getItemDisplayName(item)} — (الرصيد: {toEnglishDigits(item.current_stock)})
+                        </option>
+                      ))}
+                    </select>
 
-                  {/* Selected Item Stock Card Preview */}
-                  {selectedItem && (
-                    <div className="bg-white/[0.04] border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
-                      <div>
-                        <div className="font-bold text-white">{getItemDisplayName(selectedItem)}</div>
-                        <div className="text-[11px] text-white/60 font-mono" dir="ltr">{selectedItem.item_code}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] text-white/60 font-medium">{lang === 'en' ? 'Current Stock' : 'الرصيد الفعلي الحالي'}</div>
-                        <div className="text-sm font-mono font-black text-emerald-300" dir="ltr">
-                          {toEnglishDigits(currentStock)} <span className="text-[10px] font-normal text-white/70">{t('common.unit')}</span>
+                    {/* Selected Item Stock Card Preview */}
+                    {selectedItem && (
+                      <div className="bg-white/[0.04] border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+                        <div>
+                          <div className="font-bold text-white">{getItemDisplayName(selectedItem)}</div>
+                          <div className="text-[11px] text-white/60 font-mono" dir="ltr">{selectedItem.item_code}</div>
                         </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-white/60 font-medium">{lang === 'en' ? 'Current Stock' : 'الرصيد الفعلي الحالي'}</div>
+                          <div className="text-sm font-mono font-black text-emerald-300" dir="ltr">
+                            {toEnglishDigits(currentStock)} <span className="text-[10px] font-normal text-white/70">{t('common.unit')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Operation Type (Add / Deduct) */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Adjustment Type:' : 'نوع العملية:'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setAdjType('add')}
+                        disabled={isSubmittingAdj}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                          adjType === 'add'
+                            ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.25)] ring-1 ring-emerald-400/50'
+                            : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <PlusCircle className={`w-4 h-4 ${adjType === 'add' ? 'text-emerald-300' : 'text-white/60'}`} />
+                        <span>{lang === 'en' ? 'Add Stock (+)' : 'إضافة رصيد (+)'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdjType('deduct')}
+                        disabled={isSubmittingAdj}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                          adjType === 'deduct'
+                            ? 'bg-rose-500/25 border-rose-400 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.25)] ring-1 ring-rose-400/50'
+                            : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <MinusCircle className={`w-4 h-4 ${adjType === 'deduct' ? 'text-rose-300' : 'text-white/60'}`} />
+                        <span>{lang === 'en' ? 'Deduct Stock (-)' : 'خصم رصيد (-)'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3. Quantity Input & Projected Stock Preview */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-white/90">
+                        {lang === 'en' ? 'Quantity (Units):' : 'الكمية المراد تسويتها (بالوحدة):'}
+                      </label>
+                      {selectedItem && (
+                        <span className="text-[11px] font-mono text-white/70">
+                          {lang === 'en' ? 'Projected:' : 'الرصيد المتوقع بعد العملية:'}{' '}
+                          <strong className={`font-black ${willBeNegative ? 'text-rose-400' : 'text-indigo-300'}`} dir="ltr">
+                            {toEnglishDigits(projectedStock)}
+                          </strong>
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={adjQuantity}
+                      onChange={(e) => setAdjQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      disabled={isSubmittingAdj}
+                      required
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark]"
+                      placeholder="1"
+                    />
+                    {willBeNegative && (
+                      <p className="text-[11px] text-rose-300 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{lang === 'en' ? 'Notice: Deducting this quantity exceeds current stock.' : 'تنبيه: الكمية المخصومة أكبر من الرصيد الفعلي المتوفر حالياً.'}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 4. Reason Dropdown */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Adjustment Reason:' : 'سبب التسوية:'}
+                    </label>
+                    <select
+                      value={adjReason}
+                      onChange={(e) => setAdjReason(e.target.value)}
+                      disabled={isSubmittingAdj}
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                    >
+                      <option value="تسويق" className="bg-zinc-900 text-white">تسويق (Marketing)</option>
+                      <option value="تعويض عميل" className="bg-zinc-900 text-white">تعويض عميل (Customer Compensation)</option>
+                      <option value="توالف" className="bg-zinc-900 text-white">توالف (Spoilage)</option>
+                      <option value="استلام مشتريات" className="bg-zinc-900 text-white">استلام مشتريات (New Stock / Purchases)</option>
+                      <option value="أخرى" className="bg-zinc-900 text-white">أخرى (Other)</option>
+                    </select>
+                  </div>
+
+                  {/* 5. Notes */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Notes / Justification (Optional):' : 'ملاحظات وتفاصيل إضافية (اختياري):'}
+                    </label>
+                    <textarea
+                      value={adjNotes}
+                      onChange={(e) => setAdjNotes(e.target.value)}
+                      disabled={isSubmittingAdj}
+                      rows={2}
+                      placeholder={
+                        lang === 'en'
+                          ? 'e.g. Voucher number, receiver name, campaign details...'
+                          : 'مثال: رقم إذن الصرف، اسم المستلم، تفاصيل الحملة الإعلانية...'
+                      }
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none"
+                    />
+                  </div>
+
+                  {/* Modal Footer Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isSubmittingAdj) {
+                          setIsAdjustmentModalOpen(false);
+                          setAdjError(null);
+                        }
+                      }}
+                      disabled={isSubmittingAdj}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAdj || !adjItemCode || !adjQuantity || Number(adjQuantity) <= 0}
+                      className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold rounded-xl border border-indigo-400/50 shadow-lg shadow-indigo-500/25 transition-all text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingAdj ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                          <span>{lang === 'en' ? 'Processing...' : 'جاري الحفظ...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-white" />
+                          <span>{lang === 'en' ? 'Confirm Adjustment' : 'تأكيد التسوية'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* ========================================================================
+                  TAB 2: إرجاع وتفكيك اشتراك (Subscription Deconstruction)
+                 ======================================================================== */}
+              {adjActiveTab === 'deconstruct' && (
+                <form onSubmit={handleDeconstructSubmit} className="space-y-4">
+                  {/* 1. Inputs: Subscription ID & Target Date + Fetch Meal Data Button */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-white/[0.03] border border-white/15 rounded-2xl p-3.5">
+                    <div className="sm:col-span-5 space-y-1.5">
+                      <label className="block text-xs font-bold text-white/90">
+                        رقم الاشتراك (Subscription ID):
+                      </label>
+                      <input
+                        type="text"
+                        value={deconstructSubId}
+                        onChange={(e) => {
+                          setDeconstructSubId(e.target.value);
+                          setDeconstructFetched(false);
+                        }}
+                        disabled={isSubmittingAdj || isFetchingMealData}
+                        placeholder="مثال: 2703326 أو 2578389"
+                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-mono font-bold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4 space-y-1.5">
+                      <label className="block text-xs font-bold text-white/90">
+                        تاريخ الإلغاء (Target Date):
+                      </label>
+                      <input
+                        type="date"
+                        value={deconstructTargetDate}
+                        onChange={(e) => {
+                          setDeconstructTargetDate(e.target.value);
+                          setDeconstructFetched(false);
+                          setIsDeconstructAdminOverride(false);
+                        }}
+                        disabled={isSubmittingAdj || isFetchingMealData}
+                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3 flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleFetchMealData()}
+                        disabled={isFetchingMealData || isSubmittingAdj || !deconstructSubId.trim()}
+                        className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-extrabold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/50 text-emerald-100 hover:text-white transition-all cursor-pointer shadow-sm disabled:opacity-45 disabled:cursor-not-allowed"
+                      >
+                        {isFetchingMealData ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300 shrink-0" />
+                            <span>جاري الجلب...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            <span>جلب بيانات الوجبة</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Prep Day & Cut-off Time Info Bar */}
+                    {deconstructCutoffState.isValid && (
+                      <div className="sm:col-span-12 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] text-white/75">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+                          <span>يوم التحضير في المطبخ (قبل التوصيل بيومين):</span>
+                          <strong className="font-mono text-white" dir="ltr">
+                            {deconstructCutoffState.prepDay}
+                          </strong>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span>آخر موعد مسموح للإرجاع للمخزون:</span>
+                          <strong
+                            className={`font-mono ${
+                              isCutoffExceeded ? 'text-rose-300' : 'text-emerald-300'
+                            }`}
+                            dir="ltr"
+                          >
+                            {deconstructCutoffState.cutoffFormatted}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. THE SMART BLOCK LOGIC (UI Level) */}
+                  {isCutoffExceeded && (
+                    <div className="bg-rose-950/80 border-2 border-rose-500/60 rounded-2xl p-4 space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.2)] animate-in fade-in">
+                      <div className="flex items-start gap-3">
+                        <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="text-xs sm:text-sm font-extrabold text-rose-100 leading-relaxed">
+                            ⚠️ تم تحضير الوجبة مسبقاً (تجاوزت الساعة 9 مساءً من يوم التحضير). لا يمكن إرجاع المواد للمخزون.
+                          </p>
+                          <p className="text-[11px] text-rose-200/80">
+                            نظراً لتجاوز موعد الإغلاق النهائي ليوم التحضير ({deconstructCutoffState.prepDay} - 9:00 مساءً بتوقيت السعودية)، تم استهلاك وتغليف المواد فعلياً في المطبخ.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Admin Override Checkbox (Only shown if logged-in user is Admin) */}
+                      {isAdminUser && (
+                        <label className="flex items-center gap-2.5 pt-2.5 border-t border-rose-400/30 cursor-pointer select-none group">
+                          <input
+                            type="checkbox"
+                            checked={isDeconstructAdminOverride}
+                            onChange={(e) => setIsDeconstructAdminOverride(e.target.checked)}
+                            disabled={isSubmittingAdj}
+                            className="w-4 h-4 rounded border-rose-300 bg-black/50 text-amber-500 focus:ring-amber-400 cursor-pointer"
+                          />
+                          <span className="text-xs font-extrabold text-amber-200 group-hover:text-amber-100 transition-colors">
+                            تجاوز المنع كمدير (إلغاء وتوجيه الوجبة للتوالف)
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. PREVIEW CARD: Shown if meal data fetched AND (before cut-off time OR Admin Override is checked) */}
+                  {canShowDeconstructPreview && deconstructSubInfo && (
+                    <div className="bg-white/[0.04] border border-white/15 rounded-2xl p-4 space-y-3.5 animate-in fade-in">
+                      {/* Subscriber & Package Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-white/10">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-200" dir="ltr">
+                              #{deconstructSubInfo.subscription_number}
+                            </span>
+                            <span className="text-sm font-extrabold text-white">
+                              {deconstructSubInfo.customer_name}
+                            </span>
+                            {deconstructSubInfo.found_in_db ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 border border-teal-400/30 text-teal-200">
+                                مسجل في قاعدة البيانات
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/30 text-amber-200">
+                                محاكاة حسب الباقة القياسية
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-white/65 mt-1">
+                            الحي: {deconstructSubInfo.district} | فترة التوصيل: <span dir="ltr">{deconstructSubInfo.delivery_window}</span>
+                          </div>
+                        </div>
+
+                        {/* Package Selector (pre-filled with subscriber's package, changeable) */}
+                        <div className="w-full sm:w-72">
+                          <label className="block text-[10px] font-bold text-white/70 mb-1">
+                            الباقة المسجلة للمشترك:
+                          </label>
+                          <select
+                            value={deconstructSubInfo.package_name}
+                            onChange={(e) => void handleFetchMealData(e.target.value)}
+                            disabled={isFetchingMealData || isSubmittingAdj}
+                            className="w-full bg-black/50 border border-white/20 rounded-xl px-2.5 py-1.5 text-xs font-bold text-emerald-200 focus:outline-none focus:ring-1 focus:ring-emerald-400 [color-scheme:dark] cursor-pointer"
+                          >
+                            {!ZAHI_PACKAGE_OPTIONS.includes(deconstructSubInfo.package_name) && (
+                              <option value={deconstructSubInfo.package_name} className="bg-zinc-900 text-white">
+                                {deconstructSubInfo.package_name}
+                              </option>
+                            )}
+                            {ZAHI_PACKAGE_OPTIONS.map((pkg) => (
+                              <option key={pkg} value={pkg} className="bg-zinc-900 text-white">
+                                {pkg}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Meal Slots from BOM */}
+                      {deconstructMealSlots.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-extrabold text-white/90 flex items-center justify-between">
+                            <span>مكونات وجبات الباقة (مرتبطة بجدول BOM التغليف):</span>
+                            <span className="text-[11px] font-mono text-emerald-300">
+                              {toEnglishDigits(deconstructMealSlots.length)} وجبات/أصناف
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {deconstructMealSlots.map((slot) => (
+                              <div
+                                key={slot.slot_index}
+                                className="bg-black/35 border border-white/10 rounded-xl p-2.5 space-y-1"
+                              >
+                                <div className="text-[10px] font-bold text-indigo-300">
+                                  {slot.slot_label}
+                                </div>
+                                <select
+                                  value={slot.selected_meal_code}
+                                  onChange={(e) =>
+                                    handleDeconstructMealSlotChange(slot.slot_index, e.target.value)
+                                  }
+                                  disabled={isSubmittingAdj}
+                                  className="w-full bg-white/5 border border-white/15 rounded-lg px-2 py-1 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 [color-scheme:dark] cursor-pointer"
+                                >
+                                  {deconstructMenuList.map((m) => (
+                                    <option
+                                      key={m.meal_code}
+                                      value={m.meal_code}
+                                      className="bg-zinc-900 text-white"
+                                    >
+                                      [{m.meal_code}] {m.meal_name_ar}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Deconstructed Packaging Items Table (P8 + P7 + BOM Items) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                            <PackageCheck className="w-4 h-4 text-emerald-300" />
+                            <span>
+                              {isCutoffExceeded && isDeconstructAdminOverride
+                                ? 'معاينة المواد التي سيتم توثيق توجيهها للتوالف (P8 + P7 + BOM):'
+                                : 'معاينة المواد التي سيتم إرجاعها للمخزون الفعلي (P8 + P7 + BOM):'}
+                            </span>
+                          </h4>
+                          <span className="text-[11px] font-mono font-bold text-emerald-300" dir="ltr">
+                            Total: {toEnglishDigits(deconstructItems.reduce((s, i) => s + i.quantity, 0))} units
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-white/15 bg-black/30">
+                          <table className="w-full text-right text-xs">
+                            <thead>
+                              <tr className="border-b border-white/15 bg-white/[0.06] text-white/80 font-extrabold">
+                                <th className="py-2 px-3">الرمز</th>
+                                <th className="py-2 px-3">اسم الصنف</th>
+                                <th className="py-2 px-3">المصدر (منطق الباقة / BOM)</th>
+                                <th className="py-2 px-3 text-center">الكمية</th>
+                                <th className="py-2 px-3 text-center">الرصيد بعد العملية</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {deconstructItems.map((item) => {
+                                const liveItem = inventoryItems.find(
+                                  (inv) => inv.item_code.toUpperCase() === item.item_code.toUpperCase()
+                                );
+                                const curStock = liveItem
+                                  ? Number(liveItem.current_stock ?? 0)
+                                  : item.current_stock;
+                                const afterStock =
+                                  isCutoffExceeded && isDeconstructAdminOverride
+                                    ? curStock
+                                    : curStock + item.quantity;
+
+                                return (
+                                  <tr key={item.item_code} className="hover:bg-white/[0.04]">
+                                    <td className="py-2 px-3 font-mono font-black text-white" dir="ltr">
+                                      <span className="bg-white/15 border border-white/25 px-2 py-0.5 rounded-md">
+                                        {item.item_code}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 font-bold text-white">
+                                      {item.item_name_ar}
+                                    </td>
+                                    <td className="py-2 px-3 text-[11px] text-white/70">
+                                      {item.source}
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-mono font-black" dir="ltr">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-lg border ${
+                                          isCutoffExceeded && isDeconstructAdminOverride
+                                            ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
+                                            : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                        }`}
+                                      >
+                                        {isCutoffExceeded && isDeconstructAdminOverride
+                                          ? `~${toEnglishDigits(item.quantity)} (redirect)`
+                                          : `+${toEnglishDigits(item.quantity)}`}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-mono font-bold text-white/90" dir="ltr">
+                                      {toEnglishDigits(curStock)} →{' '}
+                                      <strong
+                                        className={
+                                          isCutoffExceeded && isDeconstructAdminOverride
+                                            ? 'text-amber-300'
+                                            : 'text-emerald-300'
+                                        }
+                                      >
+                                        {toEnglishDigits(afterStock)}
+                                      </strong>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Optional Notes */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-white/85">
+                          ملاحظات إضافية (اختياري):
+                        </label>
+                        <input
+                          type="text"
+                          value={deconstructNotes}
+                          onChange={(e) => setDeconstructNotes(e.target.value)}
+                          disabled={isSubmittingAdj}
+                          placeholder="مثال: طلب إلغاء من خدمة العملاء..."
+                          className="w-full bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        />
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* 2. Operation Type (Add / Deduct) */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-white/90">
-                    {lang === 'en' ? 'Adjustment Type:' : 'نوع العملية:'}
-                  </label>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  {/* Modal Footer Actions for Tab 2 */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
                     <button
                       type="button"
-                      onClick={() => setAdjType('add')}
-                      disabled={isSubmittingAdj}
-                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                        adjType === 'add'
-                          ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.25)] ring-1 ring-emerald-400/50'
-                          : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
-                      }`}
+                      onClick={() => {
+                        if (!isSubmittingAdj && !isFetchingMealData) {
+                          setIsAdjustmentModalOpen(false);
+                          setAdjError(null);
+                        }
+                      }}
+                      disabled={isSubmittingAdj || isFetchingMealData}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
                     >
-                      <PlusCircle className={`w-4 h-4 ${adjType === 'add' ? 'text-emerald-300' : 'text-white/60'}`} />
-                      <span>{lang === 'en' ? 'Add Stock (+)' : 'إضافة رصيد (+)'}</span>
+                      {t('common.cancel')}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setAdjType('deduct')}
-                      disabled={isSubmittingAdj}
-                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                        adjType === 'deduct'
-                          ? 'bg-rose-500/25 border-rose-400 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.25)] ring-1 ring-rose-400/50'
-                          : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
-                      }`}
-                    >
-                      <MinusCircle className={`w-4 h-4 ${adjType === 'deduct' ? 'text-rose-300' : 'text-white/60'}`} />
-                      <span>{lang === 'en' ? 'Deduct Stock (-)' : 'خصم رصيد (-)'}</span>
-                    </button>
-                  </div>
-                </div>
 
-                {/* 3. Quantity Input & Projected Stock Preview */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-white/90">
-                      {lang === 'en' ? 'Quantity (Units):' : 'الكمية المراد تسويتها (بالوحدة):'}
-                    </label>
-                    {selectedItem && (
-                      <span className="text-[11px] font-mono text-white/70">
-                        {lang === 'en' ? 'Projected:' : 'الرصيد المتوقع بعد العملية:'}{' '}
-                        <strong className={`font-black ${willBeNegative ? 'text-rose-400' : 'text-indigo-300'}`} dir="ltr">
-                          {toEnglishDigits(projectedStock)}
-                        </strong>
-                      </span>
+                    {/* Submit button:
+                        - Hidden if Cut-off is exceeded AND Admin Override is NOT checked!
+                        - If before Cut-off: "تأكيد الإرجاع" (submits bulk 'add')
+                        - If after Cut-off + Admin Override checked: "تأكيد وتوجيه الوجبة" (submits bulk 'redirect') */}
+                    {(!isCutoffExceeded || isDeconstructAdminOverride) && (
+                      <button
+                        type="submit"
+                        disabled={
+                          isSubmittingAdj ||
+                          isFetchingMealData ||
+                          !deconstructFetched ||
+                          deconstructItems.length === 0
+                        }
+                        className={`flex items-center gap-2 px-5 py-2.5 font-extrabold rounded-xl border shadow-lg transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                          isCutoffExceeded && isDeconstructAdminOverride
+                            ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white border-amber-300/50 shadow-amber-500/25'
+                            : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-500/25'
+                        }`}
+                      >
+                        {isSubmittingAdj ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>جاري التنفيذ...</span>
+                          </>
+                        ) : isCutoffExceeded && isDeconstructAdminOverride ? (
+                          <>
+                            <ShieldAlert className="w-4 h-4 text-white" />
+                            <span>تأكيد وتوجيه الوجبة</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-white" />
+                            <span>تأكيد الإرجاع</span>
+                          </>
+                        )}
+                      </button>
                     )}
                   </div>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={adjQuantity}
-                    onChange={(e) => setAdjQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    disabled={isSubmittingAdj}
-                    required
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark]"
-                    placeholder="1"
-                  />
-                  {willBeNegative && (
-                    <p className="text-[11px] text-rose-300 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{lang === 'en' ? 'Notice: Deducting this quantity exceeds current stock.' : 'تنبيه: الكمية المخصومة أكبر من الرصيد الفعلي المتوفر حالياً.'}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* 4. Reason Dropdown */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-white/90">
-                    {lang === 'en' ? 'Adjustment Reason:' : 'سبب التسوية:'}
-                  </label>
-                  <select
-                    value={adjReason}
-                    onChange={(e) => setAdjReason(e.target.value)}
-                    disabled={isSubmittingAdj}
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
-                  >
-                    <option value="تسويق" className="bg-zinc-900 text-white">تسويق (Marketing)</option>
-                    <option value="تعويض عميل" className="bg-zinc-900 text-white">تعويض عميل (Customer Compensation)</option>
-                    <option value="توالف" className="bg-zinc-900 text-white">توالف (Spoilage)</option>
-                    <option value="استلام مشتريات" className="bg-zinc-900 text-white">استلام مشتريات (New Stock / Purchases)</option>
-                    <option value="أخرى" className="bg-zinc-900 text-white">أخرى (Other)</option>
-                  </select>
-                </div>
-
-                {/* 5. Notes */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-white/90">
-                    {lang === 'en' ? 'Notes / Justification (Optional):' : 'ملاحظات وتفاصيل إضافية (اختياري):'}
-                  </label>
-                  <textarea
-                    value={adjNotes}
-                    onChange={(e) => setAdjNotes(e.target.value)}
-                    disabled={isSubmittingAdj}
-                    rows={2}
-                    placeholder={
-                      lang === 'en'
-                        ? 'e.g. Voucher number, receiver name, campaign details...'
-                        : 'مثال: رقم إذن الصرف، اسم المستلم، تفاصيل الحملة الإعلانية...'
-                    }
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none"
-                  />
-                </div>
-
-                {/* Modal Footer Actions */}
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isSubmittingAdj) {
-                        setIsAdjustmentModalOpen(false);
-                        setAdjError(null);
-                      }
-                    }}
-                    disabled={isSubmittingAdj}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 hover:text-white font-bold rounded-xl border border-white/20 transition-all text-xs cursor-pointer disabled:opacity-50"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmittingAdj || !adjItemCode || !adjQuantity || Number(adjQuantity) <= 0}
-                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold rounded-xl border border-indigo-400/50 shadow-lg shadow-indigo-500/25 transition-all text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmittingAdj ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                        <span>{lang === 'en' ? 'Processing...' : 'جاري الحفظ...'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-white" />
-                        <span>{lang === 'en' ? 'Confirm Adjustment' : 'تأكيد التسوية'}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                </form>
+              )}
             </div>
           </div>
         );

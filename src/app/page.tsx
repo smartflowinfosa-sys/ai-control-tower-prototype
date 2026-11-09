@@ -1,10 +1,12 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import DashboardClientView from "@/components/dashboard/DashboardClientView";
 
 async function DashboardContent() {
+  await connection();
   const session = await getServerSession(authOptions);
 
   if (!session) {
