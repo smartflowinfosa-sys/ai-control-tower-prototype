@@ -18,6 +18,7 @@ import {
   StickyNote,
   Tag,
   PackageCheck,
+  Package,
   AlertTriangle,
   Loader2,
   ChevronLeft,
@@ -181,7 +182,8 @@ export default function PackagingClient() {
   const [dispatchBranch, setDispatchBranch] = useState<string>('الكل');
   const [status, setStatus] = useState<string>('الكل');
 
-  // Row 2 Filters (Right to Left: نوع الخدمة | نافذة التوصيل | اسم المندوب | فرع)
+  // Row 2 Filters (Right to Left: اسم الباقة | نوع الخدمة | نافذة التوصيل | اسم المندوب | فرع)
+  const [packageNameFilter, setPackageNameFilter] = useState<string>('الكل');
   const [serviceType, setServiceType] = useState<string>('الكل');
   const [deliveryWindow, setDeliveryWindow] = useState<string>('الكل');
   const [driverName, setDriverName] = useState<string>('الكل');
@@ -391,6 +393,19 @@ export default function PackagingClient() {
     return Array.from(set).map((v) => ({ value: v, label: v }));
   }, [rows]);
 
+  const packageNameOptions = useMemo(() => {
+    const set = new Set<string>(['الكل']);
+    for (const r of rows) {
+      const name = (r.packageName || r.planName || '').trim();
+      if (name && name !== '-') {
+        set.add(name);
+      }
+    }
+    const [all, ...rest] = Array.from(set);
+    rest.sort((a, b) => a.localeCompare(b, 'ar'));
+    return [all, ...rest].map((v) => ({ value: v, label: v }));
+  }, [rows]);
+
   // Instant in-memory filtering (prevents redundant external API calls)
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -411,6 +426,12 @@ export default function PackagingClient() {
       // Dispatch Branch filter
       if (dispatchBranch !== 'الكل' && dispatchBranch !== 'جميع فروع الإرسال') {
         if (r.dispatchBranch !== dispatchBranch) return false;
+      }
+
+      // Package Name filter
+      if (packageNameFilter !== 'الكل') {
+        const itemPkg = (r.packageName || r.planName || '').trim();
+        if (normalizeAr(itemPkg) !== normalizeAr(packageNameFilter)) return false;
       }
 
       // Service Type filter
@@ -459,6 +480,7 @@ export default function PackagingClient() {
     rows,
     city,
     dispatchBranch,
+    packageNameFilter,
     serviceType,
     deliveryWindow,
     driverName,
@@ -499,6 +521,7 @@ export default function PackagingClient() {
     setCity('الكل');
     setDispatchBranch('الكل');
     setStatus('الكل');
+    setPackageNameFilter('الكل');
     setServiceType('الكل');
     setDeliveryWindow('الكل');
     setDriverName('الكل');
@@ -881,9 +904,26 @@ export default function PackagingClient() {
           </div>
         </div>
 
-        {/* Row 2 (Right to Left): نوع الخدمة | نافذة التوصيل | اسم المندوب | فرع */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 5. نوع الخدمة (Service Type - Dropdown) */}
+        {/* Row 2 (Right to Left): اسم الباقة | نوع الخدمة | نافذة التوصيل | اسم المندوب | فرع */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* 5. اسم الباقة (Package Name - Dropdown) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
+              <Package className="w-3.5 h-3.5 text-white/75" />
+              <span>اسم الباقة</span>
+            </label>
+            <GlassSelect
+              value={packageNameFilter}
+              onChange={(e) => {
+                setPackageNameFilter(e?.target ? e.target.value : String(e));
+                setCurrentPage(1);
+              }}
+              options={packageNameOptions}
+              placeholder="الكل"
+            />
+          </div>
+
+          {/* 6. نوع الخدمة (Service Type - Dropdown) */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-white/90 flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-white/75" />
