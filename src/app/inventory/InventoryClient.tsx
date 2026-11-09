@@ -63,6 +63,15 @@ const getDateStringDaysAgo = (daysAgo: number = 0): string => {
   return date.toISOString().split('T')[0];
 };
 
+// Helper to get the earliest upcoming valid delivery target date where adjustment is allowed
+const getNextValidTargetDate = (): string => {
+  const now = dayjs().tz(SAUDI_TZ).locale('en');
+  // Kitchen prepares meals 2 days before delivery; cutoff is 9:00 PM (21:00) KSA on Prep Day.
+  // If current hour is >= 21, cutoff for delivery (now + 2 days) has passed, so next valid delivery is (now + 3 days).
+  const daysAhead = now.hour() >= 21 ? 3 : 2;
+  return now.add(daysAhead, 'day').format('YYYY-MM-DD');
+};
+
 // Helper to ensure all digits are strictly English / Western (0-9), preserving negative numbers cleanly
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
@@ -538,9 +547,9 @@ export default function InventoryClient({
   const [isSubmittingAdj, setIsSubmittingAdj] = useState<boolean>(false);
   const [adjError, setAdjError] = useState<string | null>(null);
 
-  // Tab 2: Subscription Deconstruction (إرجاع وتفكيك اشتراك) State
+  // Tab 1: Subscription Requests (إدارة طلبات المشتركين) State
   const [deconstructSubId, setDeconstructSubId] = useState<string>('');
-  const [deconstructTargetDate, setDeconstructTargetDate] = useState<string>(() => getDateStringDaysAgo(0));
+  const [deconstructTargetDate, setDeconstructTargetDate] = useState<string>(() => getNextValidTargetDate());
   const [deconstructNotes, setDeconstructNotes] = useState<string>('');
   const [isFetchingMealData, setIsFetchingMealData] = useState<boolean>(false);
   const [deconstructFetched, setDeconstructFetched] = useState<boolean>(false);
@@ -1020,10 +1029,16 @@ export default function InventoryClient({
     setAdjNotes('');
     setAdjError(null);
     setIsDeconstructAdminOverride(false);
+    setDeconstructTargetDate(getNextValidTargetDate());
+    setDeconstructSubId('');
+    setDeconstructFetched(false);
+    setDeconstructSubInfo(null);
+    setDeconstructMealSlots([]);
+    setDeconstructItems([]);
     setIsAdjustmentModalOpen(true);
   };
 
-  // UI-level Smart Block Cut-off calculation (Prep Day = Target Date minus 2 days; Cut-off = 9:00 PM AST)
+  // UI-level Smart Block Cut-off calculation (Prep Day = Target Date minus 2 days; Cut-off = 9:00 PM KSA)
   const deconstructCutoffState = useMemo(() => {
     const cleanDate = formatEnglishDate(deconstructTargetDate).split('T')[0];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
@@ -1052,7 +1067,7 @@ export default function InventoryClient({
     return {
       isValid: true,
       prepDay: prepDayFormatted,
-      cutoffFormatted: `${prepDayFormatted} (09:00 PM AST)`,
+      cutoffFormatted: `${prepDayFormatted} (09:00 PM KSA)`,
       isCutoffExceeded,
     };
   }, [deconstructTargetDate]);
@@ -3074,8 +3089,8 @@ export default function InventoryClient({
                     </h3>
                     <p className="text-[11px] text-white/70 font-medium">
                       {lang === 'en'
-                        ? 'Manage subscriber meal cancellation or adjust single item balance with Smart Cut-off protection.'
-                        : 'إدارة طلبات المشتركين وتفكيك الوجبات أو تعديل رصيد صنف محدد وفق منطق الإغلاق الذكي (BOM).'}
+                        ? 'Manage subscriber meal cancellation or adjust single item balance (BOM).'
+                        : 'إدارة طلبات المشتركين وتفكيك الوجبات أو تعديل رصيد صنف محدد (BOM).'}
                     </p>
                   </div>
                 </div>
@@ -3212,7 +3227,7 @@ export default function InventoryClient({
                       <div className="sm:col-span-12 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] text-white/75">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
-                          <span>يوم التحضير في المطبخ (قبل التوصيل بيومين):</span>
+                          <span>يوم التحضير (قبل التوصيل بيومين):</span>
                           <strong className="font-mono text-white tabular-nums" style={englishNumericStyle} dir="ltr">
                             {deconstructCutoffState.prepDay}
                           </strong>
@@ -3245,11 +3260,11 @@ export default function InventoryClient({
                             من يوم التحضير). لا يمكن إرجاع المواد للمخزون.
                           </p>
                           <p className="text-[11px] text-rose-200/80">
-                            نظراً لتجاوز موعد الإغلاق النهائي ليوم التحضير ({' '}
-                            <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">{deconstructCutoffState.prepDay}</span>{' '}
-                            -{' '}
-                            <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">09:00 PM</span>{' '}
-                            بتوقيت السعودية)، تم استهلاك وتغليف المواد فعلياً في المطبخ.
+                            نظراً لتجاوز موعد الإغلاق النهائي ليوم التحضير (
+                            <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">
+                              {deconstructCutoffState.prepDay}
+                            </span>{' '}
+                            - <span className="font-mono font-bold" style={englishNumericStyle} dir="ltr">09:00 PM</span>)، تم استهلاك وتغليف المواد فعلياً.
                           </p>
                         </div>
                       </div>
