@@ -17,7 +17,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert, User } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -519,6 +519,41 @@ export default function InventoryClient({
   const authenticatedUser = useMemo(() => getAuthenticatedPOUser(session, lang), [session, lang]);
   const isAuthorized = Boolean(authenticatedUser);
 
+  // Derive authenticated employee name from active NextAuth session
+  const sessionEmployeeName = useMemo(() => {
+    const u = session?.user as {
+      name_ar?: string;
+      name_en?: string;
+      name?: string | null;
+      username?: string;
+      email?: string;
+    } | undefined;
+    return (
+      u?.name_ar ||
+      u?.name_en ||
+      u?.name ||
+      u?.username ||
+      authenticatedUser?.displayName ||
+      ''
+    ).trim();
+  }, [session, authenticatedUser]);
+
+  // Fallback employee list for audit logging
+  const employeeRoster = useMemo(() => {
+    const base = [
+      'abdullatif mahdi',
+      'فريق المطبخ والإنتاج',
+      'مدير النظام',
+      'مسؤول المستودع والتخزين',
+      'مشرف العمليات والتوريد',
+      'موظف خدمة العملاء',
+    ];
+    if (sessionEmployeeName && !base.includes(sessionEmployeeName)) {
+      return [sessionEmployeeName, ...base];
+    }
+    return base;
+  }, [sessionEmployeeName]);
+
   // Receive Stock & Multi-Item Invoice Modal State
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
   const [receivePoId, setReceivePoId] = useState<string>('');
@@ -545,6 +580,7 @@ export default function InventoryClient({
   const [adjQuantity, setAdjQuantity] = useState<number | string>(1);
   const [adjReason, setAdjReason] = useState<string>('تسويق');
   const [adjNotes, setAdjNotes] = useState<string>('');
+  const [adjEmployeeName, setAdjEmployeeName] = useState<string>('');
   const [isSubmittingAdj, setIsSubmittingAdj] = useState<boolean>(false);
   const [adjError, setAdjError] = useState<string | null>(null);
 
@@ -1028,6 +1064,7 @@ export default function InventoryClient({
     setAdjQuantity(1);
     setAdjReason('تسويق');
     setAdjNotes('');
+    setAdjEmployeeName(sessionEmployeeName || employeeRoster[0] || '');
     setAdjError(null);
     setIsDeconstructAdminOverride(false);
     setDeconstructTargetDate(getNextValidTargetDate());
@@ -1221,6 +1258,12 @@ export default function InventoryClient({
       deconstructNotes.trim() ||
       `تفكيك اشتراك #${cleanSubId} (${pkgLabel}) - تاريخ التوصيل: ${deconstructTargetDate}`;
 
+    const finalEmployee = (adjEmployeeName || sessionEmployeeName || '').trim();
+    if (!finalEmployee) {
+      setAdjError('يرجى تحديد اسم الموظف المسؤول عن العملية (حقل إلزامي للرقابة والتدقيق).');
+      return;
+    }
+
     const payload = deconstructItems.map((item) => ({
       item_code: item.item_code,
       adjustment_type: actionType,
@@ -1229,6 +1272,7 @@ export default function InventoryClient({
       notes: `${defaultNote} [${item.source}]`,
       reference_id: cleanSubId,
       target_date: deconstructTargetDate,
+      employee_name: finalEmployee,
       isAdminOverride: isDeconstructAdminOverride,
       allowRedirect: actionType === 'redirect',
     }));
@@ -1294,6 +1338,12 @@ export default function InventoryClient({
       return;
     }
 
+    const finalEmployee = (adjEmployeeName || sessionEmployeeName || '').trim();
+    if (!finalEmployee) {
+      setAdjError('يرجى تحديد اسم الموظف المسؤول عن العملية (حقل إلزامي للرقابة والتدقيق).');
+      return;
+    }
+
     const selectedItem = inventoryItems.find(
       i => (i.item_code || '').toUpperCase() === adjItemCode.toUpperCase()
     );
@@ -1313,6 +1363,7 @@ export default function InventoryClient({
             quantity: numQty,
             reason: adjReason,
             notes: adjNotes,
+            employee_name: finalEmployee,
           },
         ]),
       });
@@ -3118,6 +3169,50 @@ export default function InventoryClient({
                 >
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+
+              {/* Mandatory Employee Audit Field (حقل اسم الموظف الإلزامي للرقابة) */}
+              <div className="bg-white/[0.04] border border-white/15 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 shrink-0">
+                    <User className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <label htmlFor="modal-adj-employee" className="text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer">
+                      <span>اسم الموظف المسؤول (Employee Name):</span>
+                      <span className="text-rose-400 font-black text-sm">*</span>
+                    </label>
+                    {sessionEmployeeName ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300 font-bold mt-0.5">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>جلسة نشطة موثقة ({sessionEmployeeName})</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-amber-300/80 font-medium mt-0.5 block">
+                        يرجى اختيار الموظف للتوثيق في سجل الرقابة
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="sm:w-64">
+                  <select
+                    id="modal-adj-employee"
+                    value={adjEmployeeName || sessionEmployeeName}
+                    onChange={(e) => setAdjEmployeeName(e.target.value)}
+                    required
+                    className="w-full bg-black/50 hover:bg-black/60 border border-white/20 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                  >
+                    <option value="" disabled className="bg-zinc-900 text-white/50">
+                      -- اختر اسم الموظف --
+                    </option>
+                    {employeeRoster.map((emp) => (
+                      <option key={emp} value={emp} className="bg-zinc-900 text-white">
+                        {emp} {emp === sessionEmployeeName ? '(جلسة نشطة)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* 2 DISTINCT TABS SWITCHER */}
