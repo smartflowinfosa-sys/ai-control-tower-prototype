@@ -220,6 +220,13 @@ export interface SupabaseConsumptionHistoryRow {
 }
 
 /**
+ * Hard Cutoff / Go-Live Date:
+ * Warehouse stocktake was performed on Nov 6, 2026.
+ * All consumption and history must strictly begin on Nov 7, 2026 (2026-11-07).
+ */
+export const INVENTORY_CUTOFF_DATE = '2026-11-07';
+
+/**
  * Fetch historical consumption logs for a specific item from `inventory_consumption_history`
  * filtered by optional startDate and endDate (YYYY-MM-DD).
  */
@@ -260,16 +267,18 @@ export async function fetchItemConsumptionHistory(
     }));
   }
 
-  // Server-side fallback
+  // Server-side fallback: enforce INVENTORY_CUTOFF_DATE
+  const effectiveStart = (!startDate || startDate.trim() < INVENTORY_CUTOFF_DATE)
+    ? INVENTORY_CUTOFF_DATE
+    : startDate.trim();
+
   let query = supabase
     .from('inventory_consumption_history')
     .select('id, item_code, target_date, balance_before, quantity_consumed, balance_after, created_at')
     .eq('item_code', code)
+    .gte('target_date', effectiveStart)
     .order('target_date', { ascending: false });
 
-  if (startDate && startDate.trim()) {
-    query = query.gte('target_date', startDate.trim());
-  }
   if (endDate && endDate.trim()) {
     query = query.lte('target_date', endDate.trim());
   }
@@ -331,16 +340,18 @@ export async function fetchConsumptionHistoryByDateRange(
     }));
   }
 
-  // Server-side fallback
+  // Server-side fallback: enforce INVENTORY_CUTOFF_DATE
+  const effectiveStart = (!start || start < INVENTORY_CUTOFF_DATE)
+    ? INVENTORY_CUTOFF_DATE
+    : start;
+
   let query = supabase
     .from('inventory_consumption_history')
     .select('id, item_code, target_date, balance_before, quantity_consumed, balance_after, created_at')
+    .gte('target_date', effectiveStart)
     .order('target_date', { ascending: true })
     .order('item_code', { ascending: true });
 
-  if (start) {
-    query = query.gte('target_date', start);
-  }
   if (end) {
     query = query.lte('target_date', end);
   }
@@ -391,14 +402,16 @@ export async function fetchAllItemsConsumption(
     return (json.consumptionByItem as Record<string, number>) || {};
   }
 
-  // Server-side fallback
+  // Server-side fallback: enforce INVENTORY_CUTOFF_DATE
+  const effectiveStart = (!startDate || startDate.trim() < INVENTORY_CUTOFF_DATE)
+    ? INVENTORY_CUTOFF_DATE
+    : startDate.trim();
+
   let query = supabase
     .from('inventory_consumption_history')
-    .select('item_code, target_date, quantity_consumed');
+    .select('item_code, target_date, quantity_consumed')
+    .gte('target_date', effectiveStart);
 
-  if (startDate && startDate.trim()) {
-    query = query.gte('target_date', startDate.trim());
-  }
   if (endDate && endDate.trim()) {
     query = query.lte('target_date', endDate.trim());
   }

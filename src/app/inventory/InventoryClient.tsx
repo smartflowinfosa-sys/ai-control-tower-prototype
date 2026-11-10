@@ -2549,8 +2549,12 @@ export default function InventoryClient({
                   type="date"
                   lang="en"
                   dir="ltr"
+                  min="2026-11-07"
                   value={toEnglishDigitsStr(pdfReportDate)}
-                  onChange={(e) => setPdfReportDate(toEnglishDigitsStr(e.target.value))}
+                  onChange={(e) => {
+                    const val = toEnglishDigitsStr(e.target.value);
+                    setPdfReportDate(val && val < '2026-11-07' ? '2026-11-07' : val);
+                  }}
                   style={{
                     fontVariantNumeric: 'tabular-nums',
                     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -4256,7 +4260,7 @@ export default function InventoryClient({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleHistoryDateChange('', '')}
+                      onClick={() => handleHistoryDateChange('2026-11-07', '')}
                       className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
                     >
                       الكل
@@ -4278,8 +4282,13 @@ export default function InventoryClient({
                         type="date"
                         dir="ltr"
                         lang="en"
+                        min="2026-11-07"
                         value={toEnglishDigitsStr(historyStartDate)}
-                        onChange={(e) => handleHistoryDateChange(toEnglishDigitsStr(e.target.value), historyEndDate)}
+                        onChange={(e) => {
+                          const val = toEnglishDigitsStr(e.target.value);
+                          const clamped = val && val < '2026-11-07' ? '2026-11-07' : val;
+                          handleHistoryDateChange(clamped, historyEndDate);
+                        }}
                         style={{
                           fontVariantNumeric: 'tabular-nums',
                           fontFamily: 'system-ui, sans-serif',
@@ -4301,8 +4310,13 @@ export default function InventoryClient({
                         type="date"
                         dir="ltr"
                         lang="en"
+                        min="2026-11-07"
                         value={toEnglishDigitsStr(historyEndDate)}
-                        onChange={(e) => handleHistoryDateChange(historyStartDate, toEnglishDigitsStr(e.target.value))}
+                        onChange={(e) => {
+                          const val = toEnglishDigitsStr(e.target.value);
+                          const clamped = val && val < '2026-11-07' ? '2026-11-07' : val;
+                          handleHistoryDateChange(historyStartDate, clamped);
+                        }}
                         style={{
                           fontVariantNumeric: 'tabular-nums',
                           fontFamily: 'system-ui, sans-serif',
