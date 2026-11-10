@@ -238,3 +238,4 @@ BEGIN
   RETURN public.process_daily_inventory_deduction(p_target_date := target_date::date);
 END;
 $$;
+
