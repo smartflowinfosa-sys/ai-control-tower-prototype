@@ -410,7 +410,7 @@ export default function TicketsClient() {
           <button
             type="button"
             onClick={handleOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 border border-indigo-400/50 text-white shadow-lg shadow-indigo-500/25 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 backdrop-blur-md text-white shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4 text-white" />
             <span>إنشاء تذكرة جديدة</span>
@@ -794,13 +794,16 @@ export default function TicketsClient() {
                   </label>
                   <input
                     type="text"
-                    dir="ltr"
+                    dir="rtl"
                     value={newSubId}
                     onChange={(e) => setNewSubId(toEnglishDigitsStr(e.target.value))}
                     disabled={isSubmittingCreate}
                     placeholder="مثال: 2703326"
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-mono font-bold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
-                    style={englishNumericStyle}
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-mono font-bold text-white placeholder:text-white/40 text-right placeholder:text-right focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+                    style={{
+                      ...englishNumericStyle,
+                      direction: 'rtl',
+                    }}
                   />
                 </div>
 
@@ -906,16 +909,16 @@ export default function TicketsClient() {
                 <button
                   type="submit"
                   disabled={isSubmittingCreate || !newDescription.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-extrabold rounded-xl border border-indigo-400/50 shadow-lg shadow-indigo-500/25 text-xs sm:text-sm cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/30 backdrop-blur-md text-white font-extrabold rounded-xl shadow-sm text-xs sm:text-sm cursor-pointer disabled:opacity-50 transition-all"
                 >
                   {isSubmittingCreate ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
                       <span>جاري الحفظ والإرسال...</span>
                     </>
                   ) : (
                     <>
-                      <Check className="w-4 h-4" />
+                      <Check className="w-4 h-4 text-white" />
                       <span>إنشاء وإرسال التذكرة</span>
                     </>
                   )}
