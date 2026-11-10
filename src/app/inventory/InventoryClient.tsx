@@ -2195,6 +2195,15 @@ export default function InventoryClient({
               <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
             </button>
 
+            {/* Manual Adjustments Report Link */}
+            <Link
+              href="/inventory/adjustments-report"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-purple-500/15 hover:bg-purple-500/25 border-purple-400/30 text-purple-200 hover:text-white shadow-sm"
+              title={lang === 'en' ? 'Manual Adjustments Report' : 'تقرير التعديلات اليدوية'}
+            >
+              <span>📑 تقرير التعديلات اليدوية</span>
+            </Link>
+
             {/* Sorting Dropdown Menu */}
             <div className="flex items-center gap-2">
               <label htmlFor="smart-po-sort" className="text-xs font-bold text-white/80 flex items-center gap-1.5 shrink-0">

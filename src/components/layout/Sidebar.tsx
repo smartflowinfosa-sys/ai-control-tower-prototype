@@ -25,6 +25,7 @@ import {
   FileText,
   PackageCheck,
   ChevronDown,
+  Ticket,
   type LucideIcon,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -104,6 +105,8 @@ export default function Sidebar() {
     { href: '/production', labelKey: 'nav.production', icon: ChefHat, adminOnly: false },
     // Inventory (إدارة المخزون) - accessible to STAFF and ADMIN
     { href: '/inventory', labelKey: 'nav.inventory', icon: Package, adminOnly: false },
+    // Tickets & Operations (التذاكر والعمليات 🎫) - accessible to STAFF and ADMIN
+    { href: '/tickets', labelKey: 'nav.tickets', icon: Ticket, adminOnly: false },
     // Admin-only: Suppliers (الموردين)
     { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck, adminOnly: true },
   ];
