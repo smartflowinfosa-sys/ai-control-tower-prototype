@@ -454,7 +454,12 @@ async function fetchAndSyncPackaging(
   supabase: ReturnType<typeof getDbClient>,
   token: string,
   targetDate: string
-): Promise<{ bagsCount: number; packagingOrdersSynced: number; packagingWarning?: string }> {
+): Promise<{
+  bagsCount: number;
+  cutleryCount: number;
+  packagingOrdersSynced: number;
+  packagingWarning?: string;
+}> {
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -526,6 +531,7 @@ async function fetchAndSyncPackaging(
       console.warn(`⚠️ [Cron Daily Deduction] ${warnMsg}. Falling back to bagsCount = 0.`);
       return {
         bagsCount: 0,
+        cutleryCount: 0,
         packagingOrdersSynced: 0,
         packagingWarning: warnMsg,
       };
@@ -593,6 +599,19 @@ async function fetchAndSyncPackaging(
     const packagingItems = Array.from(uniqueRows.values());
     const bagsCount = packagingItems.length;
 
+    // Calculate P7 cutlery count according to the rule:
+    // - If package_name contains 'غداء' -> 1
+    // - Else (all other packages) -> 2
+    let cutleryCount = 0;
+    for (const item of packagingItems) {
+      const pkg = (item.package_name || '').trim();
+      if (pkg.includes('غداء')) {
+        cutleryCount += 1;
+      } else {
+        cutleryCount += 2;
+      }
+    }
+
     if (bagsCount > 0) {
       // Remove any stale records for `targetDate` before upserting so `techrar_packaging_report`
       // row count for `targetDate` strictly matches `bagsCount` for `process_daily_inventory_deduction`
@@ -614,6 +633,7 @@ async function fetchAndSyncPackaging(
           );
           return {
             bagsCount: 0,
+            cutleryCount: 0,
             packagingOrdersSynced: 0,
             packagingWarning: `Upsert warning: ${upsertError.message}`,
           };
@@ -636,6 +656,7 @@ async function fetchAndSyncPackaging(
 
     return {
       bagsCount,
+      cutleryCount,
       packagingOrdersSynced: bagsCount,
     };
   } catch (err: unknown) {
@@ -645,6 +666,7 @@ async function fetchAndSyncPackaging(
     );
     return {
       bagsCount: 0,
+      cutleryCount: 0,
       packagingOrdersSynced: 0,
       packagingWarning: msg,
     };
@@ -709,7 +731,7 @@ async function executeScheduledDeduction(request: Request) {
           console.warn(
             `⚠️ [Cron Daily Deduction] Packaging fetch rejected for ${targetDate}: ${pkgMsg}. Defaulting bagsCount = 0 and proceeding with BOQ meal deduction.`
           );
-          return { bagsCount: 0, packagingOrdersSynced: 0, packagingWarning: pkgMsg };
+          return { bagsCount: 0, cutleryCount: 0, packagingOrdersSynced: 0, packagingWarning: pkgMsg };
         }),
       ]);
 
@@ -788,14 +810,122 @@ async function executeScheduledDeduction(request: Request) {
           ? rpcObj.bags_deducted
           : (packagingSummary?.bagsCount ?? 0);
 
+      // P7 Cutlery Deduction Rule:
+      // For each customer order in the packaging report for `targetDate`:
+      // - If package_name contains 'غداء' (like 'غداء العمل'): add 1 to P7 total
+      // - Else (all other packages like 'تخسيس مضاعف'): add 2 to P7 total
+      let calculatedP7 = packagingSummary?.cutleryCount ?? 0;
+      if (calculatedP7 === 0) {
+        const { data: dbPackaging } = await supabase
+          .from('techrar_packaging_report')
+          .select('package_name')
+          .eq('report_date', targetDate);
+
+        for (const row of dbPackaging || []) {
+          const pkg = (row.package_name || '').trim();
+          if (pkg.includes('غداء')) {
+            calculatedP7 += 1;
+          } else {
+            calculatedP7 += 2;
+          }
+        }
+      }
+
+      let cutleryDeducted =
+        typeof rpcObj.cutlery_deducted === 'number' && rpcObj.cutlery_deducted > 0
+          ? rpcObj.cutlery_deducted
+          : 0;
+
+      // If the database RPC did not deduct P7 (e.g. older RPC version running in database),
+      // apply the P7 deduction directly to inventory_items and inventory_consumption_history
+      if (cutleryDeducted === 0 && calculatedP7 > 0) {
+        const { data: p7Hist } = await supabase
+          .from('inventory_consumption_history')
+          .select('*')
+          .eq('target_date', targetDate)
+          .eq('item_code', 'P7')
+          .maybeSingle();
+
+        if (p7Hist) {
+          const currentConsumed = Number(p7Hist.quantity_consumed ?? 0);
+          if (currentConsumed === 0) {
+            const beforeStock = Number(p7Hist.balance_before ?? 0);
+            const afterStock = beforeStock - calculatedP7;
+
+            await supabase
+              .from('inventory_consumption_history')
+              .update({
+                quantity_consumed: calculatedP7,
+                balance_after: afterStock,
+              })
+              .eq('id', p7Hist.id);
+
+            const { data: invP7 } = await supabase
+              .from('inventory_items')
+              .select('current_stock')
+              .eq('item_code', 'P7')
+              .single();
+
+            if (invP7) {
+              const newStock = Number(invP7.current_stock ?? 0) - calculatedP7;
+              await supabase
+                .from('inventory_items')
+                .update({
+                  current_stock: newStock,
+                  consumed_quantity: calculatedP7,
+                })
+                .eq('item_code', 'P7');
+            }
+
+            cutleryDeducted = calculatedP7;
+            console.log(
+              `🍴 [Cron Daily Deduction] Applied P7 cutlery deduction for ${targetDate}: ${calculatedP7} units (Ghada: x1, Others: x2)`
+            );
+          } else {
+            cutleryDeducted = currentConsumed;
+          }
+        } else {
+          // No history record existed for P7, insert history record and deduct from inventory_items
+          const { data: invP7 } = await supabase
+            .from('inventory_items')
+            .select('current_stock')
+            .eq('item_code', 'P7')
+            .single();
+
+          const curStock = Number(invP7?.current_stock ?? 0);
+          const afterStock = curStock - calculatedP7;
+
+          await supabase
+            .from('inventory_consumption_history')
+            .insert({
+              item_code: 'P7',
+              target_date: targetDate,
+              balance_before: curStock,
+              quantity_consumed: calculatedP7,
+              balance_after: afterStock,
+            });
+
+          await supabase
+            .from('inventory_items')
+            .update({
+              current_stock: afterStock,
+              consumed_quantity: calculatedP7,
+            })
+            .eq('item_code', 'P7');
+
+          cutleryDeducted = calculatedP7;
+        }
+      }
+
       console.log(
-        `✅ [Cron Daily Deduction] Successfully deducted & locked ${targetDate} (bags_deducted: ${bagsDeducted}, boq_total_meals: ${boqSummary.totalMeals})`
+        `✅ [Cron Daily Deduction] Successfully deducted & locked ${targetDate} (bags_deducted: ${bagsDeducted}, cutlery_deducted: ${cutleryDeducted}, boq_total_meals: ${boqSummary.totalMeals})`
       );
 
       return {
         target_date: targetDate,
         status: 'success' as const,
         bags_deducted: bagsDeducted,
+        cutlery_deducted: cutleryDeducted,
         boq_unique_meals: boqSummary.uniqueMeals,
         boq_total_meals: boqSummary.totalMeals,
         packaging_orders_synced: packagingSummary.packagingOrdersSynced,

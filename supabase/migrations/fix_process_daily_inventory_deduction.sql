@@ -1,5 +1,8 @@
--- Migration: Fix ambiguous column reference 'target_date' in process_daily_inventory_deduction
--- Resolves PostgreSQL error 42702 by renaming parameter to p_target_date and qualifying all table references.
+-- Migration: Fix process_daily_inventory_deduction to include P7 (Cutlery) calculation rule
+-- Resolves issue where P7 deduction showed as 0 by computing cutlery based on packaging report:
+-- - If package_name contains 'غداء' (like 'غداء العمل') -> 1 cutlery set
+-- - ELSE (for all other packages like 'تخسيس مضاعف', etc.) -> 2 cutlery sets
+-- P8 remains 1 bag per order in techrar_packaging_report.
 
 -- 1. Drop existing overloaded functions
 DROP FUNCTION IF EXISTS public.process_daily_inventory_deduction(date);
@@ -13,14 +16,29 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_bags_count integer := 0;
+  v_cutlery_count integer := 0;
   v_rec record;
   v_consumed integer;
   v_balance_before integer;
   v_balance_after integer;
 BEGIN
-  -- 1. Calculate bags count from techrar_packaging_report for the target date
-  SELECT COALESCE(COUNT(*), 0)::integer
-  INTO v_bags_count
+  -- 1. Calculate bags count (P8) and cutlery count (P7) from techrar_packaging_report for the target date
+  -- P8 Rule: 1 bag per customer order
+  -- P7 Rule: If package_name contains 'غداء' (like 'غداء العمل') -> 1; ELSE -> 2
+  SELECT 
+    COALESCE(COUNT(*), 0)::integer,
+    COALESCE(
+      SUM(
+        CASE 
+          WHEN tpr.package_name ILIKE '%غداء%' THEN 1 
+          ELSE 2 
+        END
+      ), 
+      0
+    )::integer
+  INTO 
+    v_bags_count,
+    v_cutlery_count
   FROM public.techrar_packaging_report tpr
   WHERE tpr.report_date = p_target_date;
 
@@ -38,8 +56,11 @@ BEGIN
   LOOP
     -- Calculate consumption for this item on p_target_date
     IF v_rec.item_code = 'P8' THEN
-      -- P8 represents packaging bags from packaging report
+      -- P8 represents packaging bags from packaging report (1 per customer order)
       v_consumed := v_bags_count;
+    ELSIF v_rec.item_code = 'P7' THEN
+      -- P7 represents cutlery sets based on package name rule (غداء: 1, otherwise: 2)
+      v_consumed := v_cutlery_count;
     ELSE
       -- Meal packaging consumption based on BOM and BOQ for p_target_date
       SELECT COALESCE(SUM(boq.quantity * bom.quantity_used), 0)::integer
@@ -83,7 +104,8 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'date', p_target_date,
-    'bags_deducted', v_bags_count
+    'bags_deducted', v_bags_count,
+    'cutlery_deducted', v_cutlery_count
   );
 END;
 $$;
@@ -98,4 +120,3 @@ BEGIN
   RETURN public.process_daily_inventory_deduction(p_target_date := target_date::date);
 END;
 $$;
-

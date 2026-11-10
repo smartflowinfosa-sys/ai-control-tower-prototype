@@ -738,7 +738,7 @@ export async function POST(request: NextRequest) {
             if (delta !== 0) {
               await supabaseAdmin
                 .from('inventory_items')
-                .update({ current_stock: nextStock, updated_at: new Date().toISOString() })
+                .update({ current_stock: nextStock })
                 .eq('item_code', item.item_code);
             }
 
