@@ -1446,16 +1446,15 @@ export default function InventoryClient({
     return matchCat && matchSearch;
   });
 
-  // Resolves total historical consumed_quantity from inventory_consumption_history (grand total of all rows) (+ any runtime simulation delta)
+  // Resolves consumed_quantity strictly from item.consumed_quantity (+ any runtime simulation delta)
   const getItemConsumedQuantity = useCallback(
     (item: SupabaseInventoryItem): number => {
       const code = String(item.item_code || '').trim().toUpperCase();
-      const historyTotal = totalHistoricalConsumption[code];
-      const baseConsumed = historyTotal !== undefined ? Number(historyTotal) : Number(item.consumed_quantity ?? 0);
+      const baseConsumed = Number(item.consumed_quantity ?? 0);
       const localAdded = Number(unreplenished[code] ?? 0);
       return Math.max(0, baseConsumed + localAdded);
     },
-    [totalHistoricalConsumption, unreplenished]
+    [unreplenished]
   );
 
   // Smart Auto PO Sorting Engine (strictly driven by live current_stock, reorder_level & consumed_quantity from Supabase)
@@ -1532,37 +1531,29 @@ export default function InventoryClient({
       const displayDate = formatDisplayDate(targetDate);
 
       // 1. Fetch from inventory_consumption_history based on selected single date
-      const historyRecords = await fetchConsumptionHistoryByDateRange(targetDate, targetDate);
+      const historyRecords = await fetchConsumptionHistoryByDateRange(targetDate, targetDate).catch(() => []);
 
-      if (!historyRecords || historyRecords.length === 0) {
-        setSuccessToast(
-          lang === 'en'
-            ? `No consumption history records found for ${displayDate}.`
-            : `لا توجد سجلات استهلاك تاريخية محفوظة للتاريخ المحدد (${displayDate}). يرجى اختيار تاريخ تم فيه خصم المخزون.`
-        );
-        setTimeout(() => setSuccessToast(null), 4500);
-        return;
-      }
-
-      // 2. Map item_code from history with inventory_items array to get item_name_ar
-      const itemNameMap = new Map<string, string>();
+      // 2. Map item_code from live inventoryItems to get item_name_ar & current stock
+      const invItemByCode = new Map<string, SupabaseInventoryItem>();
       for (const item of inventoryItems) {
         const code = (item.item_code || '').trim().toUpperCase();
         if (code) {
-          itemNameMap.set(code, item.item_name_ar || getItemDisplayName(item));
+          invItemByCode.set(code, item);
         }
       }
 
       const getItemNameAr = (code: string): string => {
         const c = code.trim().toUpperCase();
-        if (itemNameMap.has(c)) return itemNameMap.get(c)!;
+        const existing = invItemByCode.get(c);
+        if (existing?.item_name_ar) return existing.item_name_ar;
+        if (existing) return getItemDisplayName(existing);
         const std = getStandardCodeInfo(c);
         return std?.nameAr || c;
       };
 
       // Group records by item_code (in case multiple records exist for the day)
       const itemsByCode = new Map<string, SupabaseConsumptionHistoryRow[]>();
-      for (const row of historyRecords) {
+      for (const row of historyRecords || []) {
         const code = String(row.item_code || '').trim().toUpperCase();
         if (!code) continue;
         if (!itemsByCode.has(code)) {
@@ -1573,6 +1564,9 @@ export default function InventoryClient({
 
       // 3. Prepare Report Data with exact RTL columns:
       // [item_code] | [item_name_ar] | [balance_before] | [quantity_consumed] | [balance_after]
+      // STRICT REQUIREMENT: MUST query master list of all inventory items (P1 to P11).
+      // If an item has no recorded consumption for the selected date, it MUST still be included with quantity_consumed = 0.
+      const handledCodes = new Set<string>();
       const reportRows: Array<{
         item_code: string;
         item_name_ar: string;
@@ -1581,19 +1575,79 @@ export default function InventoryClient({
         balance_after: number;
       }> = [];
 
-      for (const [code, rowsForCode] of itemsByCode.entries()) {
-        rowsForCode.sort((a, b) => (a.target_date || '').localeCompare(b.target_date || '') || ((Number(a.id) || 0) - (Number(b.id) || 0)));
-        const earliest = rowsForCode[0];
-        const latest = rowsForCode[rowsForCode.length - 1];
-        const totalConsumed = rowsForCode.reduce((acc, r) => acc + Number(r.quantity_consumed ?? 0), 0);
+      // A. Populate from STANDARD_ITEM_CODES (P1 to P11)
+      for (const stdItem of STANDARD_ITEM_CODES) {
+        const code = stdItem.code.toUpperCase();
+        handledCodes.add(code);
+        const invItem = invItemByCode.get(code);
+        const rowsForCode = itemsByCode.get(code);
 
-        reportRows.push({
-          item_code: code,
-          item_name_ar: getItemNameAr(code),
-          balance_before: Number(earliest.balance_before ?? 0),
-          quantity_consumed: totalConsumed,
-          balance_after: Number(latest.balance_after ?? 0),
-        });
+        if (rowsForCode && rowsForCode.length > 0) {
+          rowsForCode.sort(
+            (a, b) =>
+              (a.target_date || '').localeCompare(b.target_date || '') ||
+              ((Number(a.id) || 0) - (Number(b.id) || 0))
+          );
+          const earliest = rowsForCode[0];
+          const latest = rowsForCode[rowsForCode.length - 1];
+          const totalConsumed = rowsForCode.reduce(
+            (acc, r) => acc + Number(r.quantity_consumed ?? 0),
+            0
+          );
+          reportRows.push({
+            item_code: code,
+            item_name_ar: getItemNameAr(code),
+            balance_before: Number(earliest.balance_before ?? invItem?.current_stock ?? 0),
+            quantity_consumed: totalConsumed,
+            balance_after: Number(latest.balance_after ?? invItem?.current_stock ?? 0),
+          });
+        } else {
+          const currentStock = Number(invItem?.current_stock ?? 0);
+          reportRows.push({
+            item_code: code,
+            item_name_ar: getItemNameAr(code),
+            balance_before: currentStock,
+            quantity_consumed: 0,
+            balance_after: currentStock,
+          });
+        }
+      }
+
+      // B. Include any additional inventory items that might not be in STANDARD_ITEM_CODES
+      for (const [code, invItem] of invItemByCode.entries()) {
+        if (!handledCodes.has(code)) {
+          handledCodes.add(code);
+          const rowsForCode = itemsByCode.get(code);
+          if (rowsForCode && rowsForCode.length > 0) {
+            rowsForCode.sort(
+              (a, b) =>
+                (a.target_date || '').localeCompare(b.target_date || '') ||
+                ((Number(a.id) || 0) - (Number(b.id) || 0))
+            );
+            const earliest = rowsForCode[0];
+            const latest = rowsForCode[rowsForCode.length - 1];
+            const totalConsumed = rowsForCode.reduce(
+              (acc, r) => acc + Number(r.quantity_consumed ?? 0),
+              0
+            );
+            reportRows.push({
+              item_code: code,
+              item_name_ar: getItemNameAr(code),
+              balance_before: Number(earliest.balance_before ?? invItem.current_stock ?? 0),
+              quantity_consumed: totalConsumed,
+              balance_after: Number(latest.balance_after ?? invItem.current_stock ?? 0),
+            });
+          } else {
+            const currentStock = Number(invItem.current_stock ?? 0);
+            reportRows.push({
+              item_code: code,
+              item_name_ar: getItemNameAr(code),
+              balance_before: currentStock,
+              quantity_consumed: 0,
+              balance_after: currentStock,
+            });
+          }
+        }
       }
 
       // Sort by standard item codes (P1, P2, ... P11)
@@ -2233,9 +2287,15 @@ export default function InventoryClient({
                 </span>
                 <input
                   type="date"
-                  value={pdfReportDate}
-                  onChange={(e) => setPdfReportDate(e.target.value)}
-                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2.5 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
+                  lang="en"
+                  dir="ltr"
+                  value={toEnglishDigitsStr(pdfReportDate)}
+                  onChange={(e) => setPdfReportDate(toEnglishDigitsStr(e.target.value))}
+                  style={{
+                    fontVariantNumeric: 'tabular-nums',
+                    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                  }}
+                  className="bg-black/30 hover:bg-black/40 border border-white/20 rounded-lg px-2.5 py-0.5 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer [color-scheme:dark]"
                   title={lang === 'en' ? 'Report Date' : 'تاريخ التقرير'}
                 />
               </div>
@@ -2372,15 +2432,6 @@ export default function InventoryClient({
                             className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-teal-500/25 border border-white/15 hover:border-teal-400/50 text-white/75 hover:text-teal-200 transition-all cursor-pointer active:scale-95"
                           >
                             <Clock className="w-3.5 h-3.5 text-teal-300" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenManualAdjustment(item.item_code, 'single')}
-                            title={lang === 'en' ? `Adjust stock for ${code}` : `تعديل رصيد الصنف ${code}`}
-                            aria-label={`تعديل رصيد الصنف ${getItemDisplayName(item)}`}
-                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/8 hover:bg-indigo-500/25 border border-white/15 hover:border-indigo-400/50 text-white/75 hover:text-indigo-200 transition-all cursor-pointer active:scale-95"
-                          >
-                            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
                           </button>
                         </div>
                         <div className="text-[11px] text-white/60 font-mono" dir="ltr">{item.item_name_en || std?.nameEn || ''}</div>
@@ -3953,6 +4004,10 @@ export default function InventoryClient({
                         lang="en"
                         value={toEnglishDigitsStr(historyStartDate)}
                         onChange={(e) => handleHistoryDateChange(toEnglishDigitsStr(e.target.value), historyEndDate)}
+                        style={{
+                          fontVariantNumeric: 'tabular-nums',
+                          fontFamily: 'system-ui, sans-serif',
+                        }}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
                     </div>
@@ -3972,6 +4027,10 @@ export default function InventoryClient({
                         lang="en"
                         value={toEnglishDigitsStr(historyEndDate)}
                         onChange={(e) => handleHistoryDateChange(historyStartDate, toEnglishDigitsStr(e.target.value))}
+                        style={{
+                          fontVariantNumeric: 'tabular-nums',
+                          fontFamily: 'system-ui, sans-serif',
+                        }}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
                     </div>
