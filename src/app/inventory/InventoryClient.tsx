@@ -2023,6 +2023,26 @@ export default function InventoryClient({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Manual Inventory Adjustment Button (Glassmorphism) */}
+          <button
+            type="button"
+            onClick={() => handleOpenManualAdjustment()}
+            className="bg-white/[0.08] hover:bg-white/[0.16] backdrop-blur-md backdrop-saturate-150 border border-white/20 hover:border-white/35 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
+            title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}
+          >
+            <SlidersHorizontal className="w-4 h-4 text-indigo-300 group-hover:rotate-12 transition-transform" />
+            <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
+          </button>
+
+          {/* Manual Adjustments Report Link (Glassmorphism) */}
+          <Link
+            href="/inventory/adjustments-report"
+            className="bg-white/[0.06] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 hover:border-white/30 text-white/90 hover:text-white font-bold px-3.5 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] transition-all text-sm flex items-center gap-1.5 cursor-pointer"
+            title={lang === 'en' ? 'Manual Adjustments Report' : 'تقرير التعديلات اليدوية'}
+          >
+            <span>📑 {lang === 'en' ? 'Adjustments Report' : 'تقرير التعديلات'}</span>
+          </Link>
+
           {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving */}
           {isAuthorized && (
             <button
@@ -2183,26 +2203,6 @@ export default function InventoryClient({
                 <span>{lang === 'en' ? 'Export PDF' : 'تصدير تقرير الاستهلاك (PDF)'}</span>
               </button>
             </div>
-
-            {/* Manual Inventory Adjustment Button */}
-            <button
-              type="button"
-              onClick={() => handleOpenManualAdjustment()}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-400/30 text-indigo-200 hover:text-white shadow-sm"
-              title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-300" />
-              <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
-            </button>
-
-            {/* Manual Adjustments Report Link */}
-            <Link
-              href="/inventory/adjustments-report"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-purple-500/15 hover:bg-purple-500/25 border-purple-400/30 text-purple-200 hover:text-white shadow-sm"
-              title={lang === 'en' ? 'Manual Adjustments Report' : 'تقرير التعديلات اليدوية'}
-            >
-              <span>📑 تقرير التعديلات اليدوية</span>
-            </Link>
 
             {/* Sorting Dropdown Menu */}
             <div className="flex items-center gap-2">
