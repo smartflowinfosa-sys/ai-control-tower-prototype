@@ -317,6 +317,7 @@ export default function InventoryClient({
   // PDF Report Single Date Filter State (specifically for daily PDF Export, defaults strictly to Today's date)
   const [pdfReportDate, setPdfReportDate] = useState<string>(() => getDateStringDaysAgo(0));
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [isExportingItemPdf, setIsExportingItemPdf] = useState<boolean>(false);
 
   const loadConsumptionHistory = useCallback(
     async (itemCode: string, start: string, end: string) => {
@@ -1898,6 +1899,265 @@ export default function InventoryClient({
       setIsExportingPdf(false);
     }
   }, [pdfReportDate, inventoryItems, getItemDisplayName, lang]);
+
+  /**
+   * PDF Export for Individual Item Consumption History Drawer:
+   * Generates a clean A4 PDF document containing:
+   * - Item Name and Code
+   * - Selected Date Range
+   * - Full history table: Date, Opening Balance, Consumed Quantity, Remaining Balance
+   * - Total Summary Row: "إجمالي المستهلك للفترة"
+   */
+  const exportItemHistoryPdf = useCallback(() => {
+    if (!historyDrawerItem || historyRows.length === 0) return;
+    setIsExportingItemPdf(true);
+
+    try {
+      const itemCode = historyDrawerItem.item_code.toUpperCase();
+      const itemName = getItemDisplayName(historyDrawerItem);
+      const titleText = `${itemName} (${itemCode})`;
+
+      let rangeText = 'كافة السجلات التاريخية المسجلة (الكل)';
+      if (historyStartDate && historyEndDate) {
+        if (historyStartDate === historyEndDate) {
+          rangeText = formatDisplayDate(historyStartDate);
+        } else {
+          rangeText = `من ${formatDisplayDate(historyStartDate)} إلى ${formatDisplayDate(historyEndDate)}`;
+        }
+      } else if (historyStartDate) {
+        rangeText = `من تاريخ ${formatDisplayDate(historyStartDate)}`;
+      } else if (historyEndDate) {
+        rangeText = `حتى تاريخ ${formatDisplayDate(historyEndDate)}`;
+      }
+
+      const escapeHtml = (val: string | number | null | undefined): string => {
+        if (val === null || val === undefined) return '';
+        return String(val)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
+      const tableRowsHtml = historyRows
+        .map((row) => {
+          const isConsumed = Number(row.quantity_consumed ?? 0) > 0;
+          return `
+          <tr>
+            <td class="date-cell" style="text-align:center;"><span dir="ltr">${escapeHtml(formatDisplayDate(row.target_date))}</span></td>
+            <td class="num-cell" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.balance_before)}</span></td>
+            <td class="consumed-cell ${isConsumed ? 'consumed-active' : 'consumed-zero'}" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.quantity_consumed)}</span></td>
+            <td class="num-cell balance-after" style="text-align:center;"><span dir="ltr">${toEnglishDigits(row.balance_after)}</span></td>
+          </tr>`;
+        })
+        .join('');
+
+      const htmlDoc = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>تقرير استهلاك - ${escapeHtml(titleText)}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      direction: rtl;
+      color: #0f172a;
+      background: #ffffff;
+      margin: 0;
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .report-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+    }
+    .item-subtitle {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0d9488;
+      margin: 0;
+    }
+    .report-meta {
+      text-align: left;
+      font-size: 12px;
+      color: #475569;
+    }
+    .date-badge {
+      font-weight: 700;
+      color: #0f172a;
+      background: #f1f5f9;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-top: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    th {
+      background-color: #0f172a !important;
+      color: #ffffff !important;
+      font-weight: 800;
+      padding: 8px 10px;
+      font-size: 12px;
+      text-align: center;
+      border: 1px solid #0f172a;
+    }
+    td {
+      padding: 7px 10px;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+      text-align: center;
+    }
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+    .num-cell, .consumed-cell, .date-cell {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, monospace;
+      direction: ltr !important;
+      unicode-bidi: isolate;
+      font-variant-numeric: tabular-nums;
+    }
+    .num-cell {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .consumed-cell {
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .consumed-active {
+      color: #b45309 !important;
+      font-weight: 800;
+    }
+    .consumed-zero {
+      color: #94a3b8 !important;
+    }
+    .balance-after {
+      color: #047857 !important;
+      font-weight: 700;
+    }
+    tfoot tr {
+      background-color: #f1f5f9 !important;
+      font-weight: 800;
+      border-top: 2px solid #0f172a;
+    }
+    tfoot td {
+      font-size: 13px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-container">
+    <div>
+      <h1 class="report-title">سجل الاستهلاك التفصيلي للصنف</h1>
+      <p class="item-subtitle">${escapeHtml(titleText)}</p>
+    </div>
+    <div class="report-meta">
+      <div>الفترة المحددة:</div>
+      <div class="date-badge"><span dir="ltr">${escapeHtml(toEnglishDigitsStr(rangeText))}</span></div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>التاريخ</th>
+        <th>الرصيد الافتتاحي</th>
+        <th>الكمية المستهلكة</th>
+        <th>الرصيد المتبقي</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRowsHtml}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2" style="text-align: right; font-weight: 800;">إجمالي المستهلك للفترة:</td>
+        <td class="consumed-cell consumed-active" style="text-align: center; font-size: 14px;">
+          <span dir="ltr">${toEnglishDigits(totalHistoryConsumed)} وحدة</span>
+        </td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <script>
+    window.onload = function() {
+      try {
+        document.title = "";
+      } catch (e) {}
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+      let iframe = document.getElementById('item-history-report-print-iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'item-history-report-print-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+      }
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write(htmlDoc);
+        doc.title = '';
+        doc.close();
+      }
+
+      setSuccessToast(
+        lang === 'en'
+          ? `PDF prepared for ${itemCode} (${toEnglishDigits(historyRows.length)} rows)`
+          : `تم تجهيز تقرير PDF للصنف (${itemCode}) بنجاح (${toEnglishDigits(historyRows.length)} صفوف)`
+      );
+      setTimeout(() => setSuccessToast(null), 3500);
+    } catch (err: unknown) {
+      console.error('Error generating item history PDF report:', err);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setSuccessToast(
+        lang === 'en' ? `Failed generating PDF: ${msg}` : `تعذر إنشاء تقرير PDF: ${msg}`
+      );
+      setTimeout(() => setSuccessToast(null), 4000);
+    } finally {
+      setIsExportingItemPdf(false);
+    }
+  }, [historyDrawerItem, historyRows, historyStartDate, historyEndDate, totalHistoryConsumed, getItemDisplayName, lang]);
 
   /**
    * Interactive Consumption Link (Simulating a Quantity Invoice):
@@ -3934,15 +4194,31 @@ export default function InventoryClient({
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setHistoryDrawerItem(null)}
-                    className="text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center w-9 h-9 shrink-0"
-                    aria-label="إغلاق"
-                    title="إغلاق"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={exportItemHistoryPdf}
+                      disabled={isExportingItemPdf || historyRows.length === 0}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-emerald-600/30 hover:bg-emerald-600/45 border-emerald-400/40 text-emerald-200 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                      title="تصدير التقرير (PDF)"
+                    >
+                      {isExportingItemPdf ? (
+                        <Loader2 className="w-3.5 h-3.5 text-emerald-300 animate-spin shrink-0" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                      )}
+                      <span>تصدير التقرير (PDF)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryDrawerItem(null)}
+                      className="text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/20 p-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center w-9 h-9 shrink-0"
+                      aria-label="إغلاق"
+                      title="إغلاق"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3966,17 +4242,17 @@ export default function InventoryClient({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleHistoryDateChange(getDateStringDaysAgo(1), getDateStringDaysAgo(0))}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
-                    >
-                      آخر يومين
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => handleHistoryDateChange(getDateStringDaysAgo(6), getDateStringDaysAgo(0))}
                       className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
                     >
                       آخر 7 أيام
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleHistoryDateChange(getDateStringDaysAgo(29), getDateStringDaysAgo(0))}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/8 hover:bg-white/15 border border-white/15 text-white/85 cursor-pointer transition-colors"
+                    >
+                      شهر
                     </button>
                     <button
                       type="button"
