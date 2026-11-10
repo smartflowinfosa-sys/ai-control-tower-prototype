@@ -7,6 +7,7 @@ import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseO
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
 import Link from 'next/link';
 import GlassSelect from '@/components/common/GlassSelect';
+import EnglishDatePicker from '@/components/common/EnglishDatePicker';
 import {
   STANDARD_ITEM_CODES,
   compareItemCodes,
@@ -3194,19 +3195,17 @@ export default function InventoryClient({
                       <label className="block text-xs font-bold text-white/90">
                         تاريخ الإلغاء (Target Date):
                       </label>
-                      <input
-                        type="date"
-                        dir="ltr"
-                        lang="en"
+                      <EnglishDatePicker
                         value={deconstructTargetDate}
-                        onChange={(e) => {
-                          setDeconstructTargetDate(formatEnglishDate(e.target.value));
+                        onChange={(newDate) => {
+                          setDeconstructTargetDate(formatEnglishDate(newDate));
                           setDeconstructFetched(false);
                           setIsDeconstructAdminOverride(false);
                         }}
                         disabled={isSubmittingAdj || isFetchingMealData}
-                        className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer tabular-nums"
-                        style={englishNumericStyle}
+                        placeholder="dd/mm/yyyy"
+                        focusRingClass="focus-within:ring-2 focus-within:ring-emerald-400/50"
+                        allowClear={false}
                       />
                     </div>
 

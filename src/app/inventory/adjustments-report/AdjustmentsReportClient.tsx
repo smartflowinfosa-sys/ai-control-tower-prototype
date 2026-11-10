@@ -24,6 +24,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { getStandardCodeInfo } from '@/constants/inventoryCodes';
 import { useLanguage } from '@/components/common/LanguageContext';
+import EnglishDatePicker from '@/components/common/EnglishDatePicker';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -215,11 +216,6 @@ export default function AdjustmentsReportClient() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-white flex items-center gap-2">
                 <span>📑 تقرير التعديلات اليدوية للمخزون</span>
               </h1>
-              <p className="text-xs sm:text-sm text-white/70 font-medium mt-0.5">
-                {lang === 'en'
-                  ? 'Audit log of all single-item manual stock adjustments and subscriber meal deconstructions (manual_adjustments_log)'
-                  : 'سجل الرقابة والتدقيق لجميع عمليات تعديل أرصدة الأصناف وإدارة طلبات المشتركين (manual_adjustments_log)'}
-              </p>
             </div>
           </div>
         </div>
@@ -229,7 +225,7 @@ export default function AdjustmentsReportClient() {
             type="button"
             onClick={() => void fetchAdjustmentsLog()}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white transition-all cursor-pointer disabled:opacity-50"
+            className="bg-white/[0.08] hover:bg-white/[0.16] backdrop-blur-md backdrop-saturate-150 border border-white/20 hover:border-white/35 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-xs flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-emerald-300 ${isLoading ? 'animate-spin' : ''}`} />
             <span>تحديث السجل</span>
@@ -237,7 +233,7 @@ export default function AdjustmentsReportClient() {
 
           <Link
             href="/inventory"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-extrabold bg-indigo-600/35 hover:bg-indigo-600/50 border border-indigo-400/50 text-indigo-100 hover:text-white transition-all shadow-sm"
+            className="bg-white/[0.08] hover:bg-white/[0.16] backdrop-blur-md backdrop-saturate-150 border border-white/20 hover:border-white/35 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-xs flex items-center gap-2 cursor-pointer active:scale-95"
           >
             <ArrowRight className="w-3.5 h-3.5 text-indigo-300" />
             <span>العودة إلى لوحة المخزون</span>
@@ -323,14 +319,12 @@ export default function AdjustmentsReportClient() {
               <Calendar className="w-3.5 h-3.5 text-emerald-300" />
               <span>من تاريخ (From Date):</span>
             </label>
-            <input
-              type="date"
-              dir="ltr"
-              lang="en"
+            <EnglishDatePicker
               value={startDate}
-              onChange={(e) => setStartDate(toEnglishDigitsStr(e.target.value))}
-              className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer tabular-nums"
-              style={englishNumericStyle}
+              onChange={(newDate) => setStartDate(newDate)}
+              placeholder="dd/mm/yyyy"
+              focusRingClass="focus-within:ring-2 focus-within:ring-indigo-400/50"
+              allowClear={true}
             />
           </div>
 
@@ -340,14 +334,12 @@ export default function AdjustmentsReportClient() {
               <Calendar className="w-3.5 h-3.5 text-emerald-300" />
               <span>إلى تاريخ (To Date):</span>
             </label>
-            <input
-              type="date"
-              dir="ltr"
-              lang="en"
+            <EnglishDatePicker
               value={endDate}
-              onChange={(e) => setEndDate(toEnglishDigitsStr(e.target.value))}
-              className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer tabular-nums"
-              style={englishNumericStyle}
+              onChange={(newDate) => setEndDate(newDate)}
+              placeholder="dd/mm/yyyy"
+              focusRingClass="focus-within:ring-2 focus-within:ring-indigo-400/50"
+              allowClear={true}
             />
           </div>
 
