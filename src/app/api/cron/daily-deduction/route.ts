@@ -736,29 +736,45 @@ async function executeScheduledDeduction(request: Request) {
       ]);
 
       // 4. Strict Idempotency Check & Automated Inventory Deduction
-      const { data: existingLog, error: logCheckError } = await supabase
-        .from('inventory_deduction_logs')
+      // Check daily_deduction_logs first (primary idempotency lock table)
+      let alreadyDeducted = false;
+      let executedAt: string | null = null;
+
+      const { data: dailyLog, error: dailyLogErr } = await supabase
+        .from('daily_deduction_logs')
         .select('*')
         .eq('target_date', targetDate)
-        .single();
+        .eq('status', 'success')
+        .maybeSingle();
 
-      // PGRST116 = 0 rows returned by .single() (not deducted yet)
-      if (logCheckError && logCheckError.code !== 'PGRST116') {
-        throw new Error(
-          `Failed querying inventory_deduction_logs for ${targetDate}: ${logCheckError.message}`
-        );
+      if (!dailyLogErr && dailyLog) {
+        alreadyDeducted = true;
+        executedAt = ((dailyLog as Record<string, unknown>).executed_at as string) ?? null;
+      } else {
+        // Fallback check on legacy inventory_deduction_logs
+        const { data: legacyLog, error: legacyErr } = await supabase
+          .from('inventory_deduction_logs')
+          .select('*')
+          .eq('target_date', targetDate)
+          .maybeSingle();
+
+        if (!legacyErr && legacyLog) {
+          alreadyDeducted = true;
+          executedAt = ((legacyLog as Record<string, unknown>).deducted_at as string) ?? null;
+        }
       }
 
-      if (existingLog) {
+      if (alreadyDeducted) {
         console.log(
-          `[Cron Daily Deduction] Deduction already executed for ${targetDate}, skipping RPC.`
+          `[Cron Daily Deduction] Deduction already completed for ${targetDate}, skipping RPC.`
         );
         return {
           target_date: targetDate,
           status: 'already_deducted' as const,
-          message: `Inventory deduction already executed for ${targetDate}`,
-          deducted_at: (existingLog as Record<string, unknown>).deducted_at ?? null,
+          message: 'Deduction already completed for this date',
+          deducted_at: executedAt,
           bags_deducted: 0,
+          cutlery_deducted: 0,
           boq_unique_meals: boqSummary.uniqueMeals,
           boq_total_meals: boqSummary.totalMeals,
           packaging_orders_synced: packagingSummary.packagingOrdersSynced,
@@ -790,21 +806,67 @@ async function executeScheduledDeduction(request: Request) {
         );
       }
 
-      // Immediately lock `targetDate` in `inventory_deduction_logs`
-      const { error: insertLogError } = await supabase
-        .from('inventory_deduction_logs')
-        .insert({ target_date: targetDate });
-
-      if (insertLogError && insertLogError.code !== '23505') {
-        throw new Error(
-          `Deduction ran for ${targetDate} but failed to lock inventory_deduction_logs: ${insertLogError.message}`
-        );
-      }
-
       const rpcObj =
         rpcData && typeof rpcData === 'object' && !Array.isArray(rpcData)
           ? (rpcData as Record<string, unknown>)
           : {};
+
+      // If database RPC reported that deduction was already completed for this date, abort gracefully
+      if (
+        rpcObj.already_deducted === true ||
+        rpcObj.message === 'Deduction already completed for this date'
+      ) {
+        console.log(
+          `[Cron Daily Deduction] RPC reported deduction already completed for ${targetDate}.`
+        );
+        return {
+          target_date: targetDate,
+          status: 'already_deducted' as const,
+          message: 'Deduction already completed for this date',
+          deducted_at: null,
+          bags_deducted: 0,
+          cutlery_deducted: 0,
+          boq_unique_meals: boqSummary.uniqueMeals,
+          boq_total_meals: boqSummary.totalMeals,
+          packaging_orders_synced: packagingSummary.packagingOrdersSynced,
+          ...(packagingSummary.packagingWarning ? { packaging_warning: packagingSummary.packagingWarning } : {}),
+          run_date_riyadh: riyadhDate,
+          weekday_riyadh: weekday,
+          rpc_result: rpcData ?? null,
+        };
+      }
+
+      // Immediately lock `targetDate` in `daily_deduction_logs` with status = 'success'
+      const { error: insertDailyLogError } = await supabase
+        .from('daily_deduction_logs')
+        .upsert(
+          {
+            target_date: targetDate,
+            status: 'success',
+            executed_at: new Date().toISOString(),
+            executed_by_system: true,
+          },
+          { onConflict: 'target_date' }
+        );
+
+      if (insertDailyLogError) {
+        console.warn(
+          `⚠️ [Cron Daily Deduction] Warning: could not write to daily_deduction_logs: ${insertDailyLogError.message}`
+        );
+      }
+
+      // Also record in legacy inventory_deduction_logs for backwards compatibility
+      try {
+        await supabase
+          .from('inventory_deduction_logs')
+          .upsert(
+            { target_date: targetDate, deducted_at: new Date().toISOString() },
+            { onConflict: 'target_date' }
+          );
+      } catch {
+        // Non-blocking fallback
+      }
+
       const bagsDeducted =
         typeof rpcObj.bags_deducted === 'number' && rpcObj.bags_deducted > 0
           ? rpcObj.bags_deducted
@@ -944,6 +1006,32 @@ async function executeScheduledDeduction(request: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal Server Error';
     console.error(`❌ [Cron Daily Deduction] Error for ${targetDate}:`, err);
+
+    // Record failure in daily_deduction_logs if not already marked success
+    try {
+      const supabase = getDbClient();
+      const { data: existingSucc } = await supabase
+        .from('daily_deduction_logs')
+        .select('status')
+        .eq('target_date', targetDate)
+        .eq('status', 'success')
+        .maybeSingle();
+
+      if (!existingSucc) {
+        await supabase.from('daily_deduction_logs').upsert(
+          {
+            target_date: targetDate,
+            status: 'failed',
+            executed_at: new Date().toISOString(),
+            executed_by_system: true,
+          },
+          { onConflict: 'target_date' }
+        );
+      }
+    } catch {
+      // Non-blocking log failure
+    }
+
     return NextResponse.json(
       {
         target_date: targetDate,
