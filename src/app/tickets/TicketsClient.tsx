@@ -644,28 +644,6 @@ export default function TicketsClient() {
         return { text: 'متوسطة (Medium)', cls: 'priority-medium' };
       };
 
-      const activeFiltersSummary: string[] = [];
-      if (statusFilter !== 'ALL') {
-        activeFiltersSummary.push(`الحالة: ${getStatusLabel(statusFilter).text}`);
-      }
-      if (priorityFilter !== 'ALL') {
-        activeFiltersSummary.push(`الأولوية: ${getPriorityLabel(priorityFilter).text}`);
-      }
-      if (departmentFilter !== 'ALL') {
-        activeFiltersSummary.push(`القسم: ${departmentFilter}`);
-      }
-      if (employeeFilter !== 'ALL') {
-        activeFiltersSummary.push(`الموظف: ${employeeFilter}`);
-      }
-      if (searchQuery.trim()) {
-        activeFiltersSummary.push(`بحث: "${searchQuery.trim()}"`);
-      }
-
-      const filterText =
-        activeFiltersSummary.length > 0
-          ? activeFiltersSummary.join('  |  ')
-          : 'الكل (بدون تصفية)';
-
       const generatedAt = formatCompactDateTime(new Date().toISOString());
 
       const rowsHtml = filteredTickets
@@ -678,111 +656,247 @@ export default function TicketsClient() {
             ? `<div class="sub-id" dir="ltr">#${escapeHtml(toEnglishDigitsStr(t.subscription_id))}</div>`
             : '';
 
+          const matchedResolver =
+            t.resolved_by_username ||
+            (t.resolved_by
+              ? appUsers.find((u) => u.id === t.resolved_by)?.username || t.resolved_by
+              : '') ||
+            '';
+
+          const cleanAction = (t.resolution_action || '').trim();
+          const cleanNotes = (t.resolution_notes || '')
+            .replace(/^\[[^\]]+\]\s*(?:-\s*)?/, '')
+            .replace(/\s*-\s*\(بواسطة:\s*[^)]+\)\s*$/, '')
+            .trim();
+          const filteredNotes =
+            cleanAction && cleanNotes === cleanAction ? '' : cleanNotes;
+
+          const actionCellHtml =
+            cleanAction || filteredNotes
+              ? `${cleanAction ? `<div class="action-text">${escapeHtml(cleanAction)}</div>` : ''}${
+                  filteredNotes ? `<div class="notes-text">${escapeHtml(filteredNotes)}</div>` : ''
+                }`
+              : '<span class="muted">—</span>';
+
+          const slaDur = formatSlaDuration(t.created_at, t.resolved_at);
+          const slaCellHtml =
+            normalizeTicketStatus(t.status) === 'resolved' && slaDur
+              ? `<span class="badge sla-badge" dir="rtl">${escapeHtml(toEnglishDigitsStr(slaDur))}</span>`
+              : '<span class="muted">—</span>';
+
           return `
             <tr>
-              <td class="num-cell" dir="ltr">#${escapeHtml(Number(t.ticket_number || 0).toLocaleString('en-US'))}</td>
-              <td>
+              <td class="num-cell center-col">#${escapeHtml(Number(t.ticket_number || 0).toLocaleString('en-US'))}</td>
+              <td class="rtl-cell">
                 <div class="cust-name">${escapeHtml(customerDisplay)}</div>
                 ${subBadge}
               </td>
-              <td style="text-align:center;font-weight:700;">${escapeHtml(deptName)}</td>
-              <td style="text-align:center;"><span class="badge ${prInfo.cls}">${escapeHtml(prInfo.text)}</span></td>
-              <td style="text-align:center;"><span class="badge ${stInfo.cls}">${escapeHtml(stInfo.text)}</span></td>
-              <td class="num-cell" dir="ltr">${escapeHtml(formatCompactDateTime(t.created_at))}</td>
+              <td class="center-col dept-cell">${escapeHtml(deptName)}</td>
+              <td class="center-col"><span class="badge ${prInfo.cls}">${escapeHtml(prInfo.text)}</span></td>
+              <td class="center-col"><span class="badge ${stInfo.cls}">${escapeHtml(stInfo.text)}</span></td>
+              <td class="num-cell center-col">${escapeHtml(formatCompactDateTime(t.created_at))}</td>
+              <td class="text-wrap rtl-cell">${escapeHtml(t.description || '—')}</td>
+              <td class="text-wrap rtl-cell">${actionCellHtml}</td>
+              <td class="center-col emp-cell">${matchedResolver ? escapeHtml(matchedResolver) : '<span class="muted">—</span>'}</td>
+              <td class="center-col">${slaCellHtml}</td>
             </tr>
           `;
         })
         .join('');
 
+      const logoUrl =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/zahi-logo.png`
+          : '/zahi-logo.png';
+
       const htmlDoc = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
-  <title>تقرير التذاكر والعمليات - Zahi Control Tower</title>
+  <title>Zahi Operations - Tickets Report</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
   <style>
-    @page { size: A4 landscape; margin: 12mm; }
+    @page { size: A4 landscape; margin: 10mm; }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
-      direction: rtl;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Tajawal', Tahoma, Arial, sans-serif;
+      direction: ltr;
       background: #ffffff;
       color: #0f172a;
       margin: 0;
-      padding: 16px;
-      font-size: 12px;
-      line-height: 1.5;
+      padding: 12px;
+      font-size: 10.5px;
+      line-height: 1.45;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
     .header-container {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      border-bottom: 2px solid #059669;
+      align-items: center;
+      border-bottom: 3px solid #065f46;
       padding-bottom: 12px;
       margin-bottom: 14px;
       gap: 16px;
     }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-frame {
+      width: 126px;
+      height: 52px;
+      overflow: hidden;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-frame img {
+      width: 204px;
+      height: 136px;
+      min-width: 204px;
+      max-width: none;
+      flex-shrink: 0;
+      object-fit: contain;
+      display: block;
+      transform: translateY(4px);
+    }
+    .logo-fallback {
+      display: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0d9488 0%, #065f46 100%);
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 900;
+      font-size: 15px;
+      letter-spacing: 0.1em;
+    }
+    .title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
     .report-title {
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
       font-size: 20px;
       font-weight: 900;
       color: #0f172a;
-      margin: 0 0 4px 0;
+      margin: 0;
+      direction: rtl;
+      text-align: left;
     }
-    .filter-meta {
-      font-size: 12px;
+    .report-subtitle {
+      font-size: 11px;
       font-weight: 700;
-      color: #334155;
+      color: #065f46;
+      letter-spacing: 0.03em;
     }
     .stats-box {
-      text-align: left;
+      text-align: right;
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
       font-size: 11px;
       font-weight: 700;
       color: #334155;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
+      background: #f0fdf4;
+      border: 1px solid #a7f3d0;
+      border-left: 4px solid #065f46;
       border-radius: 8px;
-      padding: 6px 12px;
+      padding: 7px 14px;
       white-space: nowrap;
+      direction: rtl;
     }
     .stats-box .count {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 900;
-      color: #0f172a;
+      color: #064e3b;
+      margin-bottom: 2px;
     }
-    table {
+    table.tickets-table {
       width: 100%;
+      direction: ltr;
+      table-layout: fixed;
       border-collapse: collapse;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+    thead {
+      display: table-header-group;
+    }
+    tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     th, td {
       border: 1px solid #cbd5e1;
-      padding: 8px 10px;
+      padding: 7px 6px;
+      text-align: center;
       vertical-align: middle;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
     th {
-      background-color: #1e293b !important;
+      background-color: #064e3b !important;
+      background-image: linear-gradient(180deg, #065f46 0%, #0f172a 100%) !important;
       color: #ffffff !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
       font-weight: 800;
-      font-size: 12px;
+      font-size: 10px;
       text-align: center;
-      white-space: nowrap;
+      vertical-align: middle;
+      direction: ltr;
+      letter-spacing: 0.02em;
+      border-color: #0f172a;
+      line-height: 1.3;
     }
-    th:nth-child(2), td:nth-child(2) {
-      text-align: right;
+    /* Strict LTR Column Order: Ticket ID | Customer | Department | Priority | Status | Date | Details | Action Taken | Employee | SLA */
+    th:nth-child(1), td:nth-child(1) { width: 6.5%; }
+    th:nth-child(2), td:nth-child(2) { width: 11%; }
+    th:nth-child(3), td:nth-child(3) { width: 8%; }
+    th:nth-child(4), td:nth-child(4) { width: 7.5%; }
+    th:nth-child(5), td:nth-child(5) { width: 9%; }
+    th:nth-child(6), td:nth-child(6) { width: 9%; }
+    th:nth-child(7), td:nth-child(7) { width: 18%; }
+    th:nth-child(8), td:nth-child(8) { width: 15%; }
+    th:nth-child(9), td:nth-child(9) { width: 7.5%; }
+    th:nth-child(10), td:nth-child(10) { width: 8.5%; }
+    tbody tr:nth-child(odd) td {
+      background-color: #ffffff;
     }
-    tr:nth-child(even) td {
+    tbody tr:nth-child(even) td {
       background-color: #f8fafc;
     }
-    .cust-name {
-      font-weight: 800;
+    .center-col {
+      text-align: center;
+    }
+    .rtl-cell {
+      direction: rtl;
+      unicode-bidi: plaintext;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .dept-cell, .emp-cell {
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-weight: 700;
+      font-size: 10px;
       color: #0f172a;
     }
+    .cust-name {
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-weight: 800;
+      color: #0f172a;
+      font-size: 10.5px;
+    }
     .sub-id {
-      font-family: 'Segoe UI', Tahoma, monospace;
-      font-size: 11px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+      font-size: 9.5px;
       font-weight: 700;
       color: #047857;
       direction: ltr;
@@ -795,18 +909,40 @@ export default function TicketsClient() {
       font-variant-numeric: lining-nums tabular-nums;
       direction: ltr !important;
       unicode-bidi: isolate;
-      text-align: center;
       font-weight: 700;
-      white-space: nowrap;
+      font-size: 10px;
+      color: #0f172a;
+    }
+    .text-wrap {
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-size: 10px;
       color: #1e293b;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .action-text {
+      font-weight: 800;
+      color: #065f46;
+      margin-bottom: 2px;
+    }
+    .notes-text {
+      color: #334155;
+      font-weight: 500;
+    }
+    .muted {
+      color: #94a3b8;
+      font-weight: 600;
     }
     .badge {
       display: inline-block;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+      font-size: 9.5px;
       font-weight: 800;
-      white-space: nowrap;
+      line-height: 1.25;
+      max-width: 100%;
     }
     .priority-high { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
     .priority-medium { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
@@ -814,29 +950,52 @@ export default function TicketsClient() {
     .status-open { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
     .status-progress { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
     .status-resolved { background: #d1fae5; color: #047857; border: 1px solid #6ee7b7; }
+    .sla-badge {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
   </style>
 </head>
 <body>
   <div class="header-container">
-    <div>
-      <h1 class="report-title">تقرير التذاكر والعمليات — برج مراقبة زاهي</h1>
-      <div class="filter-meta">معايير التصفية النشطة: ${escapeHtml(filterText)}</div>
+    <div class="brand-group">
+      <!-- Replace logoUrl (/zahi-logo.png) if branding asset changes -->
+      <div class="logo-frame">
+        <img
+          id="zahi-pdf-logo"
+          src="${escapeHtml(logoUrl)}"
+          alt="Zahi Logo"
+          onerror="this.style.display='none';document.getElementById('zahi-logo-fallback').style.display='flex';"
+        />
+        <span id="zahi-logo-fallback" class="logo-fallback">ZAHI</span>
+      </div>
+      <div class="title-group">
+        <h1 class="report-title">تقرير التذاكر والعمليات</h1>
+        <div class="report-subtitle">Zahi Operations &amp; SLA Report</div>
+      </div>
     </div>
+
     <div class="stats-box">
       <div class="count">عدد التذاكر: <span dir="ltr">${toEnglishDigitsStr(filteredTickets.length)}</span></div>
       <div>تاريخ التصدير: <span dir="ltr">${escapeHtml(generatedAt)}</span></div>
     </div>
   </div>
 
-  <table>
+  <table class="tickets-table" dir="ltr">
     <thead>
       <tr>
-        <th>رقم التذكرة</th>
-        <th>العميل</th>
-        <th>القسم المختص</th>
-        <th>الأولوية</th>
-        <th>الحالة</th>
-        <th>التاريخ</th>
+        <th>Ticket ID</th>
+        <th>Customer</th>
+        <th>Department</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th>Details</th>
+        <th>Action Taken</th>
+        <th>Employee</th>
+        <th>SLA</th>
       </tr>
     </thead>
     <tbody>
@@ -852,14 +1011,21 @@ export default function TicketsClient() {
           window.print();
         }, 250);
       };
-      if (document.fonts && document.fonts.ready) {
-        Promise.race([
-          document.fonts.ready,
-          new Promise(function(resolve) { setTimeout(resolve, 1200); })
-        ]).then(triggerPrint);
-      } else {
-        triggerPrint();
-      }
+      var logoImg = document.getElementById('zahi-pdf-logo');
+      var waitLogo = (logoImg && !logoImg.complete)
+        ? new Promise(function(resolve) {
+            logoImg.onload = resolve;
+            logoImg.onerror = resolve;
+          })
+        : Promise.resolve();
+      var waitFonts = (document.fonts && document.fonts.ready)
+        ? document.fonts.ready
+        : Promise.resolve();
+
+      Promise.race([
+        Promise.all([waitLogo, waitFonts]),
+        new Promise(function(resolve) { setTimeout(resolve, 1400); })
+      ]).then(triggerPrint);
     };
   </script>
 </body>
