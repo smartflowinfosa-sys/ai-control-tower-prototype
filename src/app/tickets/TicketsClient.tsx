@@ -23,6 +23,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useLanguage } from '@/components/common/LanguageContext';
+import { fetchAppUsers, type AppUserSummary } from '@/lib/supabaseService';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -63,6 +64,10 @@ export interface TicketRecord {
 
 const ISSUE_TYPE_OPTIONS = ['تعويض', 'شكوى', 'استفسار', 'تأخير'] as const;
 const DEPARTMENT_OPTIONS = ['مطبخ', 'توصيل', 'إدارة'] as const;
+const TICKET_RESOLUTION_OPTIONS = [
+  'إتلاف الوجبة - هدر تشغيلي',
+  'إرجاع المنتجات للمخزون - لم يتم التغليف',
+] as const;
 
 export default function TicketsClient() {
   const { lang } = useLanguage();
@@ -72,6 +77,23 @@ export default function TicketsClient() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Dynamically fetch users from Supabase `app_users` (`username` column)
+  const [appUsers, setAppUsers] = useState<AppUserSummary[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+
+  const sessionUsername = useMemo(() => {
+    const u = session?.user as { username?: string; name?: string | null; email?: string } | undefined;
+    return (u?.username || u?.name || u?.email || '').trim();
+  }, [session]);
+
+  const userRoster = useMemo(() => {
+    const usernames = appUsers.map((u) => (u.username || '').trim()).filter(Boolean);
+    if (sessionUsername && !usernames.includes(sessionUsername)) {
+      return [sessionUsername, ...usernames];
+    }
+    return usernames;
+  }, [appUsers, sessionUsername]);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -86,6 +108,7 @@ export default function TicketsClient() {
   const [newIssueType, setNewIssueType] = useState<string>('تعويض');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [newDepartment, setNewDepartment] = useState<string>('مطبخ');
+  const [newAssignedUser, setNewAssignedUser] = useState<string>('');
   const [newDescription, setNewDescription] = useState<string>('');
   const [isSubmittingCreate, setIsSubmittingCreate] = useState<boolean>(false);
   const [createModalError, setCreateModalError] = useState<string | null>(null);
@@ -93,6 +116,8 @@ export default function TicketsClient() {
   // Resolve / Update Ticket Modal State
   const [selectedTicket, setSelectedTicket] = useState<TicketRecord | null>(null);
   const [resolveStatus, setResolveStatus] = useState<'resolved' | 'in_progress' | 'open'>('resolved');
+  const [resolutionAction, setResolutionAction] = useState<string>(TICKET_RESOLUTION_OPTIONS[0]);
+  const [resolvedByUser, setResolvedByUser] = useState<string>('');
   const [resolutionNotes, setResolutionNotes] = useState<string>('');
   const [isSubmittingResolve, setIsSubmittingResolve] = useState<boolean>(false);
   const [resolveModalError, setResolveModalError] = useState<string | null>(null);
@@ -101,6 +126,24 @@ export default function TicketsClient() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4500);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingUsers(true);
+    fetchAppUsers()
+      .then((users) => {
+        if (isMounted) setAppUsers(users);
+      })
+      .catch((err) => {
+        console.error('Failed to load app users in TicketsClient:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingUsers(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
@@ -188,6 +231,7 @@ export default function TicketsClient() {
     setNewIssueType('تعويض');
     setNewPriority('medium');
     setNewDepartment('مطبخ');
+    setNewAssignedUser(sessionUsername || userRoster[0] || '');
     setNewDescription('');
     setCreateModalError(null);
     setIsCreateModalOpen(true);
@@ -205,9 +249,7 @@ export default function TicketsClient() {
     try {
       setIsSubmittingCreate(true);
       const createdBy =
-        session?.user?.name ||
-        session?.user?.email ||
-        'موظف العمليات';
+        (newAssignedUser || sessionUsername || session?.user?.name || session?.user?.email || 'موظف العمليات').trim();
 
       const res = await fetch('/api/tickets', {
         method: 'POST',
@@ -250,7 +292,11 @@ export default function TicketsClient() {
     setSelectedTicket(ticket);
     const currentSt = String(ticket.status || 'open').toLowerCase();
     setResolveStatus(currentSt === 'resolved' ? 'resolved' : 'resolved');
-    setResolutionNotes(ticket.resolution_notes || '');
+    const existingNotes = ticket.resolution_notes || '';
+    const matchedOpt = TICKET_RESOLUTION_OPTIONS.find((opt) => existingNotes.includes(opt));
+    setResolutionAction(matchedOpt || TICKET_RESOLUTION_OPTIONS[0]);
+    setResolvedByUser(sessionUsername || userRoster[0] || '');
+    setResolutionNotes(existingNotes);
     setResolveModalError(null);
   };
 
@@ -259,8 +305,14 @@ export default function TicketsClient() {
     if (!selectedTicket) return;
     setResolveModalError(null);
 
-    if (resolveStatus === 'resolved' && !resolutionNotes.trim()) {
-      setResolveModalError('يرجى كتابة ملاحظات الحل قبل إغلاق التذكرة.');
+    const activeUser = (resolvedByUser || sessionUsername || '').trim();
+    if (!activeUser) {
+      setResolveModalError('يرجى تحديد اسم الموظف المسؤول عن تحديث أو إغلاق التذكرة.');
+      return;
+    }
+
+    if (resolveStatus === 'resolved' && !resolutionAction) {
+      setResolveModalError('يرجى اختيار قرار وإجراء الحل قبل إغلاق التذكرة.');
       return;
     }
 
@@ -273,6 +325,8 @@ export default function TicketsClient() {
           id: selectedTicket.id,
           ticket_number: selectedTicket.ticket_number,
           status: resolveStatus,
+          resolution_action: resolveStatus === 'resolved' ? resolutionAction : undefined,
+          resolved_by: activeUser,
           resolution_notes: resolutionNotes.trim(),
         }),
       });
@@ -880,6 +934,29 @@ export default function TicketsClient() {
                 </div>
               </div>
 
+              {/* Dynamic Employee Assignment / Creator */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-white/90">
+                  الموظف المسؤول (Assigned / Created By):
+                </label>
+                <select
+                  value={newAssignedUser || sessionUsername || ''}
+                  onChange={(e) => setNewAssignedUser(e.target.value)}
+                  disabled={isSubmittingCreate || (isLoadingUsers && userRoster.length === 0)}
+                  required
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
+                >
+                  <option value="" disabled className="bg-zinc-900 text-white/50">
+                    {isLoadingUsers ? 'جاري تحميل قائمة المستخدمين...' : '-- اختر اسم الموظف --'}
+                  </option>
+                  {userRoster.map((username) => (
+                    <option key={username} value={username} className="bg-zinc-900 text-white">
+                      {username} {username === sessionUsername ? '(جلسة نشطة)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Description */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-white/90">
@@ -1066,18 +1143,62 @@ export default function TicketsClient() {
                 </div>
               </div>
 
+              {/* Dynamic Employee Assignment / Closer */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-white/90">
+                  الموظف المنفذ / المغلق للتذكرة (Handled / Closed By):
+                </label>
+                <select
+                  value={resolvedByUser || sessionUsername || ''}
+                  onChange={(e) => setResolvedByUser(e.target.value)}
+                  disabled={isSubmittingResolve || (isLoadingUsers && userRoster.length === 0)}
+                  required
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer"
+                >
+                  <option value="" disabled className="bg-zinc-900 text-white/50">
+                    {isLoadingUsers ? 'جاري تحميل قائمة المستخدمين...' : '-- اختر اسم الموظف --'}
+                  </option>
+                  {userRoster.map((username) => (
+                    <option key={username} value={username} className="bg-zinc-900 text-white">
+                      {username} {username === sessionUsername ? '(جلسة نشطة)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Ticket Resolution Action Dropdown (Strictly 2 Options) */}
+              {resolveStatus === 'resolved' && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-white/90">
+                    قرار وإجراء الحل (Ticket Resolution):
+                  </label>
+                  <select
+                    value={resolutionAction}
+                    onChange={(e) => setResolutionAction(e.target.value)}
+                    disabled={isSubmittingResolve}
+                    required
+                    className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50 [color-scheme:dark] cursor-pointer"
+                  >
+                    {TICKET_RESOLUTION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} className="bg-zinc-900 text-white">
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Resolution Notes */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-white/90">
-                  ملاحظات الحل (Resolution Notes):
+                  ملاحظات إضافية / تفاصيل الحل (اختياري):
                 </label>
                 <textarea
                   rows={3}
-                  required={resolveStatus === 'resolved'}
                   value={resolutionNotes}
                   onChange={(e) => setResolutionNotes(e.target.value)}
                   disabled={isSubmittingResolve}
-                  placeholder="اكتب الإجراء الذي تم اتخاذه لحل المشكلة أو تعويض العميل..."
+                  placeholder="اكتب أي تفاصيل إضافية حول الإجراء المتخذ..."
                   className="w-full bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
                 />
               </div>

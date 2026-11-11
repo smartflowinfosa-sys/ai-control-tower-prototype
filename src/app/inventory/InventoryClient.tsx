@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from 'react';
-import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, SupabasePurchaseOrder } from '@/lib/supabaseService';
+import { SupabaseInventoryItem, SupabaseConsumptionHistoryRow, AppUserSummary, uploadInvoice, batchReceiveInventory, fetchInventoryItems, fetchItemConsumptionHistory, fetchAllItemsConsumption, fetchConsumptionHistoryByDateRange, fetchPurchaseOrders, createPurchaseOrder, fetchSuppliersForItem, fetchAppUsers, SupabasePurchaseOrder } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser } from '@/lib/poAuth';
 import { initialSuppliers, PurchaseOrder, getSessionPurchaseOrders, addPurchaseOrderToSession } from '@/lib/mockInventoryData';
 import { useLanguage, CATEGORY_TRANSLATIONS, ITEM_NAME_TRANSLATIONS } from '@/components/common/LanguageContext';
@@ -520,7 +520,16 @@ export default function InventoryClient({
   const authenticatedUser = useMemo(() => getAuthenticatedPOUser(session, lang), [session, lang]);
   const isAuthorized = Boolean(authenticatedUser);
 
-  // Derive authenticated employee name from active NextAuth session
+  // Derive authenticated employee name & username from active NextAuth session
+  const sessionUsername = useMemo(() => {
+    const u = session?.user as {
+      username?: string;
+      name?: string | null;
+      email?: string;
+    } | undefined;
+    return (u?.username || u?.name || '').trim();
+  }, [session]);
+
   const sessionEmployeeName = useMemo(() => {
     const u = session?.user as {
       name_ar?: string;
@@ -530,30 +539,50 @@ export default function InventoryClient({
       email?: string;
     } | undefined;
     return (
+      u?.username ||
+      u?.name ||
       u?.name_ar ||
       u?.name_en ||
-      u?.name ||
-      u?.username ||
       authenticatedUser?.displayName ||
       ''
     ).trim();
   }, [session, authenticatedUser]);
 
-  // Fallback employee list for audit logging
+  // Dynamically fetch system users from Supabase `app_users` (`username` column)
+  const [appUsers, setAppUsers] = useState<AppUserSummary[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingUsers(true);
+    fetchAppUsers()
+      .then((users) => {
+        if (isMounted) {
+          setAppUsers(users);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load app users from Supabase:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingUsers(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const employeeRoster = useMemo(() => {
-    const base = [
-      'abdullatif mahdi',
-      'فريق المطبخ والإنتاج',
-      'مدير النظام',
-      'مسؤول المستودع والتخزين',
-      'مشرف العمليات والتوريد',
-      'موظف خدمة العملاء',
-    ];
-    if (sessionEmployeeName && !base.includes(sessionEmployeeName)) {
-      return [sessionEmployeeName, ...base];
+    const usernames = appUsers
+      .map((u) => (u.username || '').trim())
+      .filter(Boolean);
+    if (sessionUsername && !usernames.includes(sessionUsername)) {
+      return [sessionUsername, ...usernames];
     }
-    return base;
-  }, [sessionEmployeeName]);
+    return usernames;
+  }, [appUsers, sessionUsername]);
 
   // Receive Stock & Multi-Item Invoice Modal State
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
@@ -1065,7 +1094,7 @@ export default function InventoryClient({
     setAdjQuantity(1);
     setAdjReason('تسويق');
     setAdjNotes('');
-    setAdjEmployeeName(sessionEmployeeName || employeeRoster[0] || '');
+    setAdjEmployeeName(sessionUsername || sessionEmployeeName || employeeRoster[0] || '');
     setAdjError(null);
     setIsDeconstructAdminOverride(false);
     setDeconstructTargetDate(getNextValidTargetDate());
@@ -3513,17 +3542,18 @@ export default function InventoryClient({
                 <div className="sm:w-64">
                   <select
                     id="modal-adj-employee"
-                    value={adjEmployeeName || sessionEmployeeName}
+                    value={adjEmployeeName || sessionUsername || sessionEmployeeName}
                     onChange={(e) => setAdjEmployeeName(e.target.value)}
                     required
+                    disabled={isLoadingUsers && employeeRoster.length === 0}
                     className="w-full bg-black/50 hover:bg-black/60 border border-white/20 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/50 [color-scheme:dark] cursor-pointer"
                   >
                     <option value="" disabled className="bg-zinc-900 text-white/50">
-                      -- اختر اسم الموظف --
+                      {isLoadingUsers ? 'جاري تحميل قائمة المستخدمين...' : '-- اختر اسم الموظف --'}
                     </option>
                     {employeeRoster.map((emp) => (
                       <option key={emp} value={emp} className="bg-zinc-900 text-white">
-                        {emp} {emp === sessionEmployeeName ? '(جلسة نشطة)' : ''}
+                        {emp} {emp === sessionUsername ? '(جلسة نشطة)' : ''}
                       </option>
                     ))}
                   </select>
@@ -4088,7 +4118,6 @@ export default function InventoryClient({
                       <option value="تسويق" className="bg-zinc-900 text-white">تسويق (Marketing)</option>
                       <option value="تعويض عميل" className="bg-zinc-900 text-white">تعويض عميل (Customer Compensation)</option>
                       <option value="توالف" className="bg-zinc-900 text-white">توالف (Spoilage)</option>
-                      <option value="استلام مشتريات" className="bg-zinc-900 text-white">استلام مشتريات (New Stock / Purchases)</option>
                       <option value="أخرى" className="bg-zinc-900 text-white">أخرى (Other)</option>
                     </select>
                   </div>

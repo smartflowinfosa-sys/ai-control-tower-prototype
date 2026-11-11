@@ -1608,6 +1608,69 @@ export async function calculatePackagingDemand(
   }
 }
 
+export interface AppUserSummary {
+  id: string;
+  username: string;
+  role?: string;
+  name_ar?: string | null;
+  name_en?: string | null;
+  job_title?: string | null;
+}
+
+/**
+ * Dynamically fetch the list of system users from the `app_users` table
+ * (specifically the `username` column).
+ * Calls GET /api/users in the browser to safely bypass RLS via getSupabaseAdmin().
+ */
+export async function fetchAppUsers(): Promise<AppUserSummary[]> {
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/users', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.message || errJson?.error || `HTTP error ${res.status}`);
+    }
+
+    const json = await res.json();
+    return ((json.users as AppUserSummary[]) || [])
+      .filter((u) => Boolean(u && u.username))
+      .map((u) => ({
+        id: String(u.id || u.username),
+        username: String(u.username || '').trim(),
+        role: u.role ? String(u.role) : undefined,
+        name_ar: u.name_ar ?? null,
+        name_en: u.name_en ?? null,
+        job_title: u.job_title ?? null,
+      }));
+  }
+
+  // Server-side fallback
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('id, username, role, name_ar, name_en, job_title')
+    .order('username', { ascending: true });
+
+  if (error) {
+    console.warn('Error fetching app_users:', error.message);
+    return [];
+  }
+
+  return ((data as AppUserSummary[]) || [])
+    .filter((u) => Boolean(u && u.username))
+    .map((u) => ({
+      id: String(u.id || u.username),
+      username: String(u.username || '').trim(),
+      role: u.role ? String(u.role) : undefined,
+      name_ar: u.name_ar ?? null,
+      name_en: u.name_en ?? null,
+      job_title: u.job_title ?? null,
+    }));
+}
+
 
 export {
   getTodaySchedule,

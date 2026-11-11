@@ -266,17 +266,36 @@ export async function PATCH(request: NextRequest) {
     }
 
     const nextStatus = normalizeStatus(body.status || 'resolved');
-    const resolution_notes =
+    const resolutionAction =
+      typeof body.resolution_action === 'string' ? body.resolution_action.trim() : '';
+    const resolvedBy =
+      typeof body.resolved_by === 'string' ? body.resolved_by.trim() : '';
+    const rawNotes =
       body.resolution_notes !== undefined
-        ? String(body.resolution_notes || '').trim() || null
-        : undefined;
+        ? String(body.resolution_notes || '').trim()
+        : '';
+
+    let formattedNotes: string | null | undefined = undefined;
+    if (body.resolution_notes !== undefined || resolutionAction || resolvedBy) {
+      const parts: string[] = [];
+      if (resolutionAction && !rawNotes.includes(resolutionAction)) {
+        parts.push(`[${resolutionAction}]`);
+      }
+      if (rawNotes) {
+        parts.push(rawNotes);
+      }
+      if (resolvedBy && !rawNotes.includes(resolvedBy)) {
+        parts.push(`(بواسطة: ${resolvedBy})`);
+      }
+      formattedNotes = parts.join(' - ').trim() || null;
+    }
 
     const updateFields: Record<string, unknown> = {
       status: nextStatus,
     };
 
-    if (resolution_notes !== undefined) {
-      updateFields.resolution_notes = resolution_notes;
+    if (formattedNotes !== undefined) {
+      updateFields.resolution_notes = formattedNotes;
     }
 
     if (body.priority !== undefined) {
