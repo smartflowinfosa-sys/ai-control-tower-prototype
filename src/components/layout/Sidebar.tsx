@@ -78,14 +78,16 @@ export default function Sidebar() {
   const t = (key: string) => (isMounted ? contextT(key) : (translations.ar[key] ?? key));
   const pendingCount = isMounted ? notifications.filter(n => n.status === 'pending').length : 0;
 
-  // Check if current user has admin privileges or is staff (strictly after mount to avoid SSR/CSR mismatch)
-  const userRole = (activeSession?.user?.role || (activeSession?.user as { role?: string } | undefined)?.role || '').toUpperCase();
+  // Check if current user has admin privileges, is inventory, or is staff (strictly after mount to avoid SSR/CSR mismatch)
+  const rawRole = activeSession?.user?.role || (activeSession?.user as { role?: string } | undefined)?.role || '';
+  const userRole = rawRole.toUpperCase();
   const isStaff = userRole === 'STAFF';
+  const isInventory = rawRole.toLowerCase() === 'inventory';
   const isSuperAdminOrAdmin = userRole === 'SUPERADMIN' || userRole === 'ADMIN';
 
-  // Simplified role display: strictly Admin or Staff
+  // Role display badge: Admin, Inventory, or Staff
   const userRoleDisplay = activeSession?.user?.role
-    ? (isSuperAdminOrAdmin ? 'Admin' : 'Staff')
+    ? (isSuperAdminOrAdmin ? 'Admin' : isInventory ? 'Inventory' : 'Staff')
     : null;
 
   const allNavItems: NavItem[] = [
@@ -113,9 +115,11 @@ export default function Sidebar() {
 
   // Role-Based Navigation:
   // - If SUPERADMIN or ADMIN: Render ALL navigation links
-  // - If STAFF: Render ONLY "تقارير العمليات" (with children) and "إدارة المخزون"
+  // - If INVENTORY: Render ONLY "إدارة المخزون" (/inventory)
+  // - If STAFF: Render non-admin links
   const navItems = allNavItems.filter((item) => {
     if (isSuperAdminOrAdmin) return true;
+    if (isInventory) return item.href === '/inventory';
     if (isStaff) return !item.adminOnly;
     return !item.adminOnly;
   });

@@ -13,8 +13,20 @@ export default withAuth(
       return NextResponse.redirect(loginUrl);
     }
 
-    const role = (token?.role as string | undefined)?.toUpperCase();
+    const rawRole = token?.role as string | undefined;
+    const role = rawRole?.toUpperCase();
     const isSuperAdminOrAdmin = role === "SUPERADMIN" || role === "ADMIN";
+    const isInventory = rawRole?.toLowerCase() === "inventory";
+
+    // Inventory-only role: strictly restricted to /inventory (and /inventory/*)
+    // Allow /api/* routes through so inventory API calls are not redirected
+    if (isInventory && !pathname.startsWith("/api/")) {
+      const isInventoryRoute = pathname === "/inventory" || pathname.startsWith("/inventory/");
+      if (!isInventoryRoute) {
+        return NextResponse.redirect(new URL("/inventory", req.url));
+      }
+      return NextResponse.next();
+    }
 
     // Admin-only routes: strictly restricted to SUPERADMIN and ADMIN
     // STAFF can access /operations and /inventory

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -52,7 +52,13 @@ function LoginForm() {
       if (res?.error) {
         setError("بيانات الاعتماد غير صحيحة، يرجى التحقق وإعادة المحاولة.");
       } else if (res?.ok) {
-        router.push("/dashboard");
+        const session = await getSession();
+        const userRole = (session?.user as { role?: string } | undefined)?.role?.toLowerCase();
+        if (userRole === "inventory") {
+          router.push("/inventory");
+        } else {
+          router.push("/dashboard");
+        }
       }
     } catch (err) {
       setError("تعذر الاتصال بالخادم حالياً، يرجى المحاولة لاحقاً.");

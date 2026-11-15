@@ -13,10 +13,15 @@ async function DashboardContent() {
     redirect("/login");
   }
 
-  const role = ((session.user as any)?.role || "").toUpperCase();
+  const rawRole = (session.user as { role?: string } | undefined)?.role || "";
+  const role = rawRole.toUpperCase();
   const isSuperAdminOrAdmin = role === "SUPERADMIN" || role === "ADMIN";
+  const isInventory = rawRole.toLowerCase() === "inventory";
 
   if (!isSuperAdminOrAdmin) {
+    if (isInventory) {
+      redirect("/inventory");
+    }
     redirect("/operations/quantity");
   }
 
