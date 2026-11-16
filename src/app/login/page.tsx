@@ -6,13 +6,10 @@ import { signIn, getSession } from "next-auth/react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  User,
-  Lock,
   Eye,
   EyeOff,
   LogIn,
   AlertCircle,
-  Sparkles,
   Loader2,
 } from "lucide-react";
 
@@ -68,186 +65,157 @@ function LoginForm() {
   };
 
   return (
-    <div className="relative w-full max-w-md mx-auto my-auto z-10">
-      {/* Ambient decorative glowing orbs */}
-      <div className="absolute -top-20 -right-20 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Main Dark Glassmorphism Login Container */}
+    <div dir="rtl" className="relative z-10 w-full max-w-3xl mx-auto my-auto flex flex-col items-center justify-center px-4">
+      {/* Interactive Glow Identity Header Above the Unlock Bar */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 18 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="relative z-10 p-8 sm:p-10 rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] text-white overflow-hidden"
+        className="flex flex-col items-center justify-center text-center"
       >
-        {/* Header & Logo */}
-        <div className="flex flex-col items-center text-center mb-8">
-          {/* Logo container with emerald glow and glass border */}
-          <div className="relative mb-5 group">
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border border-white/30 bg-white/10 backdrop-blur-md shadow-[0_0_35px_rgba(16,185,129,0.45)] flex items-center justify-center">
-              <Image
-                src="/zahi_logo.png"
-                alt="Zahi Logo"
-                width={120}
-                height={120}
-                className="w-full h-full object-cover rounded-2xl"
-                priority
-              />
-              <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none rounded-2xl" />
-            </div>
-          </div>
-
-          {/* Badge: Zahi Project */}
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 mb-2.5 rounded-full text-xs font-bold tracking-wide bg-white/10 border border-white/20 text-teal-200 shadow-sm backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-teal-300" />
-            <span>Zahi Project</span>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
-            بوابة تسجيل الدخول
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-sm font-medium text-white/80 mt-1.5 drop-shadow-sm">
-            أدخل بيانات الاعتماد للوصول إلى لوحة العمليات
-          </p>
+        {/* Top "Zahi Operations Hub" Pill */}
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-950/40 border border-teal-500/20 text-teal-300 text-xs font-medium backdrop-blur-sm mb-4">
+          <span>✨</span>
+          <span>Zahi Operations Hub</span>
         </div>
 
-        {/* Error Alert Banner */}
-        <AnimatePresence mode="wait">
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, height: 0, y: -10 }}
-              animate={{ opacity: 1, height: "auto", y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
-              className="mb-6 overflow-hidden"
-            >
-              <div className="p-3.5 rounded-2xl border border-rose-400/40 bg-rose-500/20 text-rose-100 flex items-start gap-3 text-sm font-semibold shadow-lg backdrop-blur-md">
-                <AlertCircle className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
-                <div className="flex-1 text-right leading-relaxed">
-                  {error}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Large Floating Zahi Logo (No background box or border) */}
+        <Image
+          src="/zahi-logo_2.png"
+          alt="Zahi Logo"
+          width={224}
+          height={150}
+          priority
+          className="w-44 md:w-56 h-auto object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] mb-4"
+        />
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Username Input */}
-          <div>
-            <label
-              htmlFor="username"
-              className="block text-xs font-bold text-white/90 mb-2 text-right"
-            >
-              اسم المستخدم
-            </label>
-            <div className="relative">
-              <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="off"
-                required
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value);
-                  if (error) setError("");
-                }}
-                placeholder="أدخل اسم المستخدم"
-                className="w-full pr-11 pl-4 py-3.5 rounded-2xl bg-white/10 border border-white/20 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/30 text-white placeholder:text-white/45 text-sm font-medium backdrop-blur-md transition-all duration-200 outline-none"
-              />
-              <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60 pointer-events-none" />
-            </div>
-          </div>
+        {/* Operational Status Text */}
+        <p className="text-slate-300 text-sm md:text-base font-medium mb-8 text-center flex items-center justify-center gap-2">
+          <span className="inline-block animate-pulse">🟢</span>
+          <span>جميع الأنظمة متصلة | أدخل بياناتك للبدء</span>
+        </p>
+      </motion.div>
 
-          {/* Password Input */}
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-xs font-bold text-white/90 mb-2 text-right"
-            >
-              كلمة المرور
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                required
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (error) setError("");
-                }}
-                placeholder="أدخل كلمة المرور"
-                className="w-full pr-11 pl-11 py-3.5 rounded-2xl bg-white/10 border border-white/20 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/30 text-white placeholder:text-white/45 text-sm font-medium backdrop-blur-md transition-all duration-200 outline-none"
-              />
-              <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60 pointer-events-none" />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                tabIndex={-1}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors cursor-pointer p-1"
-                aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-              >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-2 py-3.5 px-4 rounded-2xl text-zinc-950 font-extrabold bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 hover:from-teal-300 hover:to-emerald-200 border border-teal-300/60 shadow-[0_4px_25px_rgba(20,184,166,0.35)] transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base"
+      {/* Error Alert Banner */}
+      <AnimatePresence mode="wait">
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -10 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -10 }}
+            transition={{ duration: 0.25 }}
+            className="w-full max-w-xl mb-5 overflow-hidden"
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin text-zinc-950" strokeWidth={2.5} />
-                <span>جاري التحقق من الهوية...</span>
-              </>
+            <div className="px-5 py-3 rounded-full border border-rose-400/40 bg-rose-500/20 text-rose-100 flex items-center justify-center gap-3 text-sm font-semibold shadow-lg backdrop-blur-md">
+              <AlertCircle className="w-5 h-5 text-rose-300 shrink-0" />
+              <div className="text-center leading-relaxed">
+                {error}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Horizontal Glass Unlock Bar */}
+      <motion.form
+        onSubmit={handleSubmit}
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: "easeOut", delay: 0.05 }}
+        className="flex flex-col md:flex-row items-center justify-between gap-4 bg-[#0d1f1c]/40 backdrop-blur-xl border border-teal-500/20 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl md:rounded-full p-6 md:p-2 mx-auto max-w-3xl w-full"
+      >
+        {/* Username Input (Right in RTL) */}
+        <div className="w-full md:w-auto">
+          <label htmlFor="username" className="sr-only">
+            اسم المستخدم
+          </label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            autoComplete="off"
+            required
+            value={username}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              if (error) setError("");
+            }}
+            placeholder="اسم المستخدم"
+            className="bg-black/20 border border-teal-500/20 text-white rounded-full px-6 py-3 w-full md:w-64 focus:border-teal-400 focus:ring-1 focus:ring-teal-400/50 transition-all outline-none placeholder-slate-400 text-sm"
+          />
+        </div>
+
+        {/* Password Input (Middle in RTL) */}
+        <div className="relative w-full md:w-auto">
+          <label htmlFor="password" className="sr-only">
+            كلمة المرور
+          </label>
+          <input
+            id="password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError("");
+            }}
+            placeholder="كلمة المرور"
+            className="bg-black/20 border border-teal-500/20 text-white rounded-full px-6 py-3 pl-11 w-full md:w-64 focus:border-teal-400 focus:ring-1 focus:ring-teal-400/50 transition-all outline-none placeholder-slate-400 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            tabIndex={-1}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+            aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+          >
+            {showPassword ? (
+              <EyeOff className="w-4 h-4" />
             ) : (
-              <>
-                <LogIn
-                  className="w-5 h-5 shrink-0 text-zinc-950"
-                  strokeWidth={2.5}
-                />
-                <span>تسجيل الدخول</span>
-              </>
+              <Eye className="w-4 h-4" />
             )}
           </button>
-        </form>
-
-        {/* Footer Pill */}
-        <div className="mt-8 pt-5 border-t border-white/10 flex items-center justify-center">
-          <div className="px-4 py-1.5 rounded-full border border-white/20 bg-white/10 backdrop-blur-md font-medium text-white/70 text-xs tracking-wide">
-            Powered by Zahi Project Section
-          </div>
         </div>
-      </motion.div>
+
+        {/* Login Button (Left in RTL) */}
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white font-bold rounded-full px-8 py-3 w-full md:w-auto shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex-shrink-0 text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-white" strokeWidth={2.5} />
+              <span>جاري التحقق...</span>
+            </>
+          ) : (
+            <>
+              <LogIn className="w-4 h-4 shrink-0 text-white" strokeWidth={2.5} />
+              <span>تسجيل الدخول</span>
+            </>
+          )}
+        </button>
+      </motion.form>
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="fixed inset-0 min-h-screen w-full flex items-center justify-center p-4 overflow-y-auto bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat z-50">
-      {/* Dark vignette backdrop for optimal contrast */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[3px] pointer-events-none" />
+    <div
+      dir="rtl"
+      className="fixed inset-0 min-h-screen w-full flex flex-col items-center justify-center p-4 overflow-y-auto bg-[url('/bg-dashboard.jpg')] bg-cover bg-center bg-fixed bg-no-repeat z-50"
+    >
+      {/* Frosted glass lock-screen overlay over the live dashboard background */}
+      <div className="fixed inset-0 bg-[#040e0c]/60 backdrop-blur-lg pointer-events-none" />
 
       <Suspense
         fallback={
-          <div className="p-8 rounded-3xl text-white/80 flex items-center gap-3 border border-white/20 bg-zinc-950/80 backdrop-blur-2xl shadow-2xl relative z-10">
+          <div className="px-6 py-4 rounded-full text-white/80 flex items-center gap-3 border border-teal-500/20 bg-[#0d1f1c]/40 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] relative z-10">
             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
-            <span>جاري تحميل صفحة الدخول...</span>
+            <span>جاري تحميل شاشة القفل...</span>
           </div>
         }
       >

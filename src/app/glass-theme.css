@@ -34,8 +34,8 @@ div.bg-white\/10.backdrop-blur-2xl,
 div.bg-white\/10.backdrop-blur-md,
 div.bg-white\/\[0\.06\],
 div[class*="bg-white/10"][class*="backdrop-blur"],
-[class*="backdrop-blur-xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not(.fixed),
-[class*="backdrop-blur-2xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not(.fixed) {
+[class*="backdrop-blur-xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not([class*="bg-[#0d1f1c]"]):not(.fixed),
+[class*="backdrop-blur-2xl"]:not([class*="bg-black"]):not([class*="bg-zinc"]):not([class*="bg-[#0d1f1c]"]):not(.fixed) {
   background-color: rgba(255, 255, 255, 0.06) !important;
   backdrop-filter: blur(2px) saturate(110%) !important;
   -webkit-backdrop-filter: blur(2px) saturate(110%) !important;
