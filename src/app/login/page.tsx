@@ -83,16 +83,15 @@ function LoginForm() {
         <Image
           src="/zahi-logo_2.png"
           alt="Zahi Logo"
-          width={224}
-          height={150}
+          width={340}
+          height={227}
           priority
-          className="w-44 md:w-56 h-auto object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] mb-4"
+          className="w-64 sm:w-72 md:w-[340px] max-w-[85vw] h-auto mx-auto object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] mb-5"
         />
 
-        {/* Operational Status Text */}
-        <p className="text-slate-300 text-sm md:text-base font-medium mb-8 text-center flex items-center justify-center gap-2">
-          <span className="inline-block animate-pulse">🟢</span>
-          <span>جميع الأنظمة متصلة | أدخل بياناتك للبدء</span>
+        {/* Simplified Subtitle */}
+        <p className="text-slate-300 text-sm md:text-base font-medium mb-8 text-center">
+          أدخل بياناتك للبدء
         </p>
       </motion.div>
 
