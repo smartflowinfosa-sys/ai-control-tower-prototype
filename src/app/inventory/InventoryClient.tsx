@@ -17,7 +17,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert, User } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert, User, ArrowLeftRight } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -146,6 +146,11 @@ const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInvent
   return {
     ...item,
     current_stock: Number(item.current_stock ?? 0),
+    main_stock:
+      item.main_stock !== undefined && item.main_stock !== null
+        ? Number(item.main_stock)
+        : Number(item.current_stock ?? 0),
+    production_stock: Number(item.production_stock ?? 0),
     reorder_level: Number(item.reorder_level ?? 0),
     consumed_quantity: Number(item.consumed_quantity ?? 0),
     lead_time_days: item.lead_time_days ?? LEAD_TIME_DAYS[code] ?? derivedLeadDays,
@@ -613,6 +618,15 @@ export default function InventoryClient({
   const [adjEmployeeName, setAdjEmployeeName] = useState<string>('');
   const [isSubmittingAdj, setIsSubmittingAdj] = useState<boolean>(false);
   const [adjError, setAdjError] = useState<string | null>(null);
+
+  // Internal Inventory Transfer Modal State (نقل مخزون)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
+  const [transferItemCode, setTransferItemCode] = useState<string>('');
+  const [transferCartons, setTransferCartons] = useState<string>('1');
+  const [transferDestination, setTransferDestination] = useState<'production_stock'>('production_stock');
+  const [transferNotes, setTransferNotes] = useState<string>('');
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState<boolean>(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   // Tab 1: Subscription Requests (إدارة طلبات المشتركين) State
   const [deconstructSubId, setDeconstructSubId] = useState<string>('');
@@ -2370,6 +2384,113 @@ export default function InventoryClient({
     }, 4500);
   };
 
+  const handleOpenTransferModal = (defaultCode?: string) => {
+    if (!isAuthorized) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Please sign in first to transfer inventory stock.'
+          : 'عذراً، لا يمكن إجراء نقل مخزون بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+      );
+      return;
+    }
+    const sorted = [...inventoryItems].sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+    const firstCode = defaultCode || sorted[0]?.item_code || 'P1';
+    setTransferItemCode(firstCode.toUpperCase());
+    setTransferCartons('1');
+    setTransferDestination('production_stock');
+    setTransferNotes('');
+    setTransferError(null);
+    setIsTransferModalOpen(true);
+  };
+
+  const handleTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmittingTransfer) return;
+
+    const code = transferItemCode.trim().toUpperCase();
+    const cartonsNum = Number(toEnglishDigitsStr(transferCartons));
+
+    if (!code) {
+      setTransferError(lang === 'en' ? 'Please select an item.' : 'يرجى اختيار الصنف المراد نقله.');
+      return;
+    }
+
+    if (!Number.isFinite(cartonsNum) || !Number.isInteger(cartonsNum) || cartonsNum <= 0) {
+      setTransferError(
+        lang === 'en'
+          ? 'Please enter a valid positive whole number of cartons.'
+          : 'يرجى إدخال عدد كراتين صحيح أكبر من الصفر.'
+      );
+      return;
+    }
+
+    const targetItem = inventoryItems.find((i) => i.item_code.toUpperCase() === code);
+    const cSize = CARTON_SIZES[code] || 1;
+    const unitsToTransfer = cartonsNum * cSize;
+    const availableMain = Number(targetItem?.main_stock ?? targetItem?.current_stock ?? 0);
+
+    if (unitsToTransfer > availableMain) {
+      setTransferError(
+        lang === 'en'
+          ? `Insufficient main stock (${toEnglishDigits(availableMain)} units available, ${toEnglishDigits(unitsToTransfer)} units requested).`
+          : `الرصيد المتاح في المخزون الرئيسي (${toEnglishDigits(availableMain)} وحدة) غير كافٍ لنقل ${toEnglishDigits(unitsToTransfer)} وحدة.`
+      );
+      return;
+    }
+
+    setIsSubmittingTransfer(true);
+    setTransferError(null);
+
+    try {
+      const res = await fetch('/api/inventory/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_code: code,
+          quantity_cartons: cartonsNum,
+          destination: transferDestination,
+          notes: transferNotes.trim(),
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.error || `HTTP error ${res.status}`);
+      }
+
+      const updatedMain = Number(json?.item?.main_stock ?? availableMain - unitsToTransfer);
+      const updatedProd = Number(
+        json?.item?.production_stock ?? Number(targetItem?.production_stock ?? 0) + unitsToTransfer
+      );
+
+      setInventoryItems((prev) =>
+        prev.map((it) =>
+          it.item_code.toUpperCase() === code
+            ? {
+                ...it,
+                main_stock: updatedMain,
+                production_stock: updatedProd,
+              }
+            : it
+        )
+      );
+
+      setIsTransferModalOpen(false);
+      setSuccessToast(
+        json?.message ||
+          (lang === 'en'
+            ? `Transferred ${toEnglishDigits(cartonsNum)} cartons (${toEnglishDigits(unitsToTransfer)} units) of ${code} to Production Stock.`
+            : `تم نقل ${toEnglishDigits(cartonsNum)} كرتون (${toEnglishDigits(unitsToTransfer)} وحدة) من ${code} إلى مخزون الإنتاج بنجاح.`)
+      );
+      setTimeout(() => setSuccessToast(null), 4500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'تعذر تنفيذ عملية نقل المخزون.';
+      setTransferError(msg);
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
+  };
+
   return (
     <div className="page-shell w-full mx-auto space-y-6 font-sans">
       {/* Toast Notification */}
@@ -2438,15 +2559,27 @@ export default function InventoryClient({
             <span>📑 {lang === 'en' ? 'Adjustments Report' : 'تقرير التعديلات'}</span>
           </Link>
 
-          {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving */}
+          {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving & transfers */}
           {isAuthorized && (
-            <button
+            <>
+              <button
+                type="button"
+                onClick={() => handleOpenTransferModal()}
+                className="bg-teal-500/15 hover:bg-teal-500/25 backdrop-blur-md backdrop-saturate-150 border border-teal-400/35 hover:border-teal-300/60 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
+                title={lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}
+              >
+                <ArrowLeftRight className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
+                <span>{lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}</span>
+              </button>
+
+              <button
                 onClick={() => openReceiveModal()}
                 className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <PackageCheck className="w-4 h-4 shrink-0 text-white" />
                 <span>{lang === 'en' ? 'Receive Inventory' : 'استلام مخزون'}</span>
               </button>
+            </>
           )}
 
           <Link
@@ -2644,6 +2777,12 @@ export default function InventoryClient({
               <tr className="bg-white/5 border-b border-white/10 text-white text-sm">
                 <th scope="col" className="py-3.5 px-3 w-24 font-bold">الرمز</th>
                 <th scope="col" className="py-3.5 px-4 text-right font-bold">الصنف</th>
+                <th scope="col" className="py-3.5 px-4 font-bold">
+                  {lang === 'en' ? 'Main Stock' : 'المخزون الرئيسي'}
+                </th>
+                <th scope="col" className="py-3.5 px-4 font-bold">
+                  {lang === 'en' ? 'Production Stock' : 'مخزون الإنتاج'}
+                </th>
                 <th scope="col" className="py-3.5 px-4 font-bold">الرصيد الحالي</th>
                 <th scope="col" className="py-3.5 px-4 font-bold">الحد الأدنى</th>
                 <th scope="col" className="py-3.5 px-4 font-bold">مدة التوريد</th>
@@ -2656,7 +2795,7 @@ export default function InventoryClient({
               {isLoadingInventory && inventoryItems.length === 0 ? (
                 <>
                   <tr>
-                    <td colSpan={8} className="py-6 px-4 text-center">
+                    <td colSpan={10} className="py-6 px-4 text-center">
                       <div className="inline-flex items-center gap-2.5 text-sm font-bold text-white/90 bg-white/10 border border-white/20 px-4 py-2 rounded-xl">
                         <Loader2 className="w-4 h-4 animate-spin text-teal-300 shrink-0" />
                         <span>
@@ -2671,6 +2810,8 @@ export default function InventoryClient({
                     <tr key={`skeleton-${rowIdx}`} className="animate-pulse border-b border-white/5">
                       <td className="py-4 px-3"><div className="h-6 w-12 mx-auto rounded-lg bg-white/10" /></td>
                       <td className="py-4 px-4"><div className="h-5 w-40 rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
                       <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
                       <td className="py-4 px-4"><div className="h-5 w-16 mx-auto rounded-lg bg-white/10" /></td>
                       <td className="py-4 px-4"><div className="h-5 w-14 mx-auto rounded-lg bg-white/10" /></td>
@@ -2694,6 +2835,9 @@ export default function InventoryClient({
                   const reorderLevel = Number(item.reorder_level ?? 0);
                   const isCritical = item.current_stock <= reorderLevel;
                   const leadDays = item.lead_time_days;
+                  const mainStock = Number(item.main_stock ?? item.current_stock ?? 0);
+                  const productionStock = Number(item.production_stock ?? 0);
+                  const cartonSize = CARTON_SIZES[code] || 1;
 
                   return (
                     <tr
@@ -2728,6 +2872,36 @@ export default function InventoryClient({
                           </button>
                         </div>
                         <div className="text-[11px] text-white/60 font-mono" dir="ltr">{item.item_name_en || std?.nameEn || ''}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="inline-flex flex-col items-center">
+                          <div>
+                            <span className="inline-block font-mono font-black text-base text-sky-200" dir="ltr">
+                              {toEnglishDigits(mainStock)}
+                            </span>
+                            <span className="text-xs text-white/60 ms-1">{t('common.unit')}</span>
+                          </div>
+                          {cartonSize > 1 && (
+                            <span className="text-[10px] font-mono text-white/50" dir="ltr">
+                              ({toEnglishDigits(Math.floor(mainStock / cartonSize))} {lang === 'en' ? 'ctn' : 'كرتون'})
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="inline-flex flex-col items-center">
+                          <div>
+                            <span className="inline-block font-mono font-black text-base text-teal-300" dir="ltr">
+                              {toEnglishDigits(productionStock)}
+                            </span>
+                            <span className="text-xs text-white/60 ms-1">{t('common.unit')}</span>
+                          </div>
+                          {cartonSize > 1 && (
+                            <span className="text-[10px] font-mono text-white/50" dir="ltr">
+                              ({toEnglishDigits(Math.floor(productionStock / cartonSize))} {lang === 'en' ? 'ctn' : 'كرتون'})
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span
@@ -4447,6 +4621,238 @@ export default function InventoryClient({
                 </button>
               </div>
             </aside>
+          </div>
+        );
+      })()}
+
+      {/* Modal: Internal Inventory Transfer (نقل مخزون داخلي) */}
+      {isTransferModalOpen && (() => {
+        const sortedTransferItems = [...inventoryItems].sort((a, b) =>
+          compareItemCodes(a.item_code, b.item_code)
+        );
+        const selectedItem = sortedTransferItems.find(
+          (i) => i.item_code.toUpperCase() === transferItemCode.toUpperCase()
+        );
+        const code = (selectedItem?.item_code || transferItemCode || 'P1').toUpperCase();
+        const cartonSize = CARTON_SIZES[code] || 1;
+        const isPerPiece = cartonSize === 1;
+        const cartonsNum = Math.max(0, Number(toEnglishDigitsStr(transferCartons)) || 0);
+        const unitsToTransfer = cartonsNum * cartonSize;
+        const currentMain = Number(selectedItem?.main_stock ?? selectedItem?.current_stock ?? 0);
+        const currentProd = Number(selectedItem?.production_stock ?? 0);
+        const projectedMain = currentMain - unitsToTransfer;
+        const projectedProd = currentProd + unitsToTransfer;
+        const exceedsMainStock = unitsToTransfer > currentMain;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
+            <div
+              className="font-sans bg-black/80 backdrop-blur-2xl rounded-3xl w-full max-w-xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-5 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.75)] relative flex flex-col tabular-nums"
+              style={englishNumericStyle}
+            >
+              {/* Modal Header */}
+              <div className="flex justify-between items-center border-b border-white/15 pb-3.5" dir={lang === 'en' ? 'ltr' : 'rtl'}>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-teal-500/20 border border-teal-400/40 rounded-xl text-teal-300 shrink-0 shadow-inner">
+                    <ArrowLeftRight className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-extrabold text-white">
+                      {lang === 'en' ? 'Internal Stock Transfer' : 'نقل مخزون داخلي'}
+                    </h3>
+                    <p className="text-[11px] text-white/70 font-medium">
+                      {lang === 'en'
+                        ? 'Transfer packaging cartons from Main Stock to Production Stock'
+                        : 'تحويل الكميات بالكرتون من المخزون الرئيسي إلى مخزون الإنتاج'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isSubmittingTransfer) {
+                      setIsTransferModalOpen(false);
+                      setTransferError(null);
+                    }
+                  }}
+                  disabled={isSubmittingTransfer}
+                  className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                  aria-label={t('common.close')}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleTransferSubmit}
+                className="space-y-4"
+                dir={lang === 'en' ? 'ltr' : 'rtl'}
+              >
+                {transferError && (
+                  <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 flex items-center gap-2 text-xs text-rose-200 animate-in fade-in">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-300" />
+                    <span>{transferError}</span>
+                  </div>
+                )}
+
+                {/* 1. Item Selection */}
+                <div className="space-y-1.5">
+                  <label htmlFor="transfer-item-select" className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Select Item' : 'اختيار الصنف'}
+                  </label>
+                  <select
+                    id="transfer-item-select"
+                    value={transferItemCode}
+                    onChange={(e) => {
+                      setTransferItemCode(e.target.value);
+                      setTransferError(null);
+                    }}
+                    disabled={isSubmittingTransfer}
+                    className="w-full bg-black/50 hover:bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400/50 [color-scheme:dark] cursor-pointer"
+                  >
+                    {sortedTransferItems.map((it) => {
+                      const itCode = it.item_code.toUpperCase();
+                      const availMain = Number(it.main_stock ?? it.current_stock ?? 0);
+                      return (
+                        <option key={itCode} value={itCode} className="bg-zinc-900 text-white">
+                          {itCode} — {getItemDisplayName(it)} ({toEnglishDigits(availMain)} {lang === 'en' ? 'units' : 'وحدة'})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* 2. Quantity in Cartons + Destination */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label htmlFor="transfer-cartons-input" className="block text-xs font-bold text-white/90">
+                      {isPerPiece
+                        ? lang === 'en'
+                          ? 'Quantity (Pieces)'
+                          : 'الكمية (بالحبة)'
+                        : lang === 'en'
+                        ? 'Quantity (Cartons)'
+                        : 'الكمية (بالكرتون)'}
+                    </label>
+                    <input
+                      id="transfer-cartons-input"
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      dir="ltr"
+                      value={transferCartons}
+                      onChange={(e) => {
+                        setTransferCartons(toEnglishDigitsStr(e.target.value));
+                        setTransferError(null);
+                      }}
+                      disabled={isSubmittingTransfer}
+                      className="w-full bg-black/50 hover:bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400/50 tabular-nums"
+                    />
+                    <p className="text-[11px] text-white/65">
+                      {isPerPiece
+                        ? lang === 'en'
+                          ? '1 piece = 1 unit'
+                          : 'يُصرف بالحبة (1 وحدة)'
+                        : lang === 'en'
+                        ? `${toEnglishDigits(cartonSize)} units/carton = ${toEnglishDigits(unitsToTransfer)} total units`
+                        : `الكرتون = ${toEnglishDigits(cartonSize)} وحدة • الإجمالي: ${toEnglishDigits(unitsToTransfer)} وحدة`}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="transfer-destination-select" className="block text-xs font-bold text-white/90">
+                      {lang === 'en' ? 'Target Destination' : 'الوجهة المستهدفة'}
+                    </label>
+                    <select
+                      id="transfer-destination-select"
+                      value={transferDestination}
+                      onChange={(e) => setTransferDestination(e.target.value as 'production_stock')}
+                      disabled={isSubmittingTransfer}
+                      className="w-full bg-black/50 hover:bg-black/60 border border-white/20 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400/50 [color-scheme:dark] cursor-pointer"
+                    >
+                      <option value="production_stock" className="bg-zinc-900 text-white">
+                        {lang === 'en' ? 'Production Stock (مخزون الإنتاج)' : 'مخزون الإنتاج (Production Stock)'}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. Live Balance Impact Preview */}
+                <div className="grid grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-2xl p-3.5">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-bold text-white/65">
+                      {lang === 'en' ? 'Main Stock' : 'المخزون الرئيسي'}
+                    </div>
+                    <div className="flex items-baseline gap-1.5 font-mono text-sm font-bold" dir="ltr">
+                      <span className="text-sky-200">{toEnglishDigits(currentMain)}</span>
+                      <span className="text-white/40">→</span>
+                      <span className={exceedsMainStock ? 'text-rose-400' : 'text-amber-300'}>
+                        {toEnglishDigits(projectedMain)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-bold text-white/65">
+                      {lang === 'en' ? 'Production Stock' : 'مخزون الإنتاج'}
+                    </div>
+                    <div className="flex items-baseline gap-1.5 font-mono text-sm font-bold" dir="ltr">
+                      <span className="text-white/80">{toEnglishDigits(currentProd)}</span>
+                      <span className="text-white/40">→</span>
+                      <span className="text-teal-300">{toEnglishDigits(projectedProd)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Optional Notes */}
+                <div className="space-y-1.5">
+                  <label htmlFor="transfer-notes-input" className="block text-xs font-bold text-white/90">
+                    {lang === 'en' ? 'Notes (Optional)' : 'ملاحظات (اختياري)'}
+                  </label>
+                  <input
+                    id="transfer-notes-input"
+                    type="text"
+                    value={transferNotes}
+                    onChange={(e) => setTransferNotes(e.target.value)}
+                    disabled={isSubmittingTransfer}
+                    placeholder={lang === 'en' ? 'e.g., Daily production line refill' : 'مثال: تزويد خط الإنتاج اليومي'}
+                    className="w-full bg-black/40 hover:bg-black/50 border border-white/20 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400/50"
+                  />
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTransferModalOpen(false);
+                      setTransferError(null);
+                    }}
+                    disabled={isSubmittingTransfer}
+                    className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white/8 hover:bg-white/15 border border-white/20 text-white/80 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {t('inventory.modalCancelBtn')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingTransfer || exceedsMainStock || cartonsNum <= 0}
+                    className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white border border-teal-400/40 shadow-[0_0_20px_rgba(20,184,166,0.3)] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    {isSubmittingTransfer ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{lang === 'en' ? 'Transferring...' : 'جاري النقل...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowLeftRight className="w-4 h-4" />
+                        <span>{lang === 'en' ? 'Confirm Transfer' : 'تأكيد نقل المخزون'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         );
       })()}

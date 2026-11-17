@@ -10,6 +10,10 @@ export interface SupabaseInventoryItem {
   category_ar?: string;
   category_en?: string;
   current_stock: number;
+  /** Main warehouse stock in units (`main_stock` column in `inventory_items`) */
+  main_stock?: number;
+  /** Production area stock in units (`production_stock` column in `inventory_items`) */
+  production_stock?: number;
   reorder_level: number;
   /** Daily consumed quantity deducted from stock (`consumed_quantity` column in `inventory_items`) */
   consumed_quantity?: number;
@@ -198,6 +202,10 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
     return {
       ...row,
       current_stock: Number(row.current_stock ?? 0),
+      main_stock: row.main_stock !== undefined && row.main_stock !== null
+        ? Number(row.main_stock)
+        : Number(row.current_stock ?? 0),
+      production_stock: Number(row.production_stock ?? 0),
       reorder_level: Number(row.reorder_level ?? 0),
       consumed_quantity: Number(row.consumed_quantity ?? 0),
       lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? derivedSupplierLeadDays,
