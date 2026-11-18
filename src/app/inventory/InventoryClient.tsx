@@ -2775,27 +2775,25 @@ export default function InventoryClient({
           <table className="w-full text-center border-collapse">
             <thead>
               <tr className="bg-white/5 border-b border-white/10 text-white text-sm">
-                <th scope="col" className="py-3.5 px-3 w-24 font-bold">الرمز</th>
-                <th scope="col" className="py-3.5 px-4 text-right font-bold">الصنف</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">
+                <th scope="col" className="py-3.5 px-4 lg:px-5 w-24 font-bold">الرمز</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 text-right font-bold">الصنف</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">
                   {lang === 'en' ? 'Main Stock' : 'المخزون الرئيسي'}
                 </th>
-                <th scope="col" className="py-3.5 px-4 font-bold">
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">
                   {lang === 'en' ? 'Production Stock' : 'مخزون الإنتاج'}
                 </th>
-                <th scope="col" className="py-3.5 px-4 font-bold">الرصيد الحالي</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">الحد الأدنى</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">مدة التوريد</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">الكمية المستهلكة</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">الطلب المقترح</th>
-                <th scope="col" className="py-3.5 px-4 font-bold">الإجراء</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الرصيد الحالي</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الحد الأدنى</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">مدة التوريد</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الإجراء</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {isLoadingInventory && inventoryItems.length === 0 ? (
                 <>
                   <tr>
-                    <td colSpan={10} className="py-6 px-4 text-center">
+                    <td colSpan={8} className="py-6 px-4 text-center">
                       <div className="inline-flex items-center gap-2.5 text-sm font-bold text-white/90 bg-white/10 border border-white/20 px-4 py-2 rounded-xl">
                         <Loader2 className="w-4 h-4 animate-spin text-teal-300 shrink-0" />
                         <span>
@@ -2808,16 +2806,14 @@ export default function InventoryClient({
                   </tr>
                   {[1, 2, 3, 4, 5].map(rowIdx => (
                     <tr key={`skeleton-${rowIdx}`} className="animate-pulse border-b border-white/5">
-                      <td className="py-4 px-3"><div className="h-6 w-12 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-5 w-40 rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-5 w-16 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-5 w-14 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-5 w-20 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
-                      <td className="py-4 px-4"><div className="h-8 w-28 mx-auto rounded-xl bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-6 w-12 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-5 w-40 rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-6 w-20 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-5 w-16 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-5 w-14 mx-auto rounded-lg bg-white/10" /></td>
+                      <td className="py-4 px-4 lg:px-5"><div className="h-8 w-28 mx-auto rounded-xl bg-white/10" /></td>
                     </tr>
                   ))}
                 </>
@@ -2917,7 +2913,7 @@ export default function InventoryClient({
                           {toEnglishDigits(item.reorder_level)}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 lg:px-5">
                         {leadDays != null ? (
                           <span className="text-sm font-bold text-white">
                             <span className="font-mono">{toEnglishDigits(leadDays)}</span> يوم
@@ -2926,22 +2922,7 @@ export default function InventoryClient({
                           <span className="text-white/40">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold font-mono text-base text-white">
-                          {toEnglishDigits(consumed)} <span className="text-sm font-normal text-white/70">وحدة</span>
-                        </div>
-                        {item.last_restock_date && (
-                          <div className="text-xs text-white/50 mt-0.5">
-                            (منذ {toEnglishDigits(getDaysSinceRestock(item.last_restock_date))} أيام)
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold font-mono text-base text-amber-300">
-                          {toEnglishDigits(consumed)} <span className="text-sm font-normal text-amber-200/80">وحدة</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-3.5 px-4 lg:px-5">
                         <div className="flex flex-col items-center gap-1">
                           <button
                             type="button"
