@@ -1,10 +1,12 @@
-import dynamic from 'next/dynamic';
+import { Suspense } from 'react';
+import { connection } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { SupabasePurchaseOrder, SupabaseInventoryItem, fetchInventoryItems } from '@/lib/supabaseService';
 import { fetchPurchaseOrdersServer } from '@/lib/purchaseOrdersServer';
+import InventoryClient from './InventoryClient';
 
-const InventoryClient = dynamic(() => import('./InventoryClient'), {
-  loading: () => (
+function InventorySkeleton() {
+  return (
     <div className="page-shell w-full mx-auto space-y-6 font-sans animate-pulse">
       <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-2xl p-6 h-24" />
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -15,8 +17,8 @@ const InventoryClient = dynamic(() => import('./InventoryClient'), {
       </div>
       <div className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-2xl p-6 h-96" />
     </div>
-  ),
-});
+  );
+}
 
 const getCachedPurchaseOrders = unstable_cache(
   async () => fetchPurchaseOrdersServer(),
@@ -24,17 +26,19 @@ const getCachedPurchaseOrders = unstable_cache(
   { revalidate: 60, tags: ['purchase-orders'] }
 );
 
-export default async function InventoryPage() {
+async function InventoryContent() {
+  await connection();
+
   let initialPurchaseOrders: SupabasePurchaseOrder[] = [];
   let initialItems: SupabaseInventoryItem[] = [];
 
   try {
     const [pos, items] = await Promise.all([
-      getCachedPurchaseOrders().catch(err => {
+      getCachedPurchaseOrders().catch((err) => {
         console.warn('Failed to fetch purchase orders from Supabase:', err);
         return [];
       }),
-      fetchInventoryItems().catch(err => {
+      fetchInventoryItems().catch((err) => {
         console.warn('Failed to fetch inventory items from Supabase:', err);
         return [];
       }),
@@ -46,4 +50,12 @@ export default async function InventoryPage() {
   }
 
   return <InventoryClient initialItems={initialItems} initialPurchaseOrders={initialPurchaseOrders} />;
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<InventorySkeleton />}>
+      <InventoryContent />
+    </Suspense>
+  );
 }
