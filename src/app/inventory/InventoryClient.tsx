@@ -17,7 +17,7 @@ import {
   getDaysSinceRestock,
 } from '@/constants/inventoryCodes';
 import { triggerLowStockEmail } from '@/lib/notifications';
-import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert, User, ArrowLeftRight } from 'lucide-react';
+import { Building2, Check, X, AlertTriangle, RefreshCw, PackageCheck, UploadCloud, FileText, CheckCircle2, Loader2, ArrowUpRight, Sparkles, ArrowUpDown, ChevronDown, Clock, Calendar, SlidersHorizontal, PlusCircle, MinusCircle, Scale, Search, Package, ShieldAlert, User, ArrowLeftRight, ClipboardCheck } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -151,6 +151,10 @@ const normalizeLiveInventoryItem = (item: SupabaseInventoryItem): SupabaseInvent
         ? Number(item.main_stock)
         : Number(item.current_stock ?? 0),
     production_stock: Number(item.production_stock ?? 0),
+    units_per_carton:
+      item.units_per_carton !== undefined && item.units_per_carton !== null && Number(item.units_per_carton) > 0
+        ? Number(item.units_per_carton)
+        : (CARTON_SIZES[code] || 1),
     reorder_level: Number(item.reorder_level ?? 0),
     consumed_quantity: Number(item.consumed_quantity ?? 0),
     lead_time_days: item.lead_time_days ?? LEAD_TIME_DAYS[code] ?? derivedLeadDays,
@@ -627,6 +631,40 @@ export default function InventoryClient({
   const [transferNotes, setTransferNotes] = useState<string>('');
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState<boolean>(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+
+  // Electronic Stock Count (بطاقة جرد) View & State
+  const [activeInventoryTab, setActiveInventoryTab] = useState<'overview' | 'electronic_count'>('overview');
+  const [countCartonValues, setCountCartonValues] = useState<Record<string, string>>({});
+  const [countNotes, setCountNotes] = useState<string>('');
+  const [isSubmittingCount, setIsSubmittingCount] = useState<boolean>(false);
+  const [countError, setCountError] = useState<string | null>(null);
+  const [countSuccessBanner, setCountSuccessBanner] = useState<string | null>(null);
+  const [previousCounts, setPreviousCounts] = useState<
+    Array<{
+      id: string;
+      count_date: string;
+      keeper_name: string;
+      warehouse_section?: string;
+      items_data: Array<{
+        code?: string;
+        item_code?: string;
+        name?: string;
+        item_name_ar?: string;
+        units_per_carton: number;
+        cartons?: number;
+        carton_count?: number;
+        actual_units?: number;
+        total_units?: number;
+        system_stock_before?: number;
+        system_stock?: number;
+        variance?: number;
+      }>;
+      notes?: string | null;
+      created_at?: string;
+    }>
+  >([]);
+  const [isLoadingCounts, setIsLoadingCounts] = useState<boolean>(false);
+  const [selectedCountRecordId, setSelectedCountRecordId] = useState<string | null>(null);
 
   // Tab 1: Subscription Requests (إدارة طلبات المشتركين) State
   const [deconstructSubId, setDeconstructSubId] = useState<string>('');
@@ -1156,6 +1194,155 @@ export default function InventoryClient({
 
   const userRoleUpper = String((session?.user as { role?: string } | undefined)?.role || '').toUpperCase();
   const isAdminUser = !session?.user || userRoleUpper === 'ADMIN' || userRoleUpper === 'SUPERADMIN';
+  const isStrictAdmin = userRoleUpper === 'ADMIN' || userRoleUpper === 'SUPERADMIN';
+
+  const loadPreviousCounts = useCallback(async () => {
+    setIsLoadingCounts(true);
+    try {
+      const res = await fetch('/api/inventory/counts', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(json?.data)) {
+        setPreviousCounts(json.data);
+        if (json.data.length > 0) {
+          setSelectedCountRecordId((prev) => prev || json.data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch previous inventory counts:', err);
+    } finally {
+      setIsLoadingCounts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeInventoryTab === 'electronic_count') {
+      void loadPreviousCounts();
+    }
+  }, [activeInventoryTab, loadPreviousCounts]);
+
+  const handleSaveInventoryCount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmittingCount) return;
+
+    setCountError(null);
+    setCountSuccessBanner(null);
+
+    const sortedCountProducts = [...inventoryItems].sort((a, b) =>
+      compareItemCodes(a.item_code, b.item_code)
+    );
+
+    const hasAnyEnteredValue = sortedCountProducts.some((item) => {
+      const code = item.item_code.toUpperCase();
+      const raw = countCartonValues[code];
+      return raw !== undefined && raw !== '' && Number(toEnglishDigitsStr(raw)) >= 0;
+    });
+
+    if (!hasAnyEnteredValue) {
+      setCountError('يرجى إدخال العدد الفعلي (بالكرتون) لصنف واحد على الأقل قبل اعتماد الجرد.');
+      return;
+    }
+
+    const todayIso = dayjs().tz(SAUDI_TZ).format('YYYY-MM-DD');
+
+    const itemsPayload = sortedCountProducts.map((item) => {
+      const code = item.item_code.toUpperCase();
+      const unitsPerCarton =
+        item.units_per_carton != null && Number(item.units_per_carton) > 0
+          ? Number(item.units_per_carton)
+          : (CARTON_SIZES[code] || 1);
+      const rawVal = countCartonValues[code];
+      const cartonCount =
+        rawVal !== undefined && rawVal !== ''
+          ? Math.max(0, Number(toEnglishDigitsStr(rawVal)) || 0)
+          : 0;
+      const actualUnits = Math.round(cartonCount * unitsPerCarton);
+      const systemStockBefore = Number(item.main_stock ?? item.current_stock ?? 0);
+
+      return {
+        code,
+        item_code: code,
+        name: getItemDisplayName(item),
+        item_name_ar: getItemDisplayName(item),
+        units_per_carton: unitsPerCarton,
+        cartons: cartonCount,
+        carton_count: cartonCount,
+        actual_units: actualUnits,
+        total_units: actualUnits,
+        system_stock_before: systemStockBefore,
+        system_stock: systemStockBefore,
+        variance: actualUnits - systemStockBefore,
+      };
+    });
+
+    setIsSubmittingCount(true);
+    try {
+      const res = await fetch('/api/inventory/counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          count_date: todayIso,
+          keeper_name: 'أيمن',
+          warehouse_section: 'المخزون الرئيسي',
+          items_data: itemsPayload,
+          notes: countNotes.trim(),
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.error || `HTTP error ${res.status}`);
+      }
+
+      // Immediately reconcile local inventory state with updated main_stock and current_stock
+      if (Array.isArray(json?.updatedItems)) {
+        const updatedMap = new Map<string, { main_stock: number; current_stock: number }>();
+        for (const u of json.updatedItems) {
+          if (u?.item_code) {
+            updatedMap.set(String(u.item_code).toUpperCase(), {
+              main_stock: Number(u.main_stock ?? 0),
+              current_stock: Number(u.current_stock ?? 0),
+            });
+          }
+        }
+        setInventoryItems((prev) =>
+          prev.map((it) => {
+            const match = updatedMap.get(it.item_code.toUpperCase());
+            return match
+              ? {
+                  ...it,
+                  main_stock: match.main_stock,
+                  current_stock: match.current_stock,
+                }
+              : it;
+          })
+        );
+      }
+      void refreshLiveInventory();
+
+      const confirmMsg = 'تم اعتماد الجرد وتحديث الرصيد الافتتاحي للمخزون الرئيسي بنجاح ✅';
+      setCountSuccessBanner(confirmMsg);
+      setSuccessToast(confirmMsg);
+      setCountNotes('');
+      if (json?.data) {
+        setPreviousCounts((prev) => [json.data, ...prev.filter((r) => r.id !== json.data.id)]);
+        setSelectedCountRecordId(json.data.id);
+      } else {
+        void loadPreviousCounts();
+      }
+      setTimeout(() => {
+        setSuccessToast(null);
+      }, 4500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'تعذر حفظ الجرد اليومي. يرجى المحاولة مرة أخرى.';
+      setCountError(msg);
+    } finally {
+      setIsSubmittingCount(false);
+    }
+  };
 
   const handleFetchMealData = async (
     overridePkg?: string,
@@ -2131,9 +2318,9 @@ export default function InventoryClient({
     <thead>
       <tr>
         <th>التاريخ</th>
-        <th>الرصيد الافتتاحي</th>
+        <th>افتتاحي الإنتاج</th>
         <th>الكمية المستهلكة</th>
-        <th>الرصيد المتبقي</th>
+        <th>متبقي الإنتاج</th>
       </tr>
     </thead>
     <tbody>
@@ -2530,68 +2717,541 @@ export default function InventoryClient({
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl mb-6 p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Header (Title & Subtitle Only) */}
+      <header className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl mb-4 p-6 sm:p-8 flex flex-col justify-center">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">{t('inventory.title')}</h1>
           <p className="text-slate-100 font-semibold text-sm mt-1.5 drop-shadow-sm">
             {t('inventory.subtitle')}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Manual Inventory Adjustment Button (Glassmorphism) */}
-          <button
-            type="button"
-            onClick={() => handleOpenManualAdjustment()}
-            className="bg-white/[0.08] hover:bg-white/[0.16] backdrop-blur-md backdrop-saturate-150 border border-white/20 hover:border-white/35 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
-            title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}
-          >
-            <SlidersHorizontal className="w-4 h-4 text-indigo-300 group-hover:rotate-12 transition-transform" />
-            <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
-          </button>
-
-          {/* Manual Adjustments Report Link (Glassmorphism) */}
-          <Link
-            href="/inventory/adjustments-report"
-            className="bg-white/[0.06] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 hover:border-white/30 text-white/90 hover:text-white font-bold px-3.5 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] transition-all text-sm flex items-center gap-1.5 cursor-pointer"
-            title={lang === 'en' ? 'Manual Adjustments Report' : 'تقرير التعديلات اليدوية'}
-          >
-            <span>📑 {lang === 'en' ? 'Adjustments Report' : 'تقرير التعديلات'}</span>
-          </Link>
-
-          {/* Role-Based Access Control (RBAC): Only authorized roles (e.g., Warehouse Manager, Operations Manager, Admin) can access stock receiving & transfers */}
-          {isAuthorized && (
-            <>
-              <button
-                type="button"
-                onClick={() => handleOpenTransferModal()}
-                className="bg-teal-500/15 hover:bg-teal-500/25 backdrop-blur-md backdrop-saturate-150 border border-teal-400/35 hover:border-teal-300/60 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
-                title={lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}
-              >
-                <ArrowLeftRight className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
-                <span>{lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}</span>
-              </button>
-
-              <button
-                onClick={() => openReceiveModal()}
-                className="px-4 py-2.5 text-sm bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-xl text-white hover:bg-white/10 transition-colors flex items-center gap-2 cursor-pointer"
-              >
-                <PackageCheck className="w-4 h-4 shrink-0 text-white" />
-                <span>{lang === 'en' ? 'Receive Inventory' : 'استلام مخزون'}</span>
-              </button>
-            </>
-          )}
-
-          <Link
-            href="/suppliers"
-            className="bg-white/5 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-2xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.08)] transition-all text-sm flex items-center gap-2 group cursor-pointer"
-          >
-            <Building2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
-            <span>{t('inventory.suppliersDirectoryBtn')}</span>
-          </Link>
-        </div>
       </header>
 
+      {/* Single Consolidated Secondary Navigation & Action Bar */}
+      <div
+        dir="rtl"
+        className="bg-[#0d1f1c]/50 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-2 flex flex-wrap items-center gap-2 shadow-[0_8px_32px_rgba(0,0,0,0.25)]"
+      >
+        {/* 1. إدارة المخزون (Smart Auto PO) */}
+        <button
+          type="button"
+          onClick={() => setActiveInventoryTab('overview')}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+            activeInventoryTab === 'overview'
+              ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.35)] border border-teal-300/40'
+              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
+        >
+          <Package className="w-4 h-4 shrink-0" />
+          <span>{lang === 'en' ? 'Inventory Management (Smart Auto PO)' : 'إدارة المخزون (Smart Auto PO)'}</span>
+        </button>
+
+        {/* 2. بطاقة جرد (Single Count View Button) */}
+        <button
+          type="button"
+          onClick={() => setActiveInventoryTab('electronic_count')}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+            activeInventoryTab === 'electronic_count'
+              ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.35)] border border-teal-300/40'
+              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
+        >
+          <ClipboardCheck className="w-4 h-4 shrink-0" />
+          <span>{lang === 'en' ? 'Stock Count Card' : 'بطاقة جرد'}</span>
+        </button>
+
+        <div className="hidden lg:block h-6 w-px bg-teal-500/20 mx-1" aria-hidden="true" />
+
+        {/* 3. تعديل يدوي للمخزون */}
+        <button
+          type="button"
+          onClick={() => handleOpenManualAdjustment()}
+          className="bg-white/[0.06] hover:bg-white/[0.14] border border-white/15 hover:border-white/30 text-white font-bold px-3.5 py-2.5 rounded-xl transition-all text-xs sm:text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
+          title={lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}
+        >
+          <SlidersHorizontal className="w-4 h-4 text-indigo-300 group-hover:rotate-12 transition-transform shrink-0" />
+          <span>{lang === 'en' ? 'Manual Inventory Adjustment' : 'تعديل يدوي للمخزون'}</span>
+        </button>
+
+        {/* 4. تقرير التعديلات */}
+        <Link
+          href="/inventory/adjustments-report"
+          className="bg-white/[0.06] hover:bg-white/[0.14] border border-white/15 hover:border-white/30 text-white/90 hover:text-white font-bold px-3.5 py-2.5 rounded-xl transition-all text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer"
+          title={lang === 'en' ? 'Manual Adjustments Report' : 'تقرير التعديلات اليدوية'}
+        >
+          <span>📑 {lang === 'en' ? 'Adjustments Report' : 'تقرير التعديلات'}</span>
+        </Link>
+
+        {/* 5 & 6. نقل مخزون & استلام مخزون */}
+        {isAuthorized && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleOpenTransferModal()}
+              className="bg-teal-500/15 hover:bg-teal-500/25 border border-teal-400/35 hover:border-teal-300/60 text-white font-bold px-3.5 py-2.5 rounded-xl transition-all text-xs sm:text-sm flex items-center gap-2 group cursor-pointer active:scale-95"
+              title={lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}
+            >
+              <ArrowLeftRight className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform shrink-0" />
+              <span>{lang === 'en' ? 'Transfer Stock' : 'نقل مخزون'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openReceiveModal()}
+              className="bg-white/[0.06] hover:bg-white/[0.14] border border-white/15 hover:border-white/30 text-white font-bold px-3.5 py-2.5 rounded-xl transition-all text-xs sm:text-sm flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <PackageCheck className="w-4 h-4 shrink-0 text-emerald-300" />
+              <span>{lang === 'en' ? 'Receive Inventory' : 'استلام مخزون'}</span>
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ========================================================================
+          VIEW 2: بطاقة جرد (Electronic Physical Stock Count + History Log)
+         ======================================================================== */}
+      {activeInventoryTab === 'electronic_count' && (() => {
+        const sortedCountItems = [...inventoryItems].sort((a, b) =>
+          compareItemCodes(a.item_code, b.item_code)
+        );
+        const todayDisplay = dayjs().tz(SAUDI_TZ).format('YYYY/MM/DD');
+        const selectedHistoryRecord =
+          previousCounts.find((r) => r.id === selectedCountRecordId) || previousCounts[0] || null;
+
+        return (
+          <div dir="rtl" className="space-y-6 animate-in fade-in duration-200">
+            {/* 1. The Electronic Count Card (بطاقة جرد المستودع الرئيسي - المخزون الرئيسي فقط) */}
+            <section
+              aria-label="بطاقة جرد المستودع الرئيسي"
+              className="bg-[#0d1f1c]/60 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-6 sm:p-8 space-y-6 shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
+            >
+              {/* Card Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-teal-500/20">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-teal-500/20 border border-teal-400/30 text-teal-300">
+                      <ClipboardCheck className="w-6 h-6" />
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                      بطاقة جرد المستودع الرئيسي
+                    </h2>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-300 font-medium">
+                    أدخل العدد الفعلي بالكرتون لكل صنف ليتم احتساب إجمالي الوحدات واعتماد الرصيد الافتتاحي للمخزون الرئيسي
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Today's Date Sleek Badge */}
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-950/60 border border-teal-400/30 text-teal-200 text-xs sm:text-sm font-bold shadow-sm">
+                    <Calendar className="w-4 h-4 text-teal-300 shrink-0" />
+                    <span>تاريخ الجرد:</span>
+                    <span className="font-mono font-extrabold text-white" dir="ltr" style={englishNumericStyle}>
+                      {toEnglishDigitsStr(todayDisplay)}
+                    </span>
+                  </div>
+
+                  {/* Static Main Inventory Badge */}
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500/20 border border-teal-400/40 text-white text-xs sm:text-sm font-extrabold shadow-sm">
+                    <Package className="w-4 h-4 text-teal-300 shrink-0" />
+                    <span>المخزون الرئيسي (بالكرتون)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error / Confirmation Banners */}
+              {countError && (
+                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-4 flex items-center gap-3 text-sm font-bold text-rose-100">
+                  <AlertTriangle className="w-5 h-5 text-rose-300 shrink-0" />
+                  <span>{countError}</span>
+                </div>
+              )}
+
+              {countSuccessBanner && (
+                <div className="bg-emerald-500/20 border border-emerald-400/50 rounded-xl p-4 flex items-center gap-3 text-sm font-extrabold text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
+                  <span>{countSuccessBanner}</span>
+                </div>
+              )}
+
+              {/* The 11-Product Count Table (Carton-Based Only) */}
+              <form onSubmit={handleSaveInventoryCount} className="space-y-6">
+                <div className="overflow-x-auto rounded-2xl border border-teal-500/20 bg-black/25">
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr className="bg-teal-950/50 border-b border-teal-500/20 text-teal-100 text-xs sm:text-sm">
+                        <th scope="col" className="py-3.5 px-4 w-24 font-extrabold">الرمز</th>
+                        <th scope="col" className="py-3.5 px-4 text-right font-extrabold">اسم الصنف</th>
+                        <th scope="col" className="py-3.5 px-4 font-extrabold">سعة الكرتون</th>
+                        <th scope="col" className="py-3.5 px-4 w-56 font-extrabold">العدد الفعلي (بالكرتون)</th>
+                        <th scope="col" className="py-3.5 px-4 font-extrabold">إجمالي الوحدات المحسوب</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-teal-500/10">
+                      {sortedCountItems.map((item) => {
+                        const code = item.item_code.toUpperCase();
+                        const std = getStandardCodeInfo(code);
+                        const unitsPerCarton =
+                          item.units_per_carton != null && Number(item.units_per_carton) > 0
+                            ? Number(item.units_per_carton)
+                            : (CARTON_SIZES[code] || 1);
+                        const rawVal = countCartonValues[code] ?? '';
+                        const cartonCount =
+                          rawVal !== '' ? Math.max(0, Number(toEnglishDigitsStr(rawVal)) || 0) : 0;
+                        const calculatedUnits = Math.round(cartonCount * unitsPerCarton);
+
+                        return (
+                          <tr
+                            key={`count-row-${code}`}
+                            className="hover:bg-teal-500/[0.06] transition-colors"
+                          >
+                            {/* 1. الرمز */}
+                            <td className="py-3.5 px-4">
+                              <span
+                                className="font-mono font-extrabold text-sm text-white bg-teal-500/20 border border-teal-400/30 px-3 py-1 rounded-lg inline-block"
+                                dir="ltr"
+                                style={englishNumericStyle}
+                              >
+                                {code}
+                              </span>
+                            </td>
+
+                            {/* 2. اسم الصنف */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="text-sm sm:text-base font-bold text-white">
+                                {getItemDisplayName(item)}
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-mono" dir="ltr">
+                                {item.item_name_en || std?.nameEn || ''}
+                              </div>
+                            </td>
+
+                            {/* 3. سعة الكرتون */}
+                            <td className="py-3.5 px-4">
+                              <span
+                                className="font-mono font-bold text-sm sm:text-base text-slate-200 bg-white/5 border border-white/10 px-3 py-1 rounded-lg inline-block"
+                                dir="ltr"
+                                style={englishNumericStyle}
+                              >
+                                {toEnglishDigits(unitsPerCarton)}
+                              </span>
+                              <span className="text-xs text-slate-400 ms-1.5">
+                                {unitsPerCarton === 1 ? 'وحدة / حبة' : 'وحدة / كرتون'}
+                              </span>
+                            </td>
+
+                            {/* 4. العدد الفعلي (بالكرتون) */}
+                            <td className="py-3 px-4">
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                inputMode="numeric"
+                                dir="ltr"
+                                style={englishNumericStyle}
+                                value={rawVal}
+                                onChange={(e) => {
+                                  const cleaned = toEnglishDigitsStr(e.target.value);
+                                  setCountCartonValues((prev) => ({
+                                    ...prev,
+                                    [code]: cleaned,
+                                  }));
+                                  if (countError) setCountError(null);
+                                  if (countSuccessBanner) setCountSuccessBanner(null);
+                                }}
+                                placeholder="0"
+                                aria-label={`العدد الفعلي بالكرتون للصنف ${getItemDisplayName(item)}`}
+                                className="w-36 sm:w-44 bg-black/45 hover:bg-black/60 focus:bg-black/75 border border-teal-500/30 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/40 rounded-xl px-4 py-2.5 text-center font-mono text-base sm:text-lg font-extrabold text-white placeholder:text-slate-500 outline-none transition-all"
+                              />
+                            </td>
+
+                            {/* 5. إجمالي الوحدات المحسوب */}
+                            <td className="py-3.5 px-4">
+                              <div className="inline-flex items-baseline gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-500/10 border border-teal-400/25">
+                                <span
+                                  className="font-mono font-black text-base sm:text-lg text-teal-300"
+                                  dir="ltr"
+                                  style={englishNumericStyle}
+                                >
+                                  {toEnglishDigits(calculatedUnits)}
+                                </span>
+                                <span className="text-xs font-bold text-teal-200/80">وحدة</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Card Footer (Fixed Keeper Badge 'أيمن' + Notes + Submit Button) */}
+                <div className="pt-4 border-t border-teal-500/20 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                    {/* Fixed Default Warehouse Keeper Badge */}
+                    <div className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-teal-950/60 border border-teal-500/30 text-white shrink-0">
+                      <User className="w-4 h-4 text-teal-300 shrink-0" />
+                      <span className="text-xs sm:text-sm font-bold text-slate-300">أمين المستودع:</span>
+                      <span className="text-xs sm:text-sm font-extrabold text-teal-200 bg-teal-500/20 border border-teal-400/30 px-3 py-0.5 rounded-lg">
+                        أيمن
+                      </span>
+                    </div>
+
+                    {/* Optional Notes Input */}
+                    <div className="flex-1 min-w-[200px]">
+                      <input
+                        type="text"
+                        value={countNotes}
+                        onChange={(e) => setCountNotes(e.target.value)}
+                        disabled={isSubmittingCount}
+                        placeholder="ملاحظات الجرد (اختياري)..."
+                        aria-label="ملاحظات الجرد"
+                        className="w-full bg-black/35 hover:bg-black/50 focus:bg-black/60 border border-teal-500/25 focus:border-teal-400 focus:ring-1 focus:ring-teal-400/50 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-400 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Submit Action Button */}
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCount}
+                    className="bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white font-extrabold rounded-xl px-7 py-3.5 text-sm sm:text-base shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:shadow-[0_0_28px_rgba(16,185,129,0.55)] border border-teal-300/40 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-98 shrink-0"
+                  >
+                    {isSubmittingCount ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin text-white" />
+                        <span>جاري الحفظ...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
+                        <span>اعتماد وحفظ</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* 2. Previous Counts Log (سجل الجرد السابق) */}
+            <section
+              aria-label="سجل الجرد السابق"
+              className="bg-[#0d1f1c]/60 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-6 sm:p-8 space-y-5 shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-teal-500/20">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-teal-300" />
+                    <span>سجل الجرد السابق</span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1">
+                    {isStrictAdmin
+                      ? 'اضغط على أي تاريخ جرد لعرض تفاصيل الكراتين والوحدات المحسوبة ومقارنة الانحراف (Variance) مع رصيد النظام قبل الجرد'
+                      : 'سجل عمليات الجرد اليومي المعتمدة سابقاً مرتبة من الأحدث إلى الأقدم'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousCounts()}
+                  disabled={isLoadingCounts}
+                  className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-bold text-white transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-teal-300 ${isLoadingCounts ? 'animate-spin' : ''}`} />
+                  <span>تحديث السجل</span>
+                </button>
+              </div>
+
+              {isLoadingCounts && previousCounts.length === 0 ? (
+                <div className="py-10 flex items-center justify-center gap-3 text-sm font-bold text-slate-300">
+                  <Loader2 className="w-5 h-5 animate-spin text-teal-300" />
+                  <span>جاري تحميل سجل الجرد السابق...</span>
+                </div>
+              ) : previousCounts.length === 0 ? (
+                <div className="py-10 text-center rounded-2xl bg-black/20 border border-teal-500/15 space-y-1.5">
+                  <p className="text-sm font-bold text-white/90">لا توجد سجلات جرد سابقة محفوظة حتى الآن</p>
+                  <p className="text-xs text-slate-400">عند اعتماد الجرد اليومي أعلاه سيظهر السجل هنا تلقائياً.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* List of Submitted Count Dates (Newest First) */}
+                  <div className="lg:col-span-4 space-y-2.5 max-h-[520px] overflow-y-auto pe-1">
+                    {previousCounts.map((rec) => {
+                      const isSelected = selectedHistoryRecord?.id === rec.id;
+                      const itemsArr = Array.isArray(rec.items_data) ? rec.items_data : [];
+                      const totalCartonsInRec = itemsArr.reduce(
+                        (sum, it) => sum + (Number(it.cartons ?? it.carton_count) || 0),
+                        0
+                      );
+
+                      return (
+                        <button
+                          key={rec.id}
+                          type="button"
+                          onClick={() => setSelectedCountRecordId(rec.id)}
+                          className={`w-full text-right p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 ${
+                            isSelected
+                              ? 'bg-teal-500/20 border-teal-400/60 shadow-[0_0_20px_rgba(20,184,166,0.2)]'
+                              : 'bg-black/25 hover:bg-black/40 border-teal-500/15 text-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className="font-mono font-extrabold text-sm text-white bg-teal-950/80 border border-teal-400/30 px-2.5 py-0.5 rounded-lg"
+                              dir="ltr"
+                              style={englishNumericStyle}
+                            >
+                              {toEnglishDigitsStr(String(rec.count_date || '').replace(/-/g, '/'))}
+                            </span>
+                            <span className="text-[11px] font-bold text-teal-200 bg-teal-500/15 border border-teal-400/25 px-2.5 py-0.5 rounded-full">
+                              {rec.warehouse_section || 'المخزون الرئيسي'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-slate-300">
+                            <span>أمين المستودع: <strong className="text-white">{rec.keeper_name}</strong></span>
+                            <span className="font-mono font-bold text-teal-300" dir="ltr" style={englishNumericStyle}>
+                              {toEnglishDigits(totalCartonsInRec)} كرتون
+                            </span>
+                          </div>
+
+                          {rec.notes && (
+                            <p className="text-[11px] text-slate-400 truncate">
+                              📝 {rec.notes}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Record Details & Admin Variance Table */}
+                  <div className="lg:col-span-8">
+                    {selectedHistoryRecord && (
+                      <div className="rounded-2xl border border-teal-500/20 bg-black/25 p-4 sm:p-5 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-teal-500/15">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-base font-extrabold text-white">
+                                تفاصيل الجرد المعتمد
+                              </h4>
+                              <span
+                                className="font-mono font-bold text-xs text-teal-200 bg-teal-500/20 border border-teal-400/30 px-2.5 py-0.5 rounded-lg"
+                                dir="ltr"
+                                style={englishNumericStyle}
+                              >
+                                {toEnglishDigitsStr(String(selectedHistoryRecord.count_date || '').replace(/-/g, '/'))}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 mt-1">
+                              أمين المستودع: <strong className="text-white">{selectedHistoryRecord.keeper_name}</strong> • القسم:{' '}
+                              <strong className="text-teal-300">{selectedHistoryRecord.warehouse_section || 'المخزون الرئيسي'}</strong>
+                            </p>
+                          </div>
+                          {selectedHistoryRecord.notes && (
+                            <div className="text-xs bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-slate-200">
+                              ملاحظات: {selectedHistoryRecord.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-teal-500/15">
+                          <table className="w-full text-center border-collapse text-xs sm:text-sm">
+                            <thead>
+                              <tr className="bg-teal-950/50 border-b border-teal-500/20 text-teal-100 font-extrabold">
+                                <th className="py-3 px-3">الرمز</th>
+                                <th className="py-3 px-3 text-right">اسم الصنف</th>
+                                <th className="py-3 px-3">سعة الكرتون</th>
+                                <th className="py-3 px-3">العدد الفعلي (كرتون)</th>
+                                <th className="py-3 px-3">إجمالي الوحدات</th>
+                                {isStrictAdmin && (
+                                  <>
+                                    <th className="py-3 px-3">رصيد النظام (قبل الجرد)</th>
+                                    <th className="py-3 px-3">الفارق (Variance)</th>
+                                  </>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-teal-500/10">
+                              {[...(Array.isArray(selectedHistoryRecord.items_data) ? selectedHistoryRecord.items_data : [])]
+                                .sort((a, b) => compareItemCodes(a.item_code || a.code, b.item_code || b.code))
+                                .map((row) => {
+                                  const rCode = String(row.item_code || row.code || '').toUpperCase();
+                                  const liveItem = inventoryItems.find(
+                                    (i) => i.item_code.toUpperCase() === rCode
+                                  );
+                                  const systemStockVal = Number(
+                                    row.system_stock_before ??
+                                      row.system_stock ??
+                                      liveItem?.main_stock ??
+                                      liveItem?.current_stock ??
+                                      0
+                                  );
+                                  const actualUnitsVal = Number(row.actual_units ?? row.total_units ?? 0);
+                                  const varianceVal =
+                                    row.variance !== undefined && row.variance !== null
+                                      ? Number(row.variance)
+                                      : actualUnitsVal - systemStockVal;
+
+                                  return (
+                                    <tr key={`hist-${selectedHistoryRecord.id}-${rCode}`} className="hover:bg-white/[0.04]">
+                                      <td className="py-2.5 px-3">
+                                        <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded" dir="ltr" style={englishNumericStyle}>
+                                          {rCode}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right font-bold text-white">
+                                        {row.item_name_ar || row.name || (liveItem ? getItemDisplayName(liveItem) : rCode)}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono text-slate-300" dir="ltr" style={englishNumericStyle}>
+                                        {toEnglishDigits(row.units_per_carton || 1)}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono font-extrabold text-white" dir="ltr" style={englishNumericStyle}>
+                                        {toEnglishDigits(row.cartons ?? row.carton_count ?? 0)}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono font-extrabold text-teal-300" dir="ltr" style={englishNumericStyle}>
+                                        {toEnglishDigits(actualUnitsVal)}
+                                      </td>
+                                      {isStrictAdmin && (
+                                        <>
+                                          <td className="py-2.5 px-3 font-mono text-sky-200" dir="ltr" style={englishNumericStyle}>
+                                            {toEnglishDigits(systemStockVal)}
+                                          </td>
+                                          <td className="py-2.5 px-3">
+                                            <span
+                                              className={`inline-block font-mono font-extrabold px-2.5 py-0.5 rounded-lg border ${
+                                                varianceVal === 0
+                                                  ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
+                                                  : varianceVal > 0
+                                                  ? 'bg-sky-500/15 border-sky-400/30 text-sky-300'
+                                                  : 'bg-rose-500/20 border-rose-400/40 text-rose-300'
+                                              }`}
+                                              dir="ltr"
+                                              style={englishNumericStyle}
+                                            >
+                                              {varianceVal > 0 ? `+${toEnglishDigits(varianceVal)}` : toEnglishDigits(varianceVal)}
+                                            </span>
+                                          </td>
+                                        </>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
+        );
+      })()}
+
+      {activeInventoryTab === 'overview' && (
+        <>
       {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white/[0.06] backdrop-blur-[2px] backdrop-saturate-[1.1] border border-white/[0.24] shadow-[0_6px_20px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.20)] rounded-2xl p-6 flex flex-col justify-between transition-all duration-200">
@@ -2783,7 +3443,7 @@ export default function InventoryClient({
                 <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">
                   {lang === 'en' ? 'Production Stock' : 'مخزون الإنتاج'}
                 </th>
-                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الرصيد الحالي</th>
+                <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">إجمالي المخزون</th>
                 <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الحد الأدنى</th>
                 <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">مدة التوريد</th>
                 <th scope="col" className="py-3.5 px-4 lg:px-5 font-bold">الإجراء</th>
@@ -2960,6 +3620,8 @@ export default function InventoryClient({
           <p className="text-lg font-bold drop-shadow-sm">{t('inventory.noItemsFound')}</p>
           <p className="text-xs text-white/80 mt-1 drop-shadow-sm">{t('inventory.noItemsFoundHint')}</p>
         </div>
+      )}
+        </>
       )}
 
 
@@ -4372,9 +5034,9 @@ export default function InventoryClient({
                       </p>
                     ) : null}
 
-                    {/* Live Balance: الرصيد المتبقي: */}
+                    {/* Live Balance: إجمالي المخزون: */}
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-500/10 border border-teal-400/30 text-xs sm:text-sm mt-1">
-                      <span className="text-white/80 font-bold">الرصيد المتبقي:</span>
+                      <span className="text-white/80 font-bold">إجمالي المخزون:</span>
                       <strong className="font-mono font-black text-teal-300 text-sm sm:text-base" dir="ltr">
                         {toEnglishDigits(historyDrawerItem.current_stock)}
                       </strong>
@@ -4549,9 +5211,9 @@ export default function InventoryClient({
                       <thead>
                         <tr className="bg-white/8 border-b border-white/15 text-white font-bold">
                           <th className="py-3 px-3">التاريخ</th>
-                          <th className="py-3 px-3">الرصيد الافتتاحي</th>
+                          <th className="py-3 px-3">افتتاحي الإنتاج</th>
                           <th className="py-3 px-3">الكمية المستهلكة</th>
-                          <th className="py-3 px-3">الرصيد المتبقي</th>
+                          <th className="py-3 px-3">متبقي الإنتاج</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/8">

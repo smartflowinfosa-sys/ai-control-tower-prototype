@@ -14,6 +14,8 @@ export interface SupabaseInventoryItem {
   main_stock?: number;
   /** Production area stock in units (`production_stock` column in `inventory_items`) */
   production_stock?: number;
+  /** Carton capacity in units (`units_per_carton` column in `inventory_items`) */
+  units_per_carton?: number;
   reorder_level: number;
   /** Daily consumed quantity deducted from stock (`consumed_quantity` column in `inventory_items`) */
   consumed_quantity?: number;
@@ -199,6 +201,7 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
         ? Math.max(1, Math.ceil(Number(firstSup.delivery_time_hours) / 24))
         : null;
 
+    const codeUpper = String(row.item_code || '').trim().toUpperCase();
     return {
       ...row,
       current_stock: Number(row.current_stock ?? 0),
@@ -206,6 +209,10 @@ export async function fetchInventoryItems(): Promise<SupabaseInventoryItem[]> {
         ? Number(row.main_stock)
         : Number(row.current_stock ?? 0),
       production_stock: Number(row.production_stock ?? 0),
+      units_per_carton:
+        row.units_per_carton !== undefined && row.units_per_carton !== null && Number(row.units_per_carton) > 0
+          ? Number(row.units_per_carton)
+          : (CARTON_SIZES[codeUpper] || 1),
       reorder_level: Number(row.reorder_level ?? 0),
       consumed_quantity: Number(row.consumed_quantity ?? 0),
       lead_time_days: row.lead_time_days ?? policy.lead_time_days ?? derivedSupplierLeadDays,
