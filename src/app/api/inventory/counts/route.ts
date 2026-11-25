@@ -176,11 +176,26 @@ export async function POST(req: NextRequest) {
       const code = String(rec.item_code || rec.code || '').trim().toUpperCase();
       if (!code) continue;
 
+      // Crucial Rule: Skip any item whose carton input was left blank/empty ("" or null or undefined)
+      const rawCartonsVal = rec.carton_count !== undefined ? rec.carton_count : rec.cartons;
+      if (
+        rawCartonsVal === undefined ||
+        rawCartonsVal === null ||
+        (typeof rawCartonsVal === 'string' && rawCartonsVal.trim() === '')
+      ) {
+        continue;
+      }
+
+      const parsedCartons = Number(rawCartonsVal);
+      if (!Number.isFinite(parsedCartons) || parsedCartons < 0) {
+        continue;
+      }
+
       const dbItem = dbMap.get(code);
       const unitsPerCarton = dbItem?.units_per_carton
         ? dbItem.units_per_carton
         : Math.max(1, Number(rec.units_per_carton) || CARTON_SIZES[code] || 1);
-      const cartonCount = Math.max(0, Number(rec.carton_count ?? rec.cartons) || 0);
+      const cartonCount = Math.max(0, parsedCartons);
       const actualUnits = Math.round(cartonCount * unitsPerCarton);
       const systemStockBefore = dbItem
         ? dbItem.main_stock

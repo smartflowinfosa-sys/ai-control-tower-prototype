@@ -595,6 +595,11 @@ export default function InventoryClient({
 
   // Receive Stock & Multi-Item Invoice Modal State
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState<boolean>(false);
+  const [receiveMode, setReceiveMode] = useState<'direct' | 'po'>('direct');
+  const [directReceiveItemFilter, setDirectReceiveItemFilter] = useState<string>('ALL');
+  const [directReceiveCartons, setDirectReceiveCartons] = useState<Record<string, string>>({});
+  const [directSupplierName, setDirectSupplierName] = useState<string>('');
+  const [directInvoiceNotes, setDirectInvoiceNotes] = useState<string>('');
   const [receivePoId, setReceivePoId] = useState<string>('');
   const [receivedItems, setReceivedItems] = useState<ReceivedItemRow[]>([]);
 
@@ -665,6 +670,23 @@ export default function InventoryClient({
   >([]);
   const [isLoadingCounts, setIsLoadingCounts] = useState<boolean>(false);
   const [selectedCountRecordId, setSelectedCountRecordId] = useState<string | null>(null);
+  const [isCountConfirmModalOpen, setIsCountConfirmModalOpen] = useState<boolean>(false);
+  const [pendingCountItems, setPendingCountItems] = useState<
+    Array<{
+      code: string;
+      item_code: string;
+      name: string;
+      item_name_ar: string;
+      units_per_carton: number;
+      cartons: number;
+      carton_count: number;
+      actual_units: number;
+      total_units: number;
+      system_stock_before: number;
+      system_stock: number;
+      variance: number;
+    }>
+  >([]);
 
   // Tab 1: Subscription Requests (إدارة طلبات المشتركين) State
   const [deconstructSubId, setDeconstructSubId] = useState<string>('');
@@ -872,13 +894,18 @@ export default function InventoryClient({
     if (!authUser) {
       showError(
         lang === 'en'
-          ? 'Unauthorized: Cannot execute or receive a Purchase Order without an authenticated user session.'
-          : 'عذراً، لا يمكن استلام شحنة أو تنفيذ أمر شراء بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
+          ? 'Unauthorized: Cannot execute or receive stock without an authenticated user session.'
+          : 'عذراً، لا يمكن استلام شحنة بدون جلسة مستخدم موثقة. يرجى تسجيل الدخول أولاً.'
       );
       return;
     }
 
     const targetId = defaultPoId || '';
+    setReceiveMode(targetId ? 'po' : 'direct');
+    setDirectReceiveItemFilter('ALL');
+    setDirectReceiveCartons({});
+    setDirectSupplierName('');
+    setDirectInvoiceNotes('');
     setReceivePoId(targetId);
     if (targetId) {
       setReceivedItems(buildInvoiceRowsFromPO(targetId));
@@ -934,12 +961,103 @@ export default function InventoryClient({
     if (!authUser) {
       const msg = lang === 'en'
         ? 'Unauthorized: Cannot execute receipt without an authenticated user session.'
-        : 'عذراً، لا يمكن تأكيد الاستلام أو تنفيذ أمر الشراء بدون جلسة مستخدم موثقة.';
+        : 'عذراً، لا يمكن تأكيد الاستلام بدون جلسة مستخدم موثقة.';
       setReceiptError(msg);
       showError(msg);
       return;
     }
 
+    // =========================================================================
+    // MODE 1 (DEFAULT): استلام مباشر (بدون أمر شراء)
+    // =========================================================================
+    if (receiveMode === 'direct') {
+      const directPayloadItems = Object.entries(directReceiveCartons)
+        .map(([code, rawVal]) => ({
+          item_code: code.trim().toUpperCase(),
+          cartons: Number(toEnglishDigitsStr(rawVal).trim()),
+        }))
+        .filter((entry) => entry.item_code && Number.isFinite(entry.cartons) && entry.cartons > 0);
+
+      if (directPayloadItems.length === 0) {
+        setReceiptError('يرجى إدخال الكمية المستلمة (بالكرتون) أكبر من الصفر لصنف واحد على الأقل.');
+        return;
+      }
+
+      setIsSubmittingReceipt(true);
+      setReceiptError(null);
+
+      try {
+        const res = await fetch('/api/inventory/receive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'direct',
+            supplier_name: directSupplierName.trim() || null,
+            invoice_number: directInvoiceNotes.trim() || null,
+            notes: directInvoiceNotes.trim() || null,
+            items: directPayloadItems,
+          }),
+        });
+
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.error || `HTTP error ${res.status}`);
+        }
+
+        if (Array.isArray(json?.updatedItems)) {
+          const updatedMap = new Map<
+            string,
+            { main_stock: number; current_stock: number; incoming_units: number }
+          >();
+          for (const u of json.updatedItems) {
+            if (u?.item_code) {
+              updatedMap.set(String(u.item_code).toUpperCase(), {
+                main_stock: Number(u.main_stock ?? 0),
+                current_stock: Number(u.current_stock ?? 0),
+                incoming_units: Number(u.incoming_units ?? 0),
+              });
+            }
+          }
+
+          setInventoryItems((prev) =>
+            prev.map((it) => {
+              const match = updatedMap.get(it.item_code.toUpperCase());
+              return match
+                ? {
+                    ...it,
+                    main_stock: match.main_stock,
+                    current_stock: match.current_stock,
+                  }
+                : it;
+            })
+          );
+        }
+
+        void refreshLiveInventory();
+
+        const confirmMsg =
+          json?.message || 'تم استلام المخزون وإضافة الكميات للمخزون الرئيسي بنجاح ✅';
+        setSuccessToast(confirmMsg);
+        setIsReceiveModalOpen(false);
+        setDirectReceiveCartons({});
+        setDirectSupplierName('');
+        setDirectInvoiceNotes('');
+        setTimeout(() => {
+          setSuccessToast(null);
+        }, 4500);
+      } catch (err: unknown) {
+        const errMsg =
+          err instanceof Error ? err.message : 'تعذر تسجيل استلام المخزون. يرجى المحاولة مرة أخرى.';
+        setReceiptError(errMsg);
+      } finally {
+        setIsSubmittingReceipt(false);
+      }
+      return;
+    }
+
+    // =========================================================================
+    // MODE 2 (OPTIONAL): مرتبط بأمر شراء (Existing PO Receipt Flow)
+    // =========================================================================
     if (!receivePoId) {
       setReceiptError(
         lang === 'ar'
@@ -968,118 +1086,75 @@ export default function InventoryClient({
       return;
     }
 
-    if (!invoiceFile) {
-      setReceiptError(t('inventory.noInvoiceFile'));
-      return;
-    }
-
-    if (!receiverSignature.trim()) {
-      setReceiptError(t('inventory.signatureRequired'));
-      return;
-    }
-
     setIsSubmittingReceipt(true);
     setReceiptError(null);
 
     try {
-      // Step 1: Sanitize File Name (Safe ASCII filename)
-      const rawExt = invoiceFile.name && invoiceFile.name.includes('.')
-        ? invoiceFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'pdf'
-        : 'pdf';
-      const safeRandom = Math.random().toString(36).substring(7);
-      const safeFileName = `invoice-${Date.now()}-${safeRandom}.${rawExt}`;
-      const sanitizedInvoiceFile = new File([invoiceFile], safeFileName, {
-        type: invoiceFile.type || 'application/pdf',
-      });
+      let invoicePublicUrl: string | undefined;
+      if (invoiceFile) {
+        const rawExt = invoiceFile.name && invoiceFile.name.includes('.')
+          ? invoiceFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'pdf'
+          : 'pdf';
+        const safeRandom = Math.random().toString(36).substring(7);
+        const safeFileName = `invoice-${Date.now()}-${safeRandom}.${rawExt}`;
+        const sanitizedInvoiceFile = new File([invoiceFile], safeFileName, {
+          type: invoiceFile.type || 'application/pdf',
+        });
 
-      // Upload invoice to Supabase Storage 'invoices' bucket
-      const invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, receivePoId);
-
-      // Step 1.5: Trigger n8n Webhook for automated Google Drive archiving
-      if (invoicePublicUrl) {
-        try {
-          const po = purchaseOrders.find(p => p.id === receivePoId);
-          const supplierName =
-            po?.supplierName ||
-            (po as unknown as { supplier_name?: string })?.supplier_name ||
-            'فاتورة استلام مجمعة';
-          const invoiceDate = new Date().toISOString().split('T')[0];
-
-          fetch('https://n8n-p10bgpahkliy9hghak21zv3e.178.105.219.96.sslip.io/webhook/zahi-invoice-upload', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              supplier_name: supplierName,
-              invoice_date: invoiceDate,
-              file_url: invoicePublicUrl,
-              po_number: receivePoId,
-              received_items: receivedItems.map(row => ({
-                code: row.itemCode,
-                cartons: Number(row.quantityCartons) || 0,
-                units: (Number(row.quantityCartons) || 0) * (CARTON_SIZES[row.itemCode] || 1)
-              }))
-            }),
-          }).catch((webhookErr) => {
-            console.warn('n8n webhook notification error (silent):', webhookErr);
-          });
-        } catch (triggerErr) {
-          console.warn('n8n webhook trigger error (silent):', triggerErr);
-        }
+        invoicePublicUrl = await uploadInvoice(sanitizedInvoiceFile, receivePoId);
       }
 
-      // Step 2: Batch Receive in Supabase: add converted units to current_stock for each item
-      const batchPayload = receivedItems.map(row => ({
-        itemCode: row.itemCode,
-        quantityCartons: Number(row.quantityCartons) || 0,
-      }));
+      const po = purchaseOrders.find(p => p.id === receivePoId);
+      const supplierName =
+        po?.supplierName ||
+        (po as unknown as { supplier_name?: string })?.supplier_name ||
+        '';
 
-      await batchReceiveInventory(
-        batchPayload,
-        receivePoId,
-        invoicePublicUrl,
-        receiverSignature.trim()
-      );
-
-      // Step 3: Compute added units map for local state update
-      const nowIso = new Date().toISOString();
-      const addedUnitsMap: Record<string, number> = {};
-      receivedItems.forEach(row => {
-        const code = row.itemCode.toUpperCase();
-        const cartons = Number(row.quantityCartons) || 0;
-        if (cartons <= 0) return;
-        const cSize = CARTON_SIZES[code] || 1;
-        const units = cartons * cSize;
-        addedUnitsMap[code] = (addedUnitsMap[code] || 0) + units;
+      const res = await fetch('/api/inventory/receive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'po',
+          po_number: receivePoId,
+          supplier_name: supplierName || null,
+          receiver_signature: receiverSignature.trim() || null,
+          invoice_url: invoicePublicUrl || null,
+          items: receivedItems.map(row => ({
+            item_code: row.itemCode,
+            cartons: Number(row.quantityCartons) || 0,
+          })),
+        }),
       });
 
-      // Update local inventory items immediately and set last_restock_date to nowIso
-      setInventoryItems(prevItems =>
-        [...prevItems.map(item => {
-          const code = item.item_code.toUpperCase();
-          const added = addedUnitsMap[code];
-          if (added !== undefined) {
-            return {
-              ...item,
-              current_stock: (Number(item.current_stock) || 0) + added,
-              last_restock_date: nowIso,
-            };
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.error || `HTTP error ${res.status}`);
+      }
+
+      if (Array.isArray(json?.updatedItems)) {
+        const updatedMap = new Map<string, { main_stock: number; current_stock: number }>();
+        for (const u of json.updatedItems) {
+          if (u?.item_code) {
+            updatedMap.set(String(u.item_code).toUpperCase(), {
+              main_stock: Number(u.main_stock ?? 0),
+              current_stock: Number(u.current_stock ?? 0),
+            });
           }
-          return item;
-        })].sort((a, b) => compareItemCodes(a.item_code, b.item_code))
-      );
+        }
+        setInventoryItems(prev =>
+          prev.map(it => {
+            const match = updatedMap.get(it.item_code.toUpperCase());
+            return match
+              ? {
+                  ...it,
+                  main_stock: match.main_stock,
+                  current_stock: match.current_stock,
+                }
+              : it;
+          })
+        );
+      }
 
-      // Step 3.5: Deduct AddedUnits from unreplenished_consumption counter (can go to 0)
-      setUnreplenished(prev => {
-        const next = { ...prev };
-        Object.entries(addedUnitsMap).forEach(([code, addedUnits]) => {
-          next[code] = Math.max(0, (next[code] || 0) - addedUnits);
-        });
-        return next;
-      });
-
-      // Step 4: Update purchase orders state locally
       setPurchaseOrders(prev =>
         prev.map(p =>
           p.id === receivePoId
@@ -1094,42 +1169,18 @@ export default function InventoryClient({
         )
       );
 
-      // Background re-fetch to ensure complete sync with database
-      try {
-        const [fresh, freshPOs] = await Promise.all([
-          fetchInventoryItems(),
-          fetchPurchaseOrders().catch(() => []),
-        ]);
-        if (fresh && fresh.length > 0) {
-          setInventoryItems(
-            fresh.map(normalizeLiveInventoryItem).sort((a, b) => compareItemCodes(a.item_code, b.item_code))
-          );
-        }
-        if (freshPOs && freshPOs.length > 0) {
-          setPurchaseOrders(freshPOs as unknown as PurchaseOrder[]);
-        }
-      } catch (syncErr) {
-        console.warn('Background sync warning:', syncErr);
-      }
+      void refreshLiveInventory();
 
-      const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
-      const totalUnits = Object.values(addedUnitsMap).reduce((acc, u) => acc + u, 0);
-      const distinctReceivedCount = Object.keys(addedUnitsMap).length;
-
-      const successMsg = lang === 'ar'
-        ? `تم استلام الطلب #${receivePoId} بنجاح: ${toEnglishDigits(distinctReceivedCount)} أصناف (${toEnglishDigits(totalCartons)} كرتون / ${toEnglishDigits(totalUnits)} وحدة) وتحديث المخزون ✨`
-        : `Order #${receivePoId} received successfully: ${toEnglishDigits(distinctReceivedCount)} items (${toEnglishDigits(totalCartons)} cartons / ${toEnglishDigits(totalUnits)} units) ✨`;
-
+      const successMsg = json?.message || `تم استلام الطلب #${receivePoId} وتحديث المخزون الرئيسي بنجاح ✅`;
       setSuccessToast(successMsg);
       setIsReceiveModalOpen(false);
       setInvoiceFile(null);
       setReceivePoId('');
       setReceivedItems([]);
       setReceiverSignature('');
-
       setTimeout(() => {
         setSuccessToast(null);
-      }, 5500);
+      }, 4500);
     } catch (err: unknown) {
       console.error('Error during stock receiving:', err);
       setReceiptError(err instanceof Error ? err.message : 'حدث خطأ أثناء تأكيد الاستلام');
@@ -1224,61 +1275,76 @@ export default function InventoryClient({
     }
   }, [activeInventoryTab, loadPreviousCounts]);
 
-  const handleSaveInventoryCount = async (e: React.FormEvent) => {
+  const buildCountedItemsPayload = () => {
+    const sortedCountProducts = [...inventoryItems].sort((a, b) =>
+      compareItemCodes(a.item_code, b.item_code)
+    );
+
+    return sortedCountProducts
+      .filter((item) => {
+        const code = item.item_code.toUpperCase();
+        const raw = countCartonValues[code];
+        if (raw === undefined || raw === null) return false;
+        const trimmed = toEnglishDigitsStr(raw).trim();
+        if (trimmed === '') return false;
+        const num = Number(trimmed);
+        return Number.isFinite(num) && num >= 0;
+      })
+      .map((item) => {
+        const code = item.item_code.toUpperCase();
+        const unitsPerCarton =
+          item.units_per_carton != null && Number(item.units_per_carton) > 0
+            ? Number(item.units_per_carton)
+            : (CARTON_SIZES[code] || 1);
+        const trimmed = toEnglishDigitsStr(countCartonValues[code]).trim();
+        const cartonCount = Math.max(0, Number(trimmed));
+        const actualUnits = Math.round(cartonCount * unitsPerCarton);
+        const systemStockBefore = Number(item.main_stock ?? item.current_stock ?? 0);
+
+        return {
+          code,
+          item_code: code,
+          name: getItemDisplayName(item),
+          item_name_ar: getItemDisplayName(item),
+          units_per_carton: unitsPerCarton,
+          cartons: cartonCount,
+          carton_count: cartonCount,
+          actual_units: actualUnits,
+          total_units: actualUnits,
+          system_stock_before: systemStockBefore,
+          system_stock: systemStockBefore,
+          variance: actualUnits - systemStockBefore,
+        };
+      });
+  };
+
+  const handleSaveInventoryCount = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmittingCount) return;
 
     setCountError(null);
     setCountSuccessBanner(null);
 
-    const sortedCountProducts = [...inventoryItems].sort((a, b) =>
-      compareItemCodes(a.item_code, b.item_code)
-    );
+    const countedItems = buildCountedItemsPayload();
 
-    const hasAnyEnteredValue = sortedCountProducts.some((item) => {
-      const code = item.item_code.toUpperCase();
-      const raw = countCartonValues[code];
-      return raw !== undefined && raw !== '' && Number(toEnglishDigitsStr(raw)) >= 0;
-    });
-
-    if (!hasAnyEnteredValue) {
-      setCountError('يرجى إدخال العدد الفعلي (بالكرتون) لصنف واحد على الأقل قبل اعتماد الجرد.');
+    if (countedItems.length === 0) {
+      const emptyMsg = 'يرجى إدخال العدد الفعلي لصنف واحد على الأقل قبل الاعتماد';
+      setCountError(emptyMsg);
+      showError(emptyMsg);
       return;
     }
 
+    setPendingCountItems(countedItems);
+    setIsCountConfirmModalOpen(true);
+  };
+
+  const handleConfirmSaveInventoryCount = async () => {
+    if (isSubmittingCount || pendingCountItems.length === 0) return;
+
     const todayIso = dayjs().tz(SAUDI_TZ).format('YYYY-MM-DD');
 
-    const itemsPayload = sortedCountProducts.map((item) => {
-      const code = item.item_code.toUpperCase();
-      const unitsPerCarton =
-        item.units_per_carton != null && Number(item.units_per_carton) > 0
-          ? Number(item.units_per_carton)
-          : (CARTON_SIZES[code] || 1);
-      const rawVal = countCartonValues[code];
-      const cartonCount =
-        rawVal !== undefined && rawVal !== ''
-          ? Math.max(0, Number(toEnglishDigitsStr(rawVal)) || 0)
-          : 0;
-      const actualUnits = Math.round(cartonCount * unitsPerCarton);
-      const systemStockBefore = Number(item.main_stock ?? item.current_stock ?? 0);
-
-      return {
-        code,
-        item_code: code,
-        name: getItemDisplayName(item),
-        item_name_ar: getItemDisplayName(item),
-        units_per_carton: unitsPerCarton,
-        cartons: cartonCount,
-        carton_count: cartonCount,
-        actual_units: actualUnits,
-        total_units: actualUnits,
-        system_stock_before: systemStockBefore,
-        system_stock: systemStockBefore,
-        variance: actualUnits - systemStockBefore,
-      };
-    });
-
     setIsSubmittingCount(true);
+    setCountError(null);
     try {
       const res = await fetch('/api/inventory/counts', {
         method: 'POST',
@@ -1287,7 +1353,7 @@ export default function InventoryClient({
           count_date: todayIso,
           keeper_name: 'أيمن',
           warehouse_section: 'المخزون الرئيسي',
-          items_data: itemsPayload,
+          items_data: pendingCountItems,
           notes: countNotes.trim(),
         }),
       });
@@ -1297,7 +1363,7 @@ export default function InventoryClient({
         throw new Error(json?.error || `HTTP error ${res.status}`);
       }
 
-      // Immediately reconcile local inventory state with updated main_stock and current_stock
+      // Immediately reconcile local inventory state strictly for the counted items
       if (Array.isArray(json?.updatedItems)) {
         const updatedMap = new Map<string, { main_stock: number; current_stock: number }>();
         for (const u of json.updatedItems) {
@@ -1324,9 +1390,12 @@ export default function InventoryClient({
       void refreshLiveInventory();
 
       const confirmMsg = 'تم اعتماد الجرد وتحديث الرصيد الافتتاحي للمخزون الرئيسي بنجاح ✅';
+      setIsCountConfirmModalOpen(false);
+      setPendingCountItems([]);
+      setCountCartonValues({});
+      setCountNotes('');
       setCountSuccessBanner(confirmMsg);
       setSuccessToast(confirmMsg);
-      setCountNotes('');
       if (json?.data) {
         setPreviousCounts((prev) => [json.data, ...prev.filter((r) => r.id !== json.data.id)]);
         setSelectedCountRecordId(json.data.id);
@@ -1339,6 +1408,7 @@ export default function InventoryClient({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'تعذر حفظ الجرد اليومي. يرجى المحاولة مرة أخرى.';
       setCountError(msg);
+      setIsCountConfirmModalOpen(false);
     } finally {
       setIsSubmittingCount(false);
     }
@@ -3246,6 +3316,97 @@ export default function InventoryClient({
                 </div>
               )}
             </section>
+
+            {/* Confirmation Modal Before Saving Partial/Full Inventory Count */}
+            {isCountConfirmModalOpen && pendingCountItems.length > 0 && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+                <div
+                  dir="rtl"
+                  className="font-sans bg-[#0d1f1c]/95 backdrop-blur-2xl rounded-3xl w-full max-w-lg p-6 space-y-5 text-white border border-teal-500/30 shadow-[0_24px_70px_rgba(0,0,0,0.85)]"
+                >
+                  <div className="flex items-start justify-between gap-3 border-b border-teal-500/20 pb-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 shrink-0">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-lg font-extrabold text-white">
+                        تأكيد اعتماد الجرد
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isSubmittingCount) {
+                          setIsCountConfirmModalOpen(false);
+                        }
+                      }}
+                      disabled={isSubmittingCount}
+                      className="text-white/60 hover:text-white bg-white/5 hover:bg-white/15 border border-white/15 p-1.5 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                      aria-label={t('common.close')}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-sm font-bold text-slate-200 leading-relaxed bg-amber-500/10 border border-amber-400/30 rounded-2xl p-4">
+                    {`تنبيه: سيتم تحديث الرصيد الافتتاحي لعدد (${toEnglishDigits(pendingCountItems.length)}) أصناف فقط، بينما ستبقى باقي الأصناف التي تركتها فارغة على رصيدها السابق دون تصفير. هل أنت متأكد من الاعتماد؟`}
+                  </p>
+
+                  {/* List of Counted Items Being Updated */}
+                  <div className="max-h-56 overflow-y-auto rounded-2xl border border-teal-500/20 bg-black/35 divide-y divide-teal-500/10">
+                    {pendingCountItems.map((it) => (
+                      <div
+                        key={`confirm-count-${it.code}`}
+                        className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="font-mono font-extrabold text-xs text-white bg-teal-500/20 border border-teal-400/30 px-2 py-0.5 rounded-md"
+                            dir="ltr"
+                            style={englishNumericStyle}
+                          >
+                            {it.code}
+                          </span>
+                          <span className="font-bold text-white">{it.name}</span>
+                        </div>
+                        <div className="font-mono text-xs sm:text-sm font-extrabold text-teal-300" dir="ltr" style={englishNumericStyle}>
+                          {toEnglishDigits(it.cartons)} ctn → {toEnglishDigits(it.actual_units)} وحدة
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2 border-t border-teal-500/20">
+                    <button
+                      type="button"
+                      onClick={() => setIsCountConfirmModalOpen(false)}
+                      disabled={isSubmittingCount}
+                      className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-slate-200 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirmSaveInventoryCount()}
+                      disabled={isSubmittingCount}
+                      className="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white border border-teal-300/40 shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingCount ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>جاري الاعتماد...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+                          <span>تأكيد الاعتماد</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -3903,46 +4064,88 @@ export default function InventoryClient({
         </div>
       )}
 
-      {/* Modal: Consolidated Order Receive Shipment & Invoice */}
+      {/* Modal: Receive Stock (Direct Receipt without PO by default + Optional PO Link) */}
       {isReceiveModalOpen && (() => {
-        const distinctItemsCount = new Set(
-          receivedItems
-            .filter(i => i.itemCode.trim() && (Number(i.quantityCartons) || 0) > 0)
-            .map(i => i.itemCode.trim().toUpperCase())
-        ).size;
-        const totalCartons = receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
-        const totalUnits = receivedItems.reduce((acc, i) => {
-          const cCode = i.itemCode.toUpperCase();
-          const cSize = CARTON_SIZES[cCode] || 1;
-          return acc + ((Number(i.quantityCartons) || 0) * cSize);
-        }, 0);
+        const sortedCatalogItems = [...inventoryItems].sort((a, b) =>
+          compareItemCodes(a.item_code, b.item_code)
+        );
+        const visibleDirectItems =
+          directReceiveItemFilter === 'ALL'
+            ? sortedCatalogItems
+            : sortedCatalogItems.filter(
+                (i) => i.item_code.toUpperCase() === directReceiveItemFilter.toUpperCase()
+              );
+
+        const directEnteredEntries = sortedCatalogItems
+          .map((item) => {
+            const cCode = item.item_code.toUpperCase();
+            const cSize =
+              item.units_per_carton != null && Number(item.units_per_carton) > 0
+                ? Number(item.units_per_carton)
+                : (CARTON_SIZES[cCode] || 1);
+            const rawVal = directReceiveCartons[cCode] ?? '';
+            const cartons =
+              rawVal.trim() !== '' ? Math.max(0, Number(toEnglishDigitsStr(rawVal)) || 0) : 0;
+            return { code: cCode, cartons, units: Math.round(cartons * cSize) };
+          })
+          .filter((e) => e.cartons > 0);
+
+        const distinctItemsCount =
+          receiveMode === 'direct'
+            ? directEnteredEntries.length
+            : new Set(
+                receivedItems
+                  .filter(i => i.itemCode.trim() && (Number(i.quantityCartons) || 0) > 0)
+                  .map(i => i.itemCode.trim().toUpperCase())
+              ).size;
+
+        const totalCartons =
+          receiveMode === 'direct'
+            ? directEnteredEntries.reduce((acc, e) => acc + e.cartons, 0)
+            : receivedItems.reduce((acc, i) => acc + (Number(i.quantityCartons) || 0), 0);
+
+        const totalUnits =
+          receiveMode === 'direct'
+            ? directEnteredEntries.reduce((acc, e) => acc + e.units, 0)
+            : receivedItems.reduce((acc, i) => {
+                const cCode = i.itemCode.toUpperCase();
+                const cSize = CARTON_SIZES[cCode] || 1;
+                return acc + ((Number(i.quantityCartons) || 0) * cSize);
+              }, 0);
+
         const isFormValid =
-          Boolean(receivePoId) &&
-          receivedItems.length > 0 &&
-          receivedItems.every(i => i.itemCode.trim() && i.quantityCartons !== '' && Number(i.quantityCartons) >= 0) &&
-          totalCartons > 0 &&
-          Boolean(invoiceFile) &&
-          Boolean(receiverSignature.trim());
+          receiveMode === 'direct'
+            ? directEnteredEntries.length > 0 && totalCartons > 0
+            : Boolean(receivePoId) &&
+              receivedItems.length > 0 &&
+              receivedItems.every(
+                i => i.itemCode.trim() && i.quantityCartons !== '' && Number(i.quantityCartons) >= 0
+              ) &&
+              totalCartons > 0;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="font-sans bg-black/75 backdrop-blur-2xl rounded-3xl w-full max-w-5xl lg:max-w-6xl max-h-[96vh] overflow-y-auto p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-3.5 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
+            <div
+              dir="rtl"
+              className="font-sans bg-[#0d1f1c]/95 backdrop-blur-2xl rounded-3xl w-full max-w-4xl lg:max-w-5xl max-h-[95vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-white border border-teal-500/25 shadow-[0_24px_70px_rgba(0,0,0,0.8)] relative flex flex-col"
+            >
               {/* Modal Header */}
-              <div className="flex justify-between items-center border-b border-white/15 pb-2.5">
+              <div className="flex justify-between items-center border-b border-teal-500/20 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/10 border border-white/25 rounded-xl text-emerald-300 shrink-0 shadow-inner">
+                  <div className="p-2.5 bg-teal-500/20 border border-teal-400/35 rounded-xl text-teal-300 shrink-0 shadow-inner">
                     <PackageCheck className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
-                      <span>{t('inventory.modalReceiveTitle')}</span>
+                      <span>استلام مخزون وإضافته للمخزون الرئيسي</span>
                     </h3>
-                    <p className="text-[11px] text-white/70 font-medium">
-                      {t('inventory.modalReceiveSubtitle')}
+                    <p className="text-[11px] sm:text-xs text-slate-300 font-medium">
+                      إضافة الشحنات الواردة بالكرتون مباشرةً إلى رصيد المخزون الرئيسي (+) وتوثيقها في تقرير التعديلات
                     </p>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
                     if (!isSubmittingReceipt) {
                       setIsReceiveModalOpen(false);
@@ -3957,308 +4160,366 @@ export default function InventoryClient({
                 </button>
               </div>
 
+              {/* Mode Switcher: Default Direct Receipt vs. Linked to PO */}
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-black/35 border border-teal-500/20 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReceiveMode('direct');
+                    setReceiptError(null);
+                  }}
+                  className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    receiveMode === 'direct'
+                      ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.3)] border border-teal-300/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <PackageCheck className="w-4 h-4 shrink-0" />
+                  <span>استلام مباشر (بدون أمر شراء)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReceiveMode('po');
+                    setReceiptError(null);
+                  }}
+                  className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    receiveMode === 'po'
+                      ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.3)] border border-teal-300/40'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span>مرتبط بأمر شراء</span>
+                </button>
+              </div>
+
               {/* Error Banner */}
               {receiptError && (
-                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-2.5 flex items-center gap-2 text-xs text-rose-200">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-300" />
+                <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 flex items-center gap-2 text-xs sm:text-sm font-bold text-rose-200">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-300" />
                   <span>{receiptError}</span>
                 </div>
               )}
 
-              {/* Top Controls: Consolidated Order ID Dropdown & Manual Receiver Signature */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-xl p-2.5 sm:p-3">
-                {/* 1. Primary Dropdown: Select Consolidated Order ID (Order ID / PO) */}
-                <div>
-                  <label className="block text-[11px] font-bold text-white mb-1">
-                    {t('inventory.selectPO')} <span className="text-rose-400">*</span>
-                  </label>
-                  <GlassSelect
-                    value={receivePoId}
-                    onChange={(e) => handleSelectPO(e.target.value)}
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
-                  >
-                    <option value="" className="bg-slate-900 text-white/60">
-                      {t('inventory.selectPOPlaceholder')}
-                    </option>
-                    {activePOs.map(order => {
-                      const cleanOrderCode = order.id.replace(/^#/, '');
-                      const itemsWord = order.distinctItemsCount === 1 ? 'Item' : 'Items';
-                      return (
-                        <option key={order.id} value={order.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
-                          {`Order #${cleanOrderCode} (Supplier: ${order.supplierName} - ${toEnglishDigits(order.distinctItemsCount)} ${itemsWord})`}
+              {receiveMode === 'direct' ? (
+                <>
+                  {/* Direct Receipt Optional Metadata & Item Filter */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-black/25 border border-teal-500/20 rounded-2xl p-3.5">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-200 mb-1.5">
+                        اختيار / تصفية الصنف
+                      </label>
+                      <select
+                        value={directReceiveItemFilter}
+                        onChange={(e) => setDirectReceiveItemFilter(e.target.value)}
+                        disabled={isSubmittingReceipt}
+                        className="w-full bg-black/50 hover:bg-black/60 border border-teal-500/30 rounded-xl py-2 px-3 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-teal-400/40 [color-scheme:dark] cursor-pointer"
+                      >
+                        <option value="ALL" className="bg-zinc-900 text-white">
+                          جميع الأصناف (P1 - P11)
                         </option>
-                      );
-                    })}
-                  </GlassSelect>
-                </div>
+                        {sortedCatalogItems.map((it) => {
+                          const cCode = it.item_code.toUpperCase();
+                          return (
+                            <option key={cCode} value={cCode} className="bg-zinc-900 text-white">
+                              {cCode} — {getItemDisplayName(it)}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
 
-                {/* Receiver Signature / Name (Strictly Empty Initial State, Required Manual Input) */}
-                <div>
-                  <label className="block text-[11px] font-bold text-white mb-1">
-                    {t('inventory.receiverSignatureLabel')} <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={receiverSignature}
-                    onChange={(e) => {
-                      setReceiverSignature(e.target.value);
-                      if (receiptError) setReceiptError(null);
-                    }}
-                    placeholder={t('inventory.receiverSignaturePlaceholder')}
-                    autoComplete="off"
-                    required
-                    className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-200 mb-1.5">
+                        اسم المورد (اختياري)
+                      </label>
+                      <input
+                        type="text"
+                        value={directSupplierName}
+                        onChange={(e) => setDirectSupplierName(e.target.value)}
+                        disabled={isSubmittingReceipt}
+                        placeholder="مثال: مصنع التغليف..."
+                        className="w-full bg-black/50 hover:bg-black/60 border border-teal-500/30 rounded-xl py-2 px-3 text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+                      />
+                    </div>
 
-              {/* 2. Consolidated Order Items Matching Table */}
-              <div className="space-y-1.5">
-                {/* Table Column Headers for Desktop */}
-                <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1.5 text-[11px] font-bold text-white/60 border-b border-white/10">
-                  <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-4">{lang === 'ar' ? 'الصنف المتوقع بالطلب' : 'Expected Order Item'}</div>
-                  <div className="col-span-2 text-center">{lang === 'ar' ? 'الكمية المطلوبة' : 'Ordered Qty'}</div>
-                  <div className="col-span-3 text-center">{lang === 'ar' ? 'الكمية المستلمة الفعليّة (بالكرتون)' : 'Actual Cartons Received'}</div>
-                  <div className="col-span-2 text-center">{lang === 'ar' ? 'الوحدات الفعلية' : 'Calculated Units'}</div>
-                </div>
-
-                {/* Consolidated Order Items Rows */}
-                {receivedItems.length === 0 ? (
-                  <div className="bg-white/[0.03] border border-dashed border-white/15 rounded-xl p-6 text-center">
-                    <p className="text-xs font-bold text-white/80">
-                      {lang === 'ar'
-                        ? 'الرجاء اختيار رقم الطلب (Order ID / PO) من الأعلى لعرض جميع أصناف الطلب ومطابقة الكراتين المستلمة'
-                        : 'Select an Order ID (PO) above to auto-populate all order items and match received cartons'}
-                    </p>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-200 mb-1.5">
+                        رقم الفاتورة / ملاحظات (اختياري)
+                      </label>
+                      <input
+                        type="text"
+                        value={directInvoiceNotes}
+                        onChange={(e) => setDirectInvoiceNotes(e.target.value)}
+                        disabled={isSubmittingReceipt}
+                        placeholder="مثال: فاتورة رقم 1045..."
+                        className="w-full bg-black/50 hover:bg-black/60 border border-teal-500/30 rounded-xl py-2 px-3 text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-1.5 max-h-52 sm:max-h-60 overflow-y-auto pr-1">
-                    {receivedItems.map((row, index) => {
-                      const code = row.itemCode.toUpperCase();
-                      const cartonSize = CARTON_SIZES[code] || 1;
-                      const cartons = Number(row.quantityCartons) || 0;
-                      const unitsEquivalent = cartons * cartonSize;
-                      const reqUnits = row.requestedUnits ?? 0;
-                      const reqCartons = row.requestedCartons ?? 0;
-                      const diffUnits = unitsEquivalent - reqUnits;
-                      const rawInfo = rawMaterialsList.find(rm => rm.code === code);
-                      const displayName =
-                        lang === 'en'
-                          ? (rawInfo?.nameEn || ITEM_NAME_TRANSLATIONS[row.itemName || ''] || row.itemName || code)
-                          : (rawInfo?.nameAr || row.itemName || code);
 
-                      return (
-                        <div
-                          key={row.id}
-                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 rounded-xl px-3 py-2 transition-colors"
-                        >
-                          {/* Row Index */}
-                          <div className="sm:col-span-1 flex items-center justify-between sm:justify-center">
-                            <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr" lang="en">
-                              {toEnglishDigits(index + 1)}
-                            </span>
-                            <span className="sm:hidden text-xs text-white/60 font-bold">
-                              #{toEnglishDigits(index + 1)}
-                            </span>
-                          </div>
+                  {/* Direct Receipt Table */}
+                  <div className="overflow-x-auto rounded-2xl border border-teal-500/20 bg-black/25 max-h-80 overflow-y-auto">
+                    <table className="w-full text-center border-collapse text-xs sm:text-sm">
+                      <thead className="sticky top-0 z-10 bg-teal-950/90 backdrop-blur-md border-b border-teal-500/20 text-teal-100">
+                        <tr>
+                          <th className="py-3 px-3 w-20 font-extrabold">الرمز</th>
+                          <th className="py-3 px-4 text-right font-extrabold">اسم الصنف</th>
+                          <th className="py-3 px-3 font-extrabold">سعة الكرتون</th>
+                          <th className="py-3 px-3 font-extrabold">المخزون الرئيسي الحالي</th>
+                          <th className="py-3 px-4 w-48 font-extrabold">الكمية المستلمة (بالكرتون)</th>
+                          <th className="py-3 px-4 font-extrabold">الوحدات المضافة (+)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-teal-500/10">
+                        {visibleDirectItems.map((item) => {
+                          const cCode = item.item_code.toUpperCase();
+                          const unitsPerCarton =
+                            item.units_per_carton != null && Number(item.units_per_carton) > 0
+                              ? Number(item.units_per_carton)
+                              : (CARTON_SIZES[cCode] || 1);
+                          const currentMain = Number(item.main_stock ?? item.current_stock ?? 0);
+                          const rawVal = directReceiveCartons[cCode] ?? '';
+                          const cartons =
+                            rawVal.trim() !== ''
+                              ? Math.max(0, Number(toEnglishDigitsStr(rawVal)) || 0)
+                              : 0;
+                          const incomingUnits = Math.round(cartons * unitsPerCarton);
 
-                          {/* Expected Item Name & Pack Size */}
-                          <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
-                            <span className="font-mono text-[11px] font-extrabold text-teal-200 bg-teal-500/15 border border-teal-400/30 px-2 py-0.5 rounded-md shrink-0" dir="ltr" lang="en">
-                              {code}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-white truncate">
-                                {displayName}
-                              </div>
-                              <div className="text-[10px] text-white/50 font-mono" dir="ltr" lang="en">
-                                {cartonSize === 1
-                                  ? (lang === 'ar' ? 'بالقطعة (1 وحدة)' : '1 unit / piece')
-                                  : `${toEnglishDigits(cartonSize)} ${lang === 'ar' ? 'حبة/كرتون' : 'units/carton'}`}
-                              </div>
-                            </div>
-                          </div>
+                          return (
+                            <tr
+                              key={`direct-rec-${cCode}`}
+                              className="hover:bg-teal-500/[0.06] transition-colors"
+                            >
+                              <td className="py-2.5 px-3">
+                                <span
+                                  className="font-mono font-extrabold text-xs sm:text-sm text-white bg-teal-500/20 border border-teal-400/30 px-2.5 py-0.5 rounded-lg inline-block"
+                                  dir="ltr"
+                                  style={englishNumericStyle}
+                                >
+                                  {cCode}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-bold text-white">
+                                {getItemDisplayName(item)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-300" dir="ltr" style={englishNumericStyle}>
+                                {toEnglishDigits(unitsPerCarton)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-sky-200" dir="ltr" style={englishNumericStyle}>
+                                {toEnglishDigits(currentMain)}
+                              </td>
+                              <td className="py-2 px-4">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  inputMode="numeric"
+                                  dir="ltr"
+                                  style={englishNumericStyle}
+                                  value={rawVal}
+                                  onChange={(e) => {
+                                    const cleaned = toEnglishDigitsStr(e.target.value);
+                                    setDirectReceiveCartons((prev) => ({
+                                      ...prev,
+                                      [cCode]: cleaned,
+                                    }));
+                                    if (receiptError) setReceiptError(null);
+                                  }}
+                                  placeholder="0"
+                                  className="w-32 sm:w-36 bg-black/50 hover:bg-black/65 focus:bg-black/80 border border-teal-500/30 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/40 rounded-xl px-3 py-1.5 text-center font-mono text-sm sm:text-base font-extrabold text-white placeholder:text-slate-500 outline-none"
+                                />
+                              </td>
+                              <td className="py-2.5 px-4">
+                                <span
+                                  className={`inline-block font-mono font-extrabold px-3 py-1 rounded-xl border ${
+                                    incomingUnits > 0
+                                      ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                      : 'bg-white/5 border-white/10 text-slate-400'
+                                  }`}
+                                  dir="ltr"
+                                  style={englishNumericStyle}
+                                >
+                                  +{toEnglishDigits(incomingUnits)} وحدة
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Top Controls: Consolidated Order ID Dropdown & Receiver Signature */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white/[0.04] border border-white/15 rounded-xl p-2.5 sm:p-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-white mb-1">
+                        {t('inventory.selectPO')} <span className="text-rose-400">*</span>
+                      </label>
+                      <GlassSelect
+                        value={receivePoId}
+                        onChange={(e) => handleSelectPO(e.target.value)}
+                        className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 cursor-pointer"
+                      >
+                        <option value="" className="bg-slate-900 text-white/60">
+                          {t('inventory.selectPOPlaceholder')}
+                        </option>
+                        {activePOs.map(order => {
+                          const cleanOrderCode = order.id.replace(/^#/, '');
+                          const itemsWord = order.distinctItemsCount === 1 ? 'Item' : 'Items';
+                          return (
+                            <option key={order.id} value={order.id} className="bg-slate-900 text-white" dir="ltr" lang="en">
+                              {`Order #${cleanOrderCode} (Supplier: ${order.supplierName} - ${toEnglishDigits(order.distinctItemsCount)} ${itemsWord})`}
+                            </option>
+                          );
+                        })}
+                      </GlassSelect>
+                    </div>
 
-                          {/* Requested Quantity from Order */}
-                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-center">
-                            <span className="text-[10px] text-white/60 sm:hidden">
-                              {lang === 'ar' ? 'المطلوب:' : 'Ordered:'}
-                            </span>
-                            <div className="text-center font-mono leading-tight" dir="ltr" lang="en">
-                              <div className="text-xs font-bold text-white">
-                                {toEnglishDigits(reqCartons)}{' '}
-                                <span className="font-sans text-[10px] text-white/70">
-                                  {cartonSize === 1 ? (lang === 'ar' ? 'حبة' : 'pcs') : (lang === 'ar' ? 'كرتون' : 'ctn')}
+                    <div>
+                      <label className="block text-[11px] font-bold text-white mb-1">
+                        {t('inventory.receiverSignatureLabel')} (اختياري)
+                      </label>
+                      <input
+                        type="text"
+                        value={receiverSignature}
+                        onChange={(e) => {
+                          setReceiverSignature(e.target.value);
+                          if (receiptError) setReceiptError(null);
+                        }}
+                        placeholder={t('inventory.receiverSignaturePlaceholder')}
+                        autoComplete="off"
+                        className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/25 placeholder:text-white/40"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Consolidated Order Items Matching Table */}
+                  <div className="space-y-1.5">
+                    <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-1.5 text-[11px] font-bold text-white/60 border-b border-white/10">
+                      <div className="col-span-1 text-center">#</div>
+                      <div className="col-span-4">الصنف المتوقع بالطلب</div>
+                      <div className="col-span-2 text-center">الكمية المطلوبة</div>
+                      <div className="col-span-3 text-center">الكمية المستلمة الفعليّة (بالكرتون)</div>
+                      <div className="col-span-2 text-center">الوحدات المضافة (+)</div>
+                    </div>
+
+                    {receivedItems.length === 0 ? (
+                      <div className="bg-white/[0.03] border border-dashed border-white/15 rounded-xl p-6 text-center">
+                        <p className="text-xs font-bold text-white/80">
+                          الرجاء اختيار رقم الطلب (Order ID / PO) من الأعلى لعرض أصناف الطلب أو انتقل إلى «استلام مباشر (بدون أمر شراء)»
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-52 sm:max-h-60 overflow-y-auto pr-1">
+                        {receivedItems.map((row, index) => {
+                          const code = row.itemCode.toUpperCase();
+                          const cartonSize = CARTON_SIZES[code] || 1;
+                          const cartons = Number(row.quantityCartons) || 0;
+                          const unitsEquivalent = cartons * cartonSize;
+                          const reqUnits = row.requestedUnits ?? 0;
+                          const reqCartons = row.requestedCartons ?? 0;
+                          const rawInfo = rawMaterialsList.find(rm => rm.code === code);
+                          const displayName = rawInfo?.nameAr || row.itemName || code;
+
+                          return (
+                            <div
+                              key={row.id}
+                              className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 rounded-xl px-3 py-2 transition-colors"
+                            >
+                              <div className="sm:col-span-1 flex items-center justify-center">
+                                <span className="w-5 h-5 rounded bg-white/10 border border-white/20 text-white/80 font-mono text-xs font-bold flex items-center justify-center shrink-0" dir="ltr">
+                                  {toEnglishDigits(index + 1)}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-white/50">
-                                ({toEnglishDigits(reqUnits)} {t('common.unit')})
+                              <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-[11px] font-extrabold text-teal-200 bg-teal-500/15 border border-teal-400/30 px-2 py-0.5 rounded-md shrink-0" dir="ltr">
+                                  {code}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate">{displayName}</div>
+                                  <div className="text-[10px] text-white/50 font-mono" dir="ltr">
+                                    {toEnglishDigits(cartonSize)} حبة/كرتون
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="sm:col-span-2 text-center font-mono text-xs font-bold text-white" dir="ltr">
+                                {toEnglishDigits(reqCartons)} كرتون ({toEnglishDigits(reqUnits)})
+                              </div>
+                              <div className="sm:col-span-3">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  dir="ltr"
+                                  value={row.quantityCartons}
+                                  onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
+                                  placeholder="0"
+                                  className="w-full bg-white/10 border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <div className="w-full py-1 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr">
+                                  +{toEnglishDigits(unitsEquivalent)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-
-                          {/* Actual Received Cartons Input */}
-                          <div className="sm:col-span-3">
-                            <label className="text-[10px] text-white/60 sm:hidden block mb-1">
-                              {lang === 'ar' ? 'الكراتين المستلمة فعلياً' : 'Actual Cartons Received'}
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                dir="ltr"
-                                lang="en"
-                                value={row.quantityCartons}
-                                onChange={(e) => handleUpdateReceivedItemRow(row.id, 'quantityCartons', e.target.value)}
-                                placeholder="0"
-                                className="w-full bg-white/10 border border-white/20 rounded-lg py-1.5 px-2.5 text-xs text-white font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-teal-400/40"
-                              />
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/50 pointer-events-none">
-                                {cartonSize === 1 ? (lang === 'ar' ? 'حبة' : 'pcs') : (lang === 'ar' ? 'كرتون' : 'ctn')}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Auto-Calculated Received Units + Match Status */}
-                          <div className="sm:col-span-2 flex flex-col items-center justify-center gap-0.5">
-                            <div className="w-full py-1 px-2 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-mono font-bold text-center" dir="ltr" lang="en">
-                              {toEnglishDigits(unitsEquivalent)}
-                            </div>
-                            {reqUnits > 0 && (
-                              <span
-                                className={`text-[10px] font-bold font-mono ${
-                                  diffUnits === 0
-                                    ? 'text-emerald-300'
-                                    : diffUnits < 0
-                                    ? 'text-amber-300'
-                                    : 'text-teal-300'
-                                }`}
-                                dir="ltr"
-                                lang="en"
-                              >
-                                {diffUnits === 0
-                                  ? (lang === 'ar' ? 'مطابق ✓' : 'Matched ✓')
-                                  : diffUnits < 0
-                                  ? `${lang === 'ar' ? 'نقص' : 'Short'} (${toEnglishDigits(diffUnits)})`
-                                  : `${lang === 'ar' ? 'زيادة' : 'Extra'} (+${toEnglishDigits(diffUnits)})`}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Lower Landscape Row: 3. File Upload Box + 4. Streamlined Total Shipment Summary Footer */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                {/* 3. Streamlined File Upload Box */}
-                <div className="flex flex-col justify-between">
-                  <label className="block text-[11px] font-bold text-white mb-1 flex items-center justify-between">
-                    <span>{t('inventory.uploadInvoiceLabel')} <span className="text-rose-400">*</span></span>
-                    <span className="text-[10px] text-white/50">صورة أو PDF</span>
-                  </label>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*,.pdf"
-                    className="hidden"
-                    id="invoice-file-input"
-                  />
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl px-3 py-2 cursor-pointer transition-all flex items-center justify-between gap-2.5 h-[52px] ${
-                      invoiceFile
-                        ? 'border-emerald-400/40 bg-emerald-500/10'
-                        : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'
-                    }`}
-                  >
-                    {invoiceFile ? (
-                      <>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="p-1.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg text-emerald-300 shrink-0">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-white truncate max-w-[200px] sm:max-w-[280px]">
-                              {invoiceFile.name}
-                            </p>
-                            <p className="text-[10px] text-white/60 font-mono" dir="ltr" lang="en">
-                              {toEnglishDigits((invoiceFile.size / 1024).toFixed(1))} KB • جاهز للأرشفة
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setInvoiceFile(null);
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                          className="text-white/80 hover:text-white text-[11px] px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-md shrink-0 cursor-pointer border border-white/20"
-                        >
-                          {t('common.edit')}
-                        </button>
-                      </>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2 text-white/80 w-full py-1">
-                        <UploadCloud className="w-4 h-4 text-white/70 shrink-0" />
-                        <span className="text-xs font-bold text-white">انقر لرفع ملف الفاتورة المجمعة (صورة أو PDF)</span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
-                </div>
+                </>
+              )}
 
-                {/* 4. Streamlined Total Shipment Summary Footer (Raw Aggregated Numbers Only) */}
-                <div className="flex flex-col justify-between">
-                  <div className="text-[11px] font-bold text-white mb-1">ملخص الشحنة الإجمالي</div>
-                  <div className="grid grid-cols-3 gap-2 p-2 bg-white/[0.04] border border-white/15 rounded-xl text-center h-[52px] items-center">
-                    <div>
-                      <div className="text-[10px] text-white/60">الأصناف</div>
-                      <div className="text-sm font-extrabold font-mono text-white mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(distinctItemsCount)}
-                      </div>
-                    </div>
-                    <div className="border-x border-white/10 px-1">
-                      <div className="text-[10px] text-white/60">الكراتين</div>
-                      <div className="text-sm font-extrabold font-mono text-teal-300 mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(totalCartons)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/60">الوحدات الفعلية</div>
-                      <div className="text-sm font-extrabold font-mono text-emerald-300 mt-0.5" dir="ltr" lang="en">
-                        {toEnglishDigits(totalUnits)}
-                      </div>
-                    </div>
+              {/* Shipment Summary Bar */}
+              <div className="grid grid-cols-3 gap-2 p-3 bg-black/30 border border-teal-500/20 rounded-2xl text-center items-center">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">الأصناف المستلمة</div>
+                  <div className="text-base font-extrabold font-mono text-white mt-0.5" dir="ltr" style={englishNumericStyle}>
+                    {toEnglishDigits(distinctItemsCount)}
+                  </div>
+                </div>
+                <div className="border-x border-teal-500/20 px-2">
+                  <div className="text-[11px] text-slate-400 font-bold">إجمالي الكراتين</div>
+                  <div className="text-base font-extrabold font-mono text-teal-300 mt-0.5" dir="ltr" style={englishNumericStyle}>
+                    {toEnglishDigits(totalCartons)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">إجمالي الوحدات المضافة (+)</div>
+                  <div className="text-base font-extrabold font-mono text-emerald-300 mt-0.5" dir="ltr" style={englishNumericStyle}>
+                    +{toEnglishDigits(totalUnits)}
                   </div>
                 </div>
               </div>
 
-              {/* 5. Action Buttons */}
+              {/* Action Buttons */}
               <div className="flex gap-2.5 pt-1">
                 <button
+                  type="button"
                   onClick={handleConfirmReceipt}
                   disabled={isSubmittingReceipt || !isFormValid}
-                  className="flex-1 bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 active:scale-95 text-white font-extrabold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                  className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 border border-teal-300/40 active:scale-95 text-white font-extrabold py-3 rounded-xl transition-all text-xs sm:text-sm cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isSubmittingReceipt ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>{t('inventory.receivingInProgress')}</span>
+                      <span>جاري إضافة الكميات للمخزون الرئيسي...</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-white" />
-                      <span>{t('inventory.confirmReceipt')}</span>
+                      <span>تأكيد استلام وإضافة المخزون (+)</span>
                     </>
                   )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     if (!isSubmittingReceipt) {
                       setIsReceiveModalOpen(false);
@@ -4266,7 +4527,7 @@ export default function InventoryClient({
                     }
                   }}
                   disabled={isSubmittingReceipt}
-                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-2.5 rounded-xl border border-white/20 transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-50"
+                  className="px-5 bg-white/8 hover:bg-white/15 text-white/80 font-bold py-3 rounded-xl border border-white/20 transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-50"
                 >
                   {t('inventory.modalCancelBtn')}
                 </button>
