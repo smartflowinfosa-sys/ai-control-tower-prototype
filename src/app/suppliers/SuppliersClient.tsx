@@ -32,7 +32,14 @@ import {
   fetchAllSupplierItems,
   fetchSuppliersForItem,
   SupabasePurchaseOrder,
-  SupabaseSupplierItem
+  SupabaseSupplierItem,
+  SupabasePOPayment,
+  fetchPOPayments,
+  createPOPayment,
+  updatePOPayment,
+  deletePOPayment,
+  uploadProcurementReceipt,
+  checkAndTriggerDuePaymentReminders
 } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser, formatPOCreatorDisplay } from '@/lib/poAuth';
 import { useSession } from 'next-auth/react';
@@ -69,7 +76,11 @@ import {
   AlertTriangle,
   Calendar,
   Filter,
-  RotateCcw
+  RotateCcw,
+  Bell,
+  Upload,
+  CreditCard,
+  ClipboardCheck
 } from 'lucide-react';
 
 // Helper to ensure all digits are strictly English / Western (0-9)
@@ -78,13 +89,92 @@ const toEnglishDigits = (str: string | number): string => {
   if (typeof str === 'number') {
     return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 4 }).format(str);
   }
-  const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const clean = String(str)
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
   const num = Number(clean);
   if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
     return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 4 }).format(num);
   }
   return clean;
 };
+
+// Helper to sanitize text-based numeric inputs to strict Western/English numerals (0-9)
+const sanitizeEnglishNumericInput = (val: string, allowDecimal = false): string => {
+  const western = String(val ?? '')
+    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+    .replace(/٫/g, '.')
+    .replace(/,/g, '.');
+  if (!allowDecimal) {
+    return western.replace(/[^0-9]/g, '');
+  }
+  const cleaned = western.replace(/[^0-9.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+};
+
+/**
+ * Clean RTL Date Input that renders type="text" with empty placeholder="" when no date is selected
+ * so RTL Chrome never renders the reversed "ةنس/رهش/موي" placeholder text.
+ */
+function CleanRtlDateInput({
+  value,
+  onChange,
+  required,
+  className,
+  min,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  required?: boolean;
+  className?: string;
+  min?: string;
+}) {
+  return (
+    <div className="relative w-full">
+      <input
+        type={value ? 'date' : 'text'}
+        placeholder=""
+        dir="ltr"
+        lang="en"
+        required={required}
+        min={min}
+        value={value}
+        onFocus={(e) => {
+          e.currentTarget.type = 'date';
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            // Ignore if showPicker requires direct user gesture
+          }
+        }}
+        onClick={(e) => {
+          if (e.currentTarget.type !== 'date') {
+            e.currentTarget.type = 'date';
+          }
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            // Ignore if showPicker fails
+          }
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.value) {
+            e.currentTarget.type = 'text';
+          }
+        }}
+        onChange={(e) => onChange(e.target.value)}
+        className={
+          className ||
+          'w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden'
+        }
+      />
+      <Calendar className="w-3.5 h-3.5 text-white/60 pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
+    </div>
+  );
+}
 
 interface SuppliersClientProps {
   initialSuppliers: SupabaseSupplier[];
@@ -205,6 +295,63 @@ export default function SuppliersClient({
   const [poToComplete, setPoToComplete] = useState<PurchaseOrder | null>(null);
   const [isCompletingPO, setIsCompletingPO] = useState<boolean>(false);
 
+  // PO Partial Quantity & Payment Scheduling State
+  const [poPayments, setPoPayments] = useState<SupabasePOPayment[]>([]);
+  const [isLoadingPayments, setIsLoadingPayments] = useState<boolean>(false);
+  const [isCheckingReminders, setIsCheckingReminders] = useState<boolean>(false);
+  const [partialReceivedQty, setPartialReceivedQty] = useState<string>('0');
+  const [partialRemainingQty, setPartialRemainingQty] = useState<string>('0');
+  const [isEditingPOQuantities, setIsEditingPOQuantities] = useState<boolean>(false);
+  const [isSavingPartialQty, setIsSavingPartialQty] = useState<boolean>(false);
+
+  // Add / Edit Scheduled Payment State
+  const [isAddingPayment, setIsAddingPayment] = useState<boolean>(false);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [newPaymentTitle, setNewPaymentTitle] = useState<string>('دفعة مستحقة');
+  const [newPaymentAmount, setNewPaymentAmount] = useState<string>('');
+  const [newPaymentDueDate, setNewPaymentDueDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [isSavingPayment, setIsSavingPayment] = useState<boolean>(false);
+
+  // Settle Payment & Receipt Upload Modal State
+  const [paymentToSettle, setPaymentToSettle] = useState<SupabasePOPayment | null>(null);
+  const [receiptFileToUpload, setReceiptFileToUpload] = useState<File | null>(null);
+  const [isSettlingPayment, setIsSettlingPayment] = useState<boolean>(false);
+
+  // Standalone / Supplier Profile Scheduled Payment Form State
+  const [isAddingSupplierPayment, setIsAddingSupplierPayment] = useState<boolean>(false);
+  const [editingSupplierPaymentId, setEditingSupplierPaymentId] = useState<string | null>(null);
+  const [supPayPoRef, setSupPayPoRef] = useState<string>('دفعة عامة');
+  const [supPayTitle, setSupPayTitle] = useState<string>('');
+  const [supPayNotes, setSupPayNotes] = useState<string>('');
+  const [supPayAmount, setSupPayAmount] = useState<string>('');
+  const [supPayDueDate, setSupPayDueDate] = useState<string>('');
+  const [isSavingSupplierPayment, setIsSavingSupplierPayment] = useState<boolean>(false);
+
+  // Create Purchase Order Modal State (طلب توريد مع ملخص الاتفاق و 3 طرق دفع)
+  const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState<boolean>(false);
+  const [createPOSupplierId, setCreatePOSupplierId] = useState<string>('');
+  const [createPOSupplierName, setCreatePOSupplierName] = useState<string>('');
+  const [createPOItemCode, setCreatePOItemCode] = useState<string>('P1');
+  const [createPOItemName, setCreatePOItemName] = useState<string>('');
+  const [createPOQuantityUnits, setCreatePOQuantityUnits] = useState<number>(2500);
+  const [createPOUnitPriceStr, setCreatePOUnitPriceStr] = useState<string>('0.45');
+  const [createPONotes, setCreatePONotes] = useState<string>('');
+  const [createPOPaymentType, setCreatePOPaymentType] = useState<
+    'full_payment' | 'deposit_and_balance' | 'full_credit'
+  >('full_payment');
+  const [createPOFullPaidNow, setCreatePOFullPaidNow] = useState<boolean>(true);
+  const [createPOFullDueDate, setCreatePOFullDueDate] = useState<string>('');
+  const [createPODepositAmountStr, setCreatePODepositAmountStr] = useState<string>('');
+  const [createPODepositPaidNow, setCreatePODepositPaidNow] = useState<boolean>(true);
+  const [createPODepositDueDate, setCreatePODepositDueDate] = useState<string>('');
+  const [createPOReceiptFile, setCreatePOReceiptFile] = useState<File | null>(null);
+  const [createPOBalanceInstallments, setCreatePOBalanceInstallments] = useState<
+    Array<{ title: string; amount: string; dueDate: string }>
+  >([{ title: 'دفعة المتبقي #1', amount: '0', dueDate: '' }]);
+  const [createPOCreditInstallments, setCreatePOCreditInstallments] = useState<
+    Array<{ title: string; amount: string; dueDate: string }>
+  >([{ title: 'دفعة آجل #1', amount: '0', dueDate: '' }]);
+
   // Certified Supplier Item Edit Price & Delete State
   const [editingSupplierItem, setEditingSupplierItem] = useState<{
     id?: string;
@@ -286,6 +433,8 @@ export default function SuppliersClient({
     setProfileDateStart('');
     setProfileDateEnd('');
     setProfileItemFilter('ALL');
+    setIsAddingSupplierPayment(false);
+    setEditingSupplierPaymentId(null);
     loadSupplierItems(sup.id);
     fetchPurchaseOrders()
       .then(pos => {
@@ -294,11 +443,296 @@ export default function SuppliersClient({
         }
       })
       .catch(console.warn);
+    fetchPOPayments()
+      .then(payments => {
+        if (Array.isArray(payments)) {
+          setPoPayments(payments);
+        }
+      })
+      .catch(console.warn);
   };
 
   const handleCloseSupplierProfile = () => {
     setSelectedProfileSupplier(null);
     setIsAddItemModalOpen(false);
+    setIsAddingSupplierPayment(false);
+    setEditingSupplierPaymentId(null);
+  };
+
+  // Load all PO payments & automatically trigger due payment reminders when Suppliers page loads
+  const loadAllPOPaymentsAndReminders = async (manualTrigger = false) => {
+    if (manualTrigger) {
+      setIsCheckingReminders(true);
+    } else {
+      setIsLoadingPayments(true);
+    }
+    try {
+      const payments = await fetchPOPayments();
+      setPoPayments(payments);
+
+      const poSupMap: Record<string, string> = {};
+      for (const po of purchaseOrders) {
+        if (po.id && po.supplierName) {
+          poSupMap[po.id] = po.supplierName;
+        }
+      }
+
+      const reminderResult = await checkAndTriggerDuePaymentReminders(poSupMap);
+      if (reminderResult.triggeredCount > 0) {
+        const refreshed = await fetchPOPayments();
+        setPoPayments(refreshed);
+        showToast(
+          `تم إصدار (${toEnglishDigits(reminderResult.triggeredCount)}) تذكرة تذكير سداد عالية الأولوية لقسم المالية والإدارة تلقائياً!`
+        );
+      } else if (manualTrigger) {
+        showToast('تم فحص جدول المدفوعات: لا توجد دفعات مستحقة جديدة غير مُصدر لها تذكرة تذكير.');
+      }
+    } catch (err) {
+      console.warn('Payment reminders check notice:', err);
+      if (manualTrigger) {
+        showError('تعذر فحص تذكيرات الدفعات المستحقة حالياً.');
+      }
+    } finally {
+      setIsLoadingPayments(false);
+      setIsCheckingReminders(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAllPOPaymentsAndReminders(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync partial quantity inputs whenever selectedPO changes
+  useEffect(() => {
+    if (selectedPO) {
+      const agreed = Number(selectedPO.quantity) || 0;
+      const rec =
+        selectedPO.received_quantity !== undefined
+          ? Number(selectedPO.received_quantity)
+          : selectedPO.receivedQuantity !== undefined
+          ? Number(selectedPO.receivedQuantity)
+          : 0;
+      const rem = Math.max(0, agreed - rec);
+      setPartialReceivedQty(String(rec));
+      setPartialRemainingQty(String(rem));
+      setIsEditingPOQuantities(false);
+      setIsAddingPayment(false);
+      setEditingPaymentId(null);
+      setNewPaymentTitle('دفعة توريد');
+      setNewPaymentAmount(String(selectedPO.totalCost || ''));
+      setNewPaymentDueDate('');
+    }
+  }, [selectedPO]);
+
+  const handleSaveStandaloneSupplierPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProfileSupplier || isSavingSupplierPayment) return;
+
+    const cleanAmount = parseFloat(
+      String(supPayAmount)
+        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+        .trim()
+    );
+    if (!supPayTitle.trim() || isNaN(cleanAmount) || cleanAmount <= 0 || !supPayDueDate) {
+      showError('يرجى إدخال البيان، المبلغ المستحق، وتاريخ الاستحقاق المحدد.');
+      return;
+    }
+
+    setIsSavingSupplierPayment(true);
+    try {
+      if (editingSupplierPaymentId) {
+        const updated = await updatePOPayment(editingSupplierPaymentId, {
+          title: supPayTitle.trim(),
+          amount: cleanAmount,
+          due_date: supPayDueDate,
+          notes: supPayNotes.trim() || null,
+        });
+        setPoPayments((prev) =>
+          prev.map((p) => (p.id === editingSupplierPaymentId ? { ...p, ...updated } : p))
+        );
+        showToast('تم تحديث بيانات الدفعة المستحقة للمورد بنجاح');
+      } else {
+        const created = await createPOPayment({
+          po_number: supPayPoRef.trim() || 'دفعة عامة',
+          supplier_id: selectedProfileSupplier.id,
+          title: supPayTitle.trim(),
+          amount: cleanAmount,
+          due_date: supPayDueDate,
+          status: 'scheduled',
+          notes: supPayNotes.trim() || undefined,
+        });
+        setPoPayments((prev) => [...prev, created]);
+        showToast('تمت إضافة الدفعة المجدولة إلى سجل المورد بنجاح');
+      }
+      setIsAddingSupplierPayment(false);
+      setEditingSupplierPaymentId(null);
+      setSupPayPoRef('دفعة عامة');
+      setSupPayTitle('');
+      setSupPayNotes('');
+      setSupPayAmount('');
+      setSupPayDueDate('');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ الدفعة المجدولة للمورد.');
+    } finally {
+      setIsSavingSupplierPayment(false);
+    }
+  };
+
+  const handleSavePOPartialQuantities = async () => {
+    if (!selectedPO || isSavingPartialQty) return;
+    const agreed = Number(selectedPO.quantity) || 0;
+    const cleanRec = Math.max(
+      0,
+      Math.round(Number(sanitizeEnglishNumericInput(partialReceivedQty, false)) || 0)
+    );
+    const cleanRem = Math.max(0, agreed - cleanRec);
+
+    setIsSavingPartialQty(true);
+    try {
+      await updatePurchaseOrderDetails({
+        po_number: selectedPO.id,
+        received_quantity: cleanRec,
+      });
+
+      const updatedPO: PurchaseOrder = {
+        ...selectedPO,
+        receivedQuantity: cleanRec,
+        received_quantity: cleanRec,
+      };
+      setSelectedPO(updatedPO);
+      setPartialReceivedQty(String(cleanRec));
+      setPartialRemainingQty(String(cleanRem));
+      setIsEditingPOQuantities(false);
+      setPurchaseOrders((prev) => prev.map((p) => (p.id === updatedPO.id ? updatedPO : p)));
+      showToast(
+        `تم حفظ تحديث الكميات لأمر الشراء (${updatedPO.id}) بنجاح (بدون تعديل رصيد المخزون الآلي)`
+      );
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ تحديث الكميات.');
+    } finally {
+      setIsSavingPartialQty(false);
+    }
+  };
+
+  const handleSaveScheduledPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPO || isSavingPayment) return;
+
+    const cleanAmount = parseFloat(
+      String(newPaymentAmount)
+        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+        .trim()
+    );
+    if (!newPaymentTitle.trim() || isNaN(cleanAmount) || cleanAmount <= 0 || !newPaymentDueDate) {
+      showError('يرجى إدخال بيان الدفعة، المبلغ، وتاريخ الاستحقاق بشكل صحيح.');
+      return;
+    }
+
+    const matchedSupplier = suppliers.find(
+      (s) =>
+        s.id === (selectedPO.supplier_id || selectedPO.supplierId) ||
+        s.name_ar === selectedPO.supplierName ||
+        s.name === selectedPO.supplierName
+    );
+    const resolvedSupId = selectedPO.supplier_id || selectedPO.supplierId || matchedSupplier?.id || null;
+
+    setIsSavingPayment(true);
+    try {
+      if (editingPaymentId) {
+        const updated = await updatePOPayment(editingPaymentId, {
+          title: newPaymentTitle.trim(),
+          amount: cleanAmount,
+          due_date: newPaymentDueDate,
+        });
+        setPoPayments((prev) =>
+          prev.map((p) => (p.id === editingPaymentId ? { ...p, ...updated } : p))
+        );
+        showToast('تم تعديل بيانات الدفعة المجدولة بنجاح');
+      } else {
+        const created = await createPOPayment({
+          po_number: selectedPO.id,
+          supplier_id: resolvedSupId,
+          title: newPaymentTitle.trim(),
+          amount: cleanAmount,
+          due_date: newPaymentDueDate,
+          status: 'scheduled',
+        });
+        setPoPayments((prev) => [...prev, created]);
+        showToast('تمت إضافة الدفعة المجدولة إلى أمر الشراء بنجاح');
+      }
+      setIsAddingPayment(false);
+      setEditingPaymentId(null);
+      setNewPaymentTitle('دفعة توريد');
+      setNewPaymentAmount('');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ الدفعة المجدولة.');
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const handleDeleteScheduledPayment = async (paymentId: string) => {
+    try {
+      await deletePOPayment(paymentId);
+      setPoPayments((prev) => prev.filter((p) => p.id !== paymentId));
+      showToast('تم حذف الدفعة المجدولة بنجاح');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حذف الدفعة المجدولة.');
+    }
+  };
+
+  const handleConfirmSettlePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentToSettle || isSettlingPayment) return;
+
+    setIsSettlingPayment(true);
+    try {
+      let receiptUrl: string | null = paymentToSettle.receipt_url || null;
+      let sizeNotice = '';
+
+      if (receiptFileToUpload) {
+        const uploaded = await uploadProcurementReceipt(
+          receiptFileToUpload,
+          paymentToSettle.po_number
+        );
+        receiptUrl = uploaded.publicUrl;
+        if (receiptFileToUpload.type.startsWith('image/')) {
+          sizeNotice = ` (تم ضغط صورة الإيصال إلى ~${toEnglishDigits(uploaded.compressedSizeKB)} KB)`;
+        }
+      }
+
+      const paidTimestamp = new Date().toISOString();
+      const updated = await updatePOPayment(paymentToSettle.id, {
+        status: 'paid',
+        paid_at: paidTimestamp,
+        receipt_url: receiptUrl,
+      });
+
+      setPoPayments((prev) =>
+        prev.map((p) =>
+          p.id === paymentToSettle.id
+            ? {
+                ...p,
+                ...updated,
+                status: 'paid',
+                paid_at: paidTimestamp,
+                receipt_url: receiptUrl,
+              }
+            : p
+        )
+      );
+
+      showToast(
+        `تم تسجيل سداد الدفعة (${paymentToSettle.title}) بقيمة ${toEnglishDigits(paymentToSettle.amount)} ر.س بنجاح${sizeNotice}`
+      );
+      setPaymentToSettle(null);
+      setReceiptFileToUpload(null);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر تسجيل سداد الدفعة.');
+    } finally {
+      setIsSettlingPayment(false);
+    }
   };
 
   const handleAddCertifiedItem = async (e?: React.FormEvent) => {
@@ -484,7 +918,7 @@ export default function SuppliersClient({
     }, 4500);
   };
 
-  const handleQuickOrder = async (
+  const handleQuickOrder = (
     supplierName: string,
     itemName: string,
     unitPrice?: number,
@@ -501,83 +935,290 @@ export default function SuppliersClient({
       return;
     }
 
+    const normalizedExplicitCode = explicitItemCode ? explicitItemCode.trim().toUpperCase() : '';
+    const matchedItem =
+      (normalizedExplicitCode
+        ? availableItems.find(
+            (i) => (i.item_code || '').trim().toUpperCase() === normalizedExplicitCode
+          )
+        : undefined) ||
+      availableItems.find(
+        (i) => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === itemName
+      ) ||
+      (!normalizedExplicitCode && !itemName
+        ? availableItems.find((i) => i.item_code === analyzingItemId)
+        : undefined);
+
+    const matchedSupplier =
+      (explicitSupplierId ? suppliers.find((s) => s.id === explicitSupplierId) : undefined) ||
+      suppliers.find(
+        (s) =>
+          s.name_ar === supplierName ||
+          s.name === supplierName ||
+          s.name_en === supplierName
+      );
+
+    const resolvedSupplierId = explicitSupplierId || matchedSupplier?.id || '';
+    const resolvedSupplierName =
+      matchedSupplier?.name_ar || matchedSupplier?.name || supplierName || 'المورد المعتمد';
+    const resolvedItemCode =
+      normalizedExplicitCode || matchedItem?.item_code || analyzingItemId || 'P1';
+    const resolvedItemName = matchedItem?.item_name_ar || itemName || resolvedItemCode;
+    const uPerCarton =
+      matchedItem?.units_per_carton != null && Number(matchedItem.units_per_carton) > 0
+        ? Number(matchedItem.units_per_carton)
+        : CARTON_SIZES[resolvedItemCode.toUpperCase()] || 1;
+    const defaultCartons = Math.max(1, Math.round(2500 / uPerCarton));
+    const defaultUnits = defaultCartons * uPerCarton;
+    const unitCost = unitPrice ?? matchedItem?.cost_per_unit ?? 0.45;
+    const initialTotal = Number((defaultUnits * unitCost).toFixed(2));
+    const initialDeposit = Number((initialTotal * 0.3).toFixed(2));
+    const initialBalance = Math.max(0, Number((initialTotal - initialDeposit).toFixed(2)));
+
+    setCreatePOSupplierId(resolvedSupplierId);
+    setCreatePOSupplierName(resolvedSupplierName);
+    setCreatePOItemCode(resolvedItemCode);
+    setCreatePOItemName(resolvedItemName);
+    setCreatePOQuantityUnits(defaultUnits);
+    setCreatePOUnitPriceStr(String(unitCost));
+    setCreatePONotes('');
+    setCreatePOPaymentType('full_payment');
+    setCreatePOFullPaidNow(true);
+    setCreatePOFullDueDate('');
+    setCreatePODepositAmountStr(String(initialDeposit));
+    setCreatePODepositPaidNow(true);
+    setCreatePODepositDueDate('');
+    setCreatePOReceiptFile(null);
+    setCreatePOBalanceInstallments([
+      { title: 'دفعة المتبقي #1', amount: String(initialBalance), dueDate: '' },
+    ]);
+    setCreatePOCreditInstallments([
+      { title: 'دفعة آجل #1', amount: String(initialTotal), dueDate: '' },
+    ]);
+    setIsCreatePOModalOpen(true);
+  };
+
+  const handleSubmitCreatePOModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError('عذراً، لا يمكن إنشاء أمر شراء بدون جلسة مستخدم موثقة.');
+      return;
+    }
     if (isSubmittingQuickOrder) return;
-    setIsSubmittingQuickOrder(true);
 
-    try {
-      const normalizedExplicitCode = explicitItemCode ? explicitItemCode.trim().toUpperCase() : '';
-      const matchedItem =
-        (normalizedExplicitCode
-          ? availableItems.find(
-              (i) => (i.item_code || '').trim().toUpperCase() === normalizedExplicitCode
-            )
-          : undefined) ||
-        availableItems.find(
-          (i) => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === itemName
-        ) ||
-        (!normalizedExplicitCode && !itemName
-          ? availableItems.find((i) => i.item_code === analyzingItemId)
-          : undefined);
+    const unitCost = parseFloat(
+      String(createPOUnitPriceStr)
+        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+        .trim()
+    );
+    const quantity = Math.max(1, Math.round(Number(createPOQuantityUnits) || 0));
+    if (isNaN(unitCost) || unitCost <= 0 || quantity <= 0) {
+      showError('يرجى إدخال الكمية وسعر التوريد بشكل صحيح.');
+      return;
+    }
 
-      const matchedSupplier =
-        (explicitSupplierId ? suppliers.find((s) => s.id === explicitSupplierId) : undefined) ||
-        suppliers.find(
-          (s) =>
-            s.name_ar === supplierName ||
-            s.name === supplierName ||
-            s.name_en === supplierName
+    const totalCost = Number((quantity * unitCost).toFixed(2));
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Validate selected payment method and explicit due dates
+    if (createPOPaymentType === 'full_payment') {
+      if (!createPOFullPaidNow && !createPOFullDueDate) {
+        showError('يرجى تحديد تاريخ الاستحقاق الصريح للدفعة الكاملة.');
+        return;
+      }
+    } else if (createPOPaymentType === 'deposit_and_balance') {
+      const depVal = parseFloat(
+        String(createPODepositAmountStr)
+          .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+          .trim()
+      );
+      if (isNaN(depVal) || depVal <= 0 || depVal >= totalCost) {
+        showError('قيمة العربون يجب أن تكون أكبر من الصفر وأقل من إجمالي قيمة أمر الشراء.');
+        return;
+      }
+      if (!createPODepositPaidNow && !createPODepositDueDate) {
+        showError('يرجى تحديد تاريخ استحقاق العربون.');
+        return;
+      }
+      for (const inst of createPOBalanceInstallments) {
+        const amt = parseFloat(
+          String(inst.amount)
+            .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+            .trim()
         );
-      const supplierId = explicitSupplierId || matchedSupplier?.id;
-      const unitCost = unitPrice ?? matchedItem?.cost_per_unit ?? 0.45;
-      const quantity = 2500;
-      const totalCost = Number((quantity * unitCost).toFixed(2));
-      const itemCode = normalizedExplicitCode || matchedItem?.item_code || analyzingItemId || 'P1';
-      const resolvedItemName = matchedItem?.item_name_ar || itemName || itemCode;
+        if (isNaN(amt) || amt <= 0 || !inst.dueDate) {
+          showError('يرجى إدخال مبلغ وتاريخ استحقاق صريح لكل دفعة من دفعات المتبقي.');
+          return;
+        }
+      }
+    } else if (createPOPaymentType === 'full_credit') {
+      for (const inst of createPOCreditInstallments) {
+        const amt = parseFloat(
+          String(inst.amount)
+            .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+            .trim()
+        );
+        if (isNaN(amt) || amt <= 0 || !inst.dueDate) {
+          showError('يرجى إدخال مبلغ وتاريخ استحقاق صريح لكل دفعة من دفعات الآجل.');
+          return;
+        }
+      }
+    }
 
-      // 1. Generate unique PO Number
+    setIsSubmittingQuickOrder(true);
+    try {
       const poNum = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
+      const cleanNotes = createPONotes.trim() || null;
 
-      // 2. Insert into Supabase purchase_orders table linking created_by strictly to authenticated user.id
+      // 1. Insert Purchase Order into public.purchase_orders with notes and payment_type
       const createdFromDB = await createPurchaseOrder({
         po_number: poNum,
-        supplier_id: supplierId,
-        inventory_item_code: itemCode,
+        supplier_id: createPOSupplierId || undefined,
+        inventory_item_code: createPOItemCode,
         quantity,
         total_cost: totalCost,
         status: 'PENDING_APPROVAL',
         created_by: authUser.id,
+        notes: cleanNotes,
+        payment_type: createPOPaymentType,
       });
 
       const createdPO: PurchaseOrder = {
         ...createdFromDB,
         createdBy: createdFromDB.createdBy || authUser.displayName,
         createdById: authUser.id,
-        items: [{ itemId: itemCode, itemName: resolvedItemName, quantity }],
+        notes: cleanNotes,
+        payment_type: createPOPaymentType,
+        items: [{ itemId: createPOItemCode, itemName: createPOItemName, quantity }],
       };
       addPurchaseOrderToSession(createdPO);
 
-      // 3. RE-FETCH the entire PO list from Supabase (strictly ensuring tracking table reflects single true state)
+      // 2. Upload and compress optional receipt if full payment or deposit is paid now
+      let uploadedReceiptUrl: string | null = null;
+      if (
+        createPOReceiptFile &&
+        ((createPOPaymentType === 'full_payment' && createPOFullPaidNow) ||
+          (createPOPaymentType === 'deposit_and_balance' && createPODepositPaidNow))
+      ) {
+        const uploaded = await uploadProcurementReceipt(createPOReceiptFile, poNum);
+        uploadedReceiptUrl = uploaded.publicUrl;
+      }
+
+      // 3. Insert payment schedule rows into public.po_payments
+      const createdPayments: SupabasePOPayment[] = [];
+      const nowIso = new Date().toISOString();
+
+      if (createPOPaymentType === 'full_payment') {
+        const p = await createPOPayment({
+          po_number: poNum,
+          supplier_id: createPOSupplierId || null,
+          title: 'دفع كامل',
+          amount: totalCost,
+          due_date: createPOFullPaidNow ? todayStr : createPOFullDueDate,
+          status: createPOFullPaidNow ? 'paid' : 'scheduled',
+          paid_at: createPOFullPaidNow ? nowIso : null,
+          receipt_url: createPOFullPaidNow ? uploadedReceiptUrl : null,
+          notes: cleanNotes || undefined,
+        });
+        createdPayments.push(p);
+      } else if (createPOPaymentType === 'deposit_and_balance') {
+        const depVal = Number(
+          parseFloat(
+            String(createPODepositAmountStr)
+              .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+              .trim()
+          ).toFixed(2)
+        );
+        const depPayment = await createPOPayment({
+          po_number: poNum,
+          supplier_id: createPOSupplierId || null,
+          title: 'عربون مقدم',
+          amount: depVal,
+          due_date: createPODepositPaidNow ? todayStr : createPODepositDueDate,
+          status: createPODepositPaidNow ? 'paid' : 'scheduled',
+          paid_at: createPODepositPaidNow ? nowIso : null,
+          receipt_url: createPODepositPaidNow ? uploadedReceiptUrl : null,
+          notes: cleanNotes || undefined,
+        });
+        createdPayments.push(depPayment);
+
+        for (let i = 0; i < createPOBalanceInstallments.length; i++) {
+          const inst = createPOBalanceInstallments[i];
+          const amt = Number(
+            parseFloat(
+              String(inst.amount)
+                .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                .trim()
+            ).toFixed(2)
+          );
+          const balPay = await createPOPayment({
+            po_number: poNum,
+            supplier_id: createPOSupplierId || null,
+            title: inst.title.trim() || `دفعة المتبقي #${i + 1}`,
+            amount: amt,
+            due_date: inst.dueDate,
+            status: 'scheduled',
+            notes: cleanNotes || undefined,
+          });
+          createdPayments.push(balPay);
+        }
+      } else if (createPOPaymentType === 'full_credit') {
+        for (let i = 0; i < createPOCreditInstallments.length; i++) {
+          const inst = createPOCreditInstallments[i];
+          const amt = Number(
+            parseFloat(
+              String(inst.amount)
+                .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                .trim()
+            ).toFixed(2)
+          );
+          const credPay = await createPOPayment({
+            po_number: poNum,
+            supplier_id: createPOSupplierId || null,
+            title: inst.title.trim() || `دفعة آجل #${i + 1}`,
+            amount: amt,
+            due_date: inst.dueDate,
+            status: 'scheduled',
+            notes: cleanNotes || undefined,
+          });
+          createdPayments.push(credPay);
+        }
+      }
+
+      setPoPayments((prev) => [...prev, ...createdPayments]);
+
+      // 4. Refresh PO list and check payment reminder workflow
       const freshPOs = await fetchPurchaseOrders();
       if (freshPOs && freshPOs.length > 0) {
-        const merged = (freshPOs as unknown as PurchaseOrder[]).map(p =>
-          p.id === poNum ? { ...p, createdBy: p.createdBy || authUser.displayName, createdById: p.createdById || authUser.id } : p
+        const merged = (freshPOs as unknown as PurchaseOrder[]).map((p) =>
+          p.id === poNum
+            ? {
+                ...p,
+                createdBy: p.createdBy || authUser.displayName,
+                createdById: p.createdById || authUser.id,
+                notes: p.notes || cleanNotes,
+                payment_type: p.payment_type || createPOPaymentType,
+              }
+            : p
         );
         setPurchaseOrders(merged);
       } else {
-        setPurchaseOrders(prev => [createdPO, ...prev.filter(p => p.id !== poNum)]);
+        setPurchaseOrders((prev) => [createdPO, ...prev.filter((p) => p.id !== poNum)]);
       }
 
-      showToast(
-        lang === 'en'
-          ? `New purchase order (${poNum}) issued by (${authUser.displayName}) for supplier (${supplierName})!`
-          : `تم إصدار أمر شراء جديد (${poNum}) بواسطة (${authUser.displayName}) للمورد (${supplierName}) بنجاح!`
+      void checkAndTriggerDuePaymentReminders({ [poNum]: createPOSupplierName }).catch(
+        console.warn
       );
-    } catch (err: any) {
-      console.error('Failed to create purchase order in Supabase:', err);
+
+      setIsCreatePOModalOpen(false);
+      showToast(
+        `تم إصدار أمر الشراء (${poNum}) وجدولة (${toEnglishDigits(createdPayments.length)}) دفعة للمورد (${createPOSupplierName}) بنجاح!`
+      );
+    } catch (err: unknown) {
+      console.error('Failed to create purchase order with payment schedule:', err);
       showError(
-        lang === 'en'
-          ? `Failed to issue purchase order: ${err?.message || 'Database error'}`
-          : `تعذر إصدار أمر الشراء: ${err?.message || 'خطأ في قاعدة البيانات'}`
+        `تعذر إصدار أمر الشراء: ${err instanceof Error ? err.message : 'خطأ في قاعدة البيانات'}`
       );
     } finally {
       setIsSubmittingQuickOrder(false);
@@ -1107,6 +1748,14 @@ export default function SuppliersClient({
   const inTransitCount = activePOs.filter(p => p.status === 'IN_TRANSIT').length;
   const sentCount = activePOs.filter(p => p.status === 'SENT').length;
 
+  // Due & Upcoming Scheduled Payments (due_date <= today + 3 days and status === 'scheduled')
+  const dueOrUpcomingPayments = useMemo(() => {
+    const cutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    return poPayments
+      .filter((pay) => pay.status === 'scheduled' && pay.due_date && pay.due_date <= cutoff)
+      .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+  }, [poPayments]);
+
   return (
     <div className="page-shell w-full mx-auto space-y-8 font-sans">
       {/* Toast Notification */}
@@ -1155,6 +1804,22 @@ export default function SuppliersClient({
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Manual Trigger for Finance & Manager Payment Reminders */}
+          <button
+            type="button"
+            onClick={() => void loadAllPOPaymentsAndReminders(true)}
+            disabled={isCheckingReminders}
+            className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/35 active:scale-95 text-amber-100 font-bold px-4 py-2.5 rounded-xl transition-all text-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            title="فحص الدفعات المستحقة خلال 3 أيام وإصدار تذاكر تذكير للمالية والإدارة"
+          >
+            {isCheckingReminders ? (
+              <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+            ) : (
+              <Bell className="w-4 h-4 text-amber-300" />
+            )}
+            <span>{lang === 'en' ? 'Check Reminders Now' : 'فحص التذكيرات الآن'}</span>
+          </button>
+
           {/* Add Supplier Button */}
           <button
             onClick={handleOpenAddSupplier}
@@ -1174,6 +1839,109 @@ export default function SuppliersClient({
           </Link>
         </div>
       </header>
+
+      {/* Due Scheduled Payments Banner (تنبيهات الدفعات المستحقة خلال 3 أيام أو متأخرة) */}
+      {dueOrUpcomingPayments.length > 0 && (
+        <section className="glass-card bg-amber-950/35 backdrop-blur-md border border-amber-400/40 rounded-2xl p-4 sm:p-5 space-y-3 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-400/20 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+                  <span>تنبيهات الدفعات المستحقة (خلال 3 أيام أو متأخرة)</span>
+                  <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-amber-500/25 border border-amber-300/40 text-amber-200">
+                    {toEnglishDigits(dueOrUpcomingPayments.length)}
+                  </span>
+                </h3>
+                <p className="text-xs text-amber-200/80">
+                  يتم إصدار تذاكر تذكير عالية الأولوية تلقائياً لقسم المالية والإدارة للدفعات المستحقة
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void loadAllPOPaymentsAndReminders(true)}
+              disabled={isCheckingReminders}
+              className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer disabled:opacity-50"
+            >
+              {isCheckingReminders ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+              ) : (
+                <Bell className="w-3.5 h-3.5 text-amber-300" />
+              )}
+              <span>فحص التذكيرات الآن</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {dueOrUpcomingPayments.map((pay) => {
+              const linkedPO = purchaseOrders.find((p) => p.id === pay.po_number);
+              const matchedSup = suppliers.find((s) => s.id === pay.supplier_id);
+              const supName =
+                pay.suppliers?.name_ar ||
+                matchedSup?.name_ar ||
+                linkedPO?.supplierName ||
+                'المورد المعتمد';
+              const todayStr = new Date().toISOString().split('T')[0];
+              const isOverdue = pay.due_date < todayStr;
+
+              return (
+                <div
+                  key={pay.id}
+                  className="bg-black/35 border border-amber-400/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-extrabold text-amber-200 bg-amber-500/20 border border-amber-400/30 px-2 py-0.5 rounded-md" dir="ltr">
+                        {toEnglishDigits(pay.po_number)}
+                      </span>
+                      <span className="text-xs sm:text-sm font-extrabold text-white">
+                        {supName} — {pay.title}
+                      </span>
+                      {pay.reminder_ticket_created && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/20 border border-teal-400/30 text-teal-200">
+                          تم إرسال تذكرة للمالية
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-white/75 flex items-center gap-3 flex-wrap">
+                      <span>
+                        المبلغ:{' '}
+                        <strong className="font-mono text-emerald-300">
+                          {toEnglishDigits(pay.amount.toLocaleString('en-US'))} ر.س
+                        </strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        تاريخ الاستحقاق:{' '}
+                        <strong className={`font-mono ${isOverdue ? 'text-rose-300' : 'text-amber-200'}`} dir="ltr">
+                          {toEnglishDigits(pay.due_date)}
+                        </strong>{' '}
+                        {isOverdue ? '(متأخرة)' : '(مستحقة قريباً)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentToSettle(pay);
+                      setReceiptFileToUpload(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-extrabold border border-emerald-300/40 shadow-md transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>سداد وإرفاق إيصال</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Storage Bucket Setup Alert Notice */}
       {storageNotice && (
@@ -1878,6 +2646,61 @@ export default function SuppliersClient({
           return true;
         });
 
+        // Calculate 4 Live Financial & Logistics KPIs for this Supplier
+        const allSupplierPOs = purchaseOrders.filter(matchesThisSupplier);
+        const supplierPoNumbers = new Set(allSupplierPOs.map((p) => p.id));
+        const supplierPayments = poPayments.filter(
+          (pay) =>
+            (pay.supplier_id && pay.supplier_id === currentSupplierId) ||
+            supplierPoNumbers.has(pay.po_number)
+        );
+
+        const totalTransactionsValue = Number(
+          allSupplierPOs.reduce((sum, po) => sum + (Number(po.totalCost) || 0), 0).toFixed(2)
+        );
+        const totalPaidAmount = Number(
+          supplierPayments
+            .filter((pay) => pay.status === 'paid')
+            .reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0)
+            .toFixed(2)
+        );
+        const scheduledUnpaidSum = Number(
+          supplierPayments
+            .filter((pay) => pay.status === 'scheduled')
+            .reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0)
+            .toFixed(2)
+        );
+        const remainingBalanceOwed =
+          scheduledUnpaidSum > 0
+            ? scheduledUnpaidSum
+            : Math.max(0, Number((totalTransactionsValue - totalPaidAmount).toFixed(2)));
+
+        // FIFO Unpaid Payments Ledger: strictly status === 'scheduled', sorted by due_date ASC
+        const fifoUnpaidPayments = [...supplierPayments]
+          .filter((pay) => pay.status === 'scheduled')
+          .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+
+        // Remaining Quantities POs: active/incomplete POs for this supplier where (quantity - COALESCE(received_quantity, 0)) > 0
+        const supplierRemainingQtyPOs = supplierActivePOs.filter((po) => {
+          const rec =
+            po.received_quantity !== undefined
+              ? Number(po.received_quantity)
+              : po.receivedQuantity !== undefined
+              ? Number(po.receivedQuantity)
+              : 0;
+          return Math.max(0, (Number(po.quantity) || 0) - rec) > 0;
+        });
+
+        const remainingUnitsWithSupplier = supplierRemainingQtyPOs.reduce((sum, po) => {
+          const rec =
+            po.received_quantity !== undefined
+              ? Number(po.received_quantity)
+              : po.receivedQuantity !== undefined
+              ? Number(po.receivedQuantity)
+              : 0;
+          return sum + Math.max(0, (Number(po.quantity) || 0) - rec);
+        }, 0);
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in">
             <div className="font-sans bg-zinc-950/90 rounded-[28px] w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 md:p-8 space-y-6 text-white border border-white/20 shadow-2xl relative">
@@ -1933,6 +2756,93 @@ export default function SuppliersClient({
                     <X className="w-5 h-5" />
                   </button>
                 </div>
+              </div>
+
+              {/* 1. Supplier Financial & Logistics Summary Bar (4 Live KPI Cards) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                {/* KPI 1: إجمالي قيمة التعاملات */}
+                <div className="bg-white/[0.05] border border-white/20 rounded-2xl p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-white/75 font-bold">
+                    <span>إجمالي قيمة التعاملات</span>
+                    <Coins className="w-4 h-4 text-teal-300" />
+                  </div>
+                  <div className="text-xl font-extrabold text-white font-mono mt-2" dir="ltr">
+                    {toEnglishDigits(totalTransactionsValue.toLocaleString('en-US'))}{' '}
+                    <span className="text-xs font-sans font-normal text-white/70">ر.س</span>
+                  </div>
+                  <div className="text-[11px] text-white/55 mt-1">
+                    إجمالي أوامر الشراء ({toEnglishDigits(allSupplierPOs.length)})
+                  </div>
+                </div>
+
+                {/* KPI 2: إجمالي المدفوع */}
+                <div className="bg-emerald-500/10 border border-emerald-400/30 rounded-2xl p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-emerald-200 font-bold">
+                    <span>إجمالي المدفوع</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <div className="text-xl font-extrabold text-emerald-300 font-mono mt-2" dir="ltr">
+                    {toEnglishDigits(totalPaidAmount.toLocaleString('en-US'))}{' '}
+                    <span className="text-xs font-sans font-normal text-emerald-200/80">ر.س</span>
+                  </div>
+                  <div className="text-[11px] text-emerald-200/70 mt-1">
+                    الدفعات المسددة والموثقة بإيصال
+                  </div>
+                </div>
+
+                {/* KPI 3: المتبقي علينا للمورد (Clickable -> scrolls to FIFO Unpaid Payments table) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileActiveTab('all');
+                    setTimeout(() => {
+                      document
+                        .getElementById('supplier-fifo-payments-section')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 60);
+                  }}
+                  className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-400/30 hover:border-amber-300/60 rounded-2xl p-4 flex flex-col justify-between text-right transition-all cursor-pointer group"
+                  title="اضغط للانتقال إلى جدول الدفعات المستحقة علينا (الأول فالأول)"
+                >
+                  <div className="flex items-center justify-between w-full text-xs text-amber-200 font-bold">
+                    <span>المتبقي علينا للمورد</span>
+                    <CreditCard className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-xl font-extrabold text-amber-200 font-mono mt-2" dir="ltr">
+                    {toEnglishDigits(remainingBalanceOwed.toLocaleString('en-US'))}{' '}
+                    <span className="text-xs font-sans font-normal text-amber-200/80">ر.س</span>
+                  </div>
+                  <div className="text-[11px] text-amber-200/75 mt-1 underline decoration-amber-400/40">
+                    عرض الدفعات المستحقة ({toEnglishDigits(fifoUnpaidPayments.length)}) ←
+                  </div>
+                </button>
+
+                {/* KPI 4: كميات متبقية لنا عند المورد (Clickable -> scrolls to Remaining Quantities table) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileActiveTab('all');
+                    setTimeout(() => {
+                      document
+                        .getElementById('supplier-remaining-quantities-section')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 60);
+                  }}
+                  className="bg-teal-500/10 hover:bg-teal-500/20 border border-teal-400/30 hover:border-teal-300/60 rounded-2xl p-4 flex flex-col justify-between text-right transition-all cursor-pointer group"
+                  title="اضغط للانتقال إلى جدول الكميات المتبقية لنا عند المورد"
+                >
+                  <div className="flex items-center justify-between w-full text-xs text-teal-200 font-bold">
+                    <span>كميات متبقية لنا عند المورد</span>
+                    <Package className="w-4 h-4 text-teal-300 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-xl font-extrabold text-teal-200 font-mono mt-2" dir="ltr">
+                    {toEnglishDigits(remainingUnitsWithSupplier.toLocaleString('en-US'))}{' '}
+                    <span className="text-xs font-sans font-normal text-teal-200/80">وحدة</span>
+                  </div>
+                  <div className="text-[11px] text-teal-200/75 mt-1 underline decoration-teal-400/40">
+                    عرض الأوامر المتبقية ({toEnglishDigits(supplierRemainingQtyPOs.length)}) ←
+                  </div>
+                </button>
               </div>
 
               {/* Navigation Tabs */}
@@ -1995,6 +2905,402 @@ export default function SuppliersClient({
                   <span>{lang === 'en' ? 'View All' : 'عرض الكل'}</span>
                 </button>
               </div>
+
+              {/* Section 0A: Interactive FIFO Unpaid Payments Ledger (الدفعات المستحقة علينا - مرتبة بالأقدمية الأول فالأول) */}
+              {(profileActiveTab === 'products' || profileActiveTab === 'archive' || profileActiveTab === 'all') && (
+                <div
+                  id="supplier-fifo-payments-section"
+                  className="bg-amber-950/20 border border-amber-400/35 rounded-2xl p-4 sm:p-5 space-y-4 scroll-mt-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-400/20 pb-3">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-amber-300" />
+                        <span>الدفعات المستحقة علينا (مرتبة بالأقدمية - الأول فالأول)</span>
+                        <span
+                          className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-amber-500/25 border border-amber-300/40 text-amber-200"
+                          dir="ltr"
+                          lang="en"
+                        >
+                          {fifoUnpaidPayments.length.toLocaleString('en-US')}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-white/65 mt-0.5">
+                        سجل مستقل للمدفوعات المجدولة على هذا المورد مرتبة تصاعدياً حسب تاريخ الاستحقاق
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSupplierPaymentId(null);
+                        setSupPayPoRef('دفعة عامة');
+                        setSupPayTitle('');
+                        setSupPayNotes('');
+                        setSupPayAmount('');
+                        setSupPayDueDate('');
+                        setIsAddingSupplierPayment(!isAddingSupplierPayment);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 border border-amber-300/40 text-amber-100 text-xs font-extrabold transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{isAddingSupplierPayment ? 'إغلاق النموذج' : '+ إضافة دفعة مجدولة'}</span>
+                    </button>
+                  </div>
+
+                  {isAddingSupplierPayment && (
+                    <form
+                      onSubmit={handleSaveStandaloneSupplierPayment}
+                      className="bg-black/45 border border-amber-400/35 rounded-xl p-4 space-y-3 text-xs"
+                    >
+                      <div className="font-bold text-amber-200">
+                        {editingSupplierPaymentId
+                          ? 'تعديل بيانات الدفعة المستحقة'
+                          : 'تسجيل دفعة مجدولة جديدة للمورد (مستقلة أو مرتبطة بأمر شراء)'}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-white/80 font-bold block">المرجع (اختياري):</label>
+                          <select
+                            value={supPayPoRef}
+                            onChange={(e) => setSupPayPoRef(e.target.value)}
+                            className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-amber-400 cursor-pointer"
+                          >
+                            <option value="دفعة عامة" className="bg-slate-900 text-white">
+                              دفعة عامة (مستقلة)
+                            </option>
+                            {allSupplierPOs.map((po) => (
+                              <option key={`ref-opt-${po.id}`} value={po.id} className="bg-slate-900 text-white">
+                                {po.id} — {po.itemName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-white/80 font-bold block">البيان / عنوان الدفعة:</label>
+                          <input
+                            type="text"
+                            required
+                            value={supPayTitle}
+                            onChange={(e) => setSupPayTitle(e.target.value)}
+                            placeholder="مثال: دفعة آجل / تسوية رصيد"
+                            className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-amber-400"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-white/80 font-bold block">المبلغ المستحق (ر.س):</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            lang="en"
+                            required
+                            value={supPayAmount}
+                            onChange={(e) =>
+                              setSupPayAmount(sanitizeEnglishNumericInput(e.target.value, true))
+                            }
+                            placeholder="0.00"
+                            className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white font-mono text-xs text-start outline-none focus:border-amber-400"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-white/80 font-bold block">تاريخ الاستحقاق:</label>
+                          <CleanRtlDateInput
+                            value={supPayDueDate}
+                            onChange={setSupPayDueDate}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-white/80 font-bold block">
+                          ملخص الاتفاق / ملاحظات الدفعة (اختياري):
+                        </label>
+                        <input
+                          type="text"
+                          value={supPayNotes}
+                          onChange={(e) => setSupPayNotes(e.target.value)}
+                          placeholder="أي تفاصيل أو شروط خاصة بهذه الدفعة..."
+                          className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingSupplierPayment(false);
+                            setEditingSupplierPaymentId(null);
+                          }}
+                          className="px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold border border-white/20 cursor-pointer"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSavingSupplierPayment}
+                          className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold border border-emerald-400/50 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isSavingSupplierPayment ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                          <span>{editingSupplierPaymentId ? 'حفظ التعديل' : 'إضافة الدفعة'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  <div className="bg-black/30 border border-white/15 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className={`w-full text-xs text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+                        <thead className="bg-white/10 text-white/80 font-bold border-b border-white/15">
+                          <tr>
+                            <th className="px-4 py-3">المرجع</th>
+                            <th className="px-4 py-3">البيان / ملخص الاتفاق</th>
+                            <th className="px-4 py-3">المبلغ المستحق</th>
+                            <th className="px-4 py-3">تاريخ الاستحقاق</th>
+                            <th className="px-4 py-3">حالة المهلة</th>
+                            <th className="px-4 py-3 text-center">إجراء</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {fifoUnpaidPayments.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-8 text-center text-white/60">
+                                لا توجد دفعات مستحقة غير مسددة لهذا المورد حالياً
+                              </td>
+                            </tr>
+                          ) : (
+                            fifoUnpaidPayments.map((pay) => {
+                              const linkedPO = allSupplierPOs.find((p) => p.id === pay.po_number);
+                              const isPORef = Boolean(
+                                pay.po_number &&
+                                  pay.po_number !== 'دفعة عامة' &&
+                                  pay.po_number !== 'GENERAL'
+                              );
+                              const todayStr = new Date().toISOString().split('T')[0];
+                              const threeDaysStr = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+                                .toISOString()
+                                .split('T')[0];
+                              const isOverdue = Boolean(pay.due_date && pay.due_date < todayStr);
+                              const isDueSoon = Boolean(
+                                pay.due_date &&
+                                  pay.due_date >= todayStr &&
+                                  pay.due_date <= threeDaysStr
+                              );
+                              const agreementSummary =
+                                pay.notes || linkedPO?.notes || (linkedPO ? `أمر توريد: ${linkedPO.itemName}` : '');
+
+                              return (
+                                <tr key={`fifo-pay-${pay.id}`} className="hover:bg-white/10 transition-colors">
+                                  <td className="px-4 py-3">
+                                    {isPORef ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (linkedPO) {
+                                            setSelectedPO(linkedPO);
+                                            setIsEditingPO(false);
+                                          }
+                                        }}
+                                        className="font-mono font-extrabold text-teal-200 bg-teal-500/20 hover:bg-teal-500/35 border border-teal-400/35 px-2.5 py-0.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                                        dir="ltr"
+                                      >
+                                        <span>{toEnglishDigits(pay.po_number)}</span>
+                                        {linkedPO && <ExternalLink className="w-3 h-3" />}
+                                      </button>
+                                    ) : (
+                                      <span className="font-bold text-white/80 bg-white/10 border border-white/20 px-2.5 py-0.5 rounded-lg">
+                                        دفعة عامة
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-extrabold text-white">{pay.title}</div>
+                                    {agreementSummary && (
+                                      <div className="text-[11px] text-white/60 mt-0.5">
+                                        {agreementSummary}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 font-mono font-extrabold text-amber-200" dir="ltr">
+                                    {toEnglishDigits(pay.amount.toLocaleString('en-US'))} ر.س
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-white" dir="ltr">
+                                    {toEnglishDigits(pay.due_date)}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {isOverdue ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-200 border border-rose-400/35">
+                                        <AlertTriangle className="w-3 h-3 text-rose-300" />
+                                        <span>متأخرة السداد</span>
+                                      </span>
+                                    ) : isDueSoon ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-400/35">
+                                        <Clock className="w-3 h-3 text-amber-300" />
+                                        <span>تستحق خلال 3 أيام</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/35">
+                                        <Calendar className="w-3 h-3 text-emerald-300" />
+                                        <span>مجدولة قادمة</span>
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPaymentToSettle(pay);
+                                          setReceiptFileToUpload(null);
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold border border-emerald-400/50 inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                                      >
+                                        <Upload className="w-3 h-3" />
+                                        <span>سداد وإيصال</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingSupplierPaymentId(pay.id);
+                                          setSupPayPoRef(pay.po_number || 'دفعة عامة');
+                                          setSupPayTitle(pay.title);
+                                          setSupPayNotes(pay.notes || '');
+                                          setSupPayAmount(String(pay.amount));
+                                          setSupPayDueDate(pay.due_date);
+                                          setIsAddingSupplierPayment(true);
+                                        }}
+                                        className="p-1.5 text-teal-200 bg-teal-500/15 hover:bg-teal-500/30 border border-teal-400/35 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center shrink-0"
+                                        title="تعديل الدفعة"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteScheduledPayment(pay.id)}
+                                        className="p-1.5 text-rose-200 bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/35 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center shrink-0"
+                                        title="حذف الدفعة"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 0B: Remaining Quantities Table (كميات متبقية لنا عند المورد) */}
+              {(profileActiveTab === 'products' || profileActiveTab === 'archive' || profileActiveTab === 'all') && (
+                <div
+                  id="supplier-remaining-quantities-section"
+                  className="bg-teal-950/20 border border-teal-400/30 rounded-2xl p-4 sm:p-5 space-y-3 scroll-mt-4"
+                >
+                  <div className="flex items-center justify-between border-b border-teal-400/20 pb-2.5">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+                        <Package className="w-4 h-4 text-teal-300" />
+                        <span>كميات متبقية لنا عند المورد</span>
+                      </h3>
+                      <p className="text-xs text-white/65 mt-0.5">
+                        أوامر الشراء التي تحتوي على رصيد كميات متبقية لم تُستلم بالكامل بعد
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-extrabold bg-teal-500/20 border border-teal-300/35 text-teal-200 px-3 py-1 rounded-xl" dir="ltr">
+                      {toEnglishDigits(remainingUnitsWithSupplier.toLocaleString('en-US'))} وحدة متبقية
+                    </span>
+                  </div>
+
+                  <div className="bg-black/30 border border-white/15 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className={`w-full text-xs text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+                        <thead className="bg-white/10 text-white/80 font-bold border-b border-white/15">
+                          <tr>
+                            <th className="px-4 py-3">رقم الأمر</th>
+                            <th className="px-4 py-3">الصنف</th>
+                            <th className="px-4 py-3">الكمية المتفق عليها</th>
+                            <th className="px-4 py-3">المستلم السليم</th>
+                            <th className="px-4 py-3">المتبقي لنا</th>
+                            <th className="px-4 py-3 text-center">إجراء</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {supplierRemainingQtyPOs.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-6 text-center text-white/60">
+                                لا توجد كميات متبقية معلقة عند هذا المورد حالياً
+                              </td>
+                            </tr>
+                          ) : (
+                            supplierRemainingQtyPOs.map((po) => {
+                              const agreed = Number(po.quantity) || 0;
+                              const rec =
+                                po.received_quantity !== undefined
+                                  ? Number(po.received_quantity)
+                                  : po.receivedQuantity !== undefined
+                                  ? Number(po.receivedQuantity)
+                                  : 0;
+                              const rem = Math.max(0, agreed - rec);
+
+                              return (
+                                <tr key={`rem-qty-${po.id}`} className="hover:bg-white/10 transition-colors">
+                                  <td className="px-4 py-3 font-mono font-bold text-white" dir="ltr">
+                                    {toEnglishDigits(po.id)}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-white">
+                                    <div>{po.itemName}</div>
+                                    {po.notes && (
+                                      <div className="text-[11px] text-white/55 font-normal">
+                                        {po.notes}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-white" dir="ltr">
+                                    {toEnglishDigits(agreed.toLocaleString('en-US'))}
+                                  </td>
+                                  <td className="px-4 py-3 font-mono font-bold text-emerald-300" dir="ltr">
+                                    {toEnglishDigits(rec.toLocaleString('en-US'))}
+                                  </td>
+                                  <td className="px-4 py-3 font-mono font-extrabold text-amber-300" dir="ltr">
+                                    {toEnglishDigits(rem.toLocaleString('en-US'))} وحدة
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedPO(po);
+                                        setIsEditingPO(false);
+                                      }}
+                                      className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      التفاصيل
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Section 1: Certified Supply Products (supplier_items) */}
               {(profileActiveTab === 'products' || profileActiveTab === 'all') && (
@@ -2850,13 +4156,10 @@ export default function SuppliersClient({
                       <label className="text-xs font-bold text-white">
                         {lang === 'en' ? 'Expected Delivery Date:' : 'تاريخ التوريد المتوقع:'}
                       </label>
-                      <input
-                        type="date"
-                        dir="ltr"
-                        lang="en"
+                      <CleanRtlDateInput
                         value={editPOExpectedDate}
-                        onChange={(e) => setEditPOExpectedDate(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none font-mono [color-scheme:dark]"
+                        onChange={setEditPOExpectedDate}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-3 py-2.5 text-xs sm:text-sm text-white focus:outline-none font-mono cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
                       />
                     </div>
 
@@ -3062,6 +4365,17 @@ export default function SuppliersClient({
                   </div>
                 </div>
 
+                {/* Per-PO Agreement Summary if recorded on this order */}
+                {selectedPO.notes && (
+                  <div className="bg-teal-950/35 border border-teal-400/30 rounded-xl px-4 py-2.5 text-xs flex items-start gap-2.5">
+                    <ClipboardCheck className="w-4 h-4 text-teal-300 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-teal-200">ملخص الاتفاق الخاص بهذا الأمر: </span>
+                      <span className="text-white/90">{selectedPO.notes}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* 9. Attached Invoice Copy if available */}
                 {selectedPO.invoiceUrl && (
                   <div className="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/15 rounded-xl px-4 py-2.5 text-xs">
@@ -3086,6 +4400,430 @@ export default function SuppliersClient({
                     </a>
                   </div>
                 )}
+
+                {/* Section A: Quantity & Partial Delivery Tracking (تتبع الاستلام والكميات) */}
+                {(() => {
+                  const agreedQty = Number(selectedPO.quantity) || 0;
+                  const parsedRec = Math.max(
+                    0,
+                    Math.round(Number(sanitizeEnglishNumericInput(partialReceivedQty, false)) || 0)
+                  );
+                  const parsedRem = Math.max(
+                    0,
+                    Math.round(Number(sanitizeEnglishNumericInput(partialRemainingQty, false)) || 0)
+                  );
+
+                  return (
+                    <div className="bg-white/[0.04] border border-teal-400/30 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-white/15 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-teal-300 shrink-0" />
+                          <h4 className="text-xs sm:text-sm font-extrabold text-white">
+                            تتبع الاستلام والكميات (استلام جزئي / كامل)
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="hidden sm:inline text-[11px] text-amber-200/90">
+                            حفظ الكميات هنا يوثق توريد المورد ولا يعدل رصيد المخزون الآلي
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isEditingPOQuantities) {
+                                const origRec =
+                                  selectedPO.received_quantity !== undefined
+                                    ? Number(selectedPO.received_quantity)
+                                    : selectedPO.receivedQuantity !== undefined
+                                    ? Number(selectedPO.receivedQuantity)
+                                    : 0;
+                                setPartialReceivedQty(String(origRec));
+                                setPartialRemainingQty(String(Math.max(0, agreedQty - origRec)));
+                              }
+                              setIsEditingPOQuantities((prev) => !prev);
+                            }}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer inline-flex items-center justify-center shrink-0 ${
+                              isEditingPOQuantities
+                                ? 'bg-teal-500/35 border-teal-300/60 text-white'
+                                : 'bg-teal-500/15 hover:bg-teal-500/30 border-teal-400/35 text-teal-200'
+                            }`}
+                            title="تعديل الكميات"
+                            aria-label="تعديل الكميات"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        {/* 1. الكمية المتفق عليها */}
+                        <div className="bg-black/30 border border-white/15 rounded-xl p-3 flex flex-col justify-between text-start">
+                          <span className="text-white/65 font-bold">الكمية المتفق عليها</span>
+                          <div className="flex items-baseline justify-start gap-1.5 mt-1.5 text-start">
+                            <span className="text-base font-extrabold text-white font-mono" lang="en">
+                              {agreedQty.toLocaleString('en-US')}
+                            </span>
+                            <span className="text-[11px] font-sans font-normal text-white/60">
+                              {lang === 'en' ? 'units' : 'وحدة'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 2. الكمية المستلمة */}
+                        <div className="bg-black/30 border border-emerald-400/30 rounded-xl p-3 flex flex-col justify-between text-start space-y-1.5">
+                          <label className="text-emerald-200 font-bold block text-start">
+                            الكمية المستلمة
+                          </label>
+                          {isEditingPOQuantities ? (
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              lang="en"
+                              value={partialReceivedQty}
+                              onChange={(e) => {
+                                const clean = sanitizeEnglishNumericInput(e.target.value, false);
+                                setPartialReceivedQty(clean);
+                                const recVal = parseInt(clean || '0', 10) || 0;
+                                setPartialRemainingQty(String(Math.max(0, agreedQty - recVal)));
+                              }}
+                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-sm font-mono font-extrabold text-emerald-300 text-start outline-none focus:border-emerald-400"
+                            />
+                          ) : (
+                            <div className="flex items-baseline justify-start gap-1.5 text-start">
+                              <span className="text-base font-extrabold text-emerald-300 font-mono" lang="en">
+                                {parsedRec.toLocaleString('en-US')}
+                              </span>
+                              <span className="text-[11px] font-sans font-normal text-emerald-200/70">
+                                {lang === 'en' ? 'units' : 'وحدة'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3. المتبقي لنا عند المورد */}
+                        <div className="bg-black/30 border border-amber-400/30 rounded-xl p-3 flex flex-col justify-between text-start space-y-1.5">
+                          <label className="text-amber-200 font-bold block text-start">
+                            المتبقي لنا عند المورد
+                          </label>
+                          {isEditingPOQuantities ? (
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              lang="en"
+                              value={partialRemainingQty}
+                              onChange={(e) => {
+                                const clean = sanitizeEnglishNumericInput(e.target.value, false);
+                                setPartialRemainingQty(clean);
+                                const remVal = parseInt(clean || '0', 10) || 0;
+                                setPartialReceivedQty(String(Math.max(0, agreedQty - remVal)));
+                              }}
+                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-sm font-mono font-extrabold text-amber-300 text-start outline-none focus:border-amber-400"
+                            />
+                          ) : (
+                            <div className="flex items-baseline justify-start gap-1.5 text-start">
+                              <span className="text-base font-extrabold text-amber-300 font-mono" lang="en">
+                                {parsedRem.toLocaleString('en-US')}
+                              </span>
+                              <span className="text-[11px] font-sans font-normal text-amber-200/70">
+                                {lang === 'en' ? 'units' : 'وحدة'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isEditingPOQuantities && (
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const origRec =
+                                selectedPO.received_quantity !== undefined
+                                  ? Number(selectedPO.received_quantity)
+                                  : selectedPO.receivedQuantity !== undefined
+                                  ? Number(selectedPO.receivedQuantity)
+                                  : 0;
+                              setPartialReceivedQty(String(origRec));
+                              setPartialRemainingQty(String(Math.max(0, agreedQty - origRec)));
+                              setIsEditingPOQuantities(false);
+                            }}
+                            disabled={isSavingPartialQty}
+                            className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            إلغاء
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleSavePOPartialQuantities()}
+                            disabled={isSavingPartialQty}
+                            className="px-4 py-2 rounded-xl bg-teal-500/25 hover:bg-teal-500/40 border border-teal-300/40 text-white text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isSavingPartialQty ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5 text-teal-300" />
+                            )}
+                            <span>حفظ تحديث الكميات</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Section B: Scheduled Payments Section (جدولة المدفوعات) */}
+                {(() => {
+                  const thisPOPayments = poPayments.filter((p) => p.po_number === selectedPO.id);
+                  const totalPaidForPO = thisPOPayments
+                    .filter((p) => p.status === 'paid')
+                    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                  const totalScheduledForPO = thisPOPayments
+                    .filter((p) => p.status === 'scheduled')
+                    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+                  return (
+                    <div className="bg-white/[0.04] border border-white/20 rounded-2xl p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/15 pb-2.5">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-emerald-300" />
+                            <h4 className="text-xs sm:text-sm font-extrabold text-white">
+                              جدولة المدفوعات وإيصالات السداد
+                            </h4>
+                          </div>
+                          <p className="text-[11px] text-white/65 mt-0.5">
+                            المدفوع:{' '}
+                            <strong className="font-mono text-emerald-300">
+                              {toEnglishDigits(totalPaidForPO.toLocaleString('en-US'))} ر.س
+                            </strong>{' '}
+                            • المجدول المتبقي:{' '}
+                            <strong className="font-mono text-amber-200">
+                              {toEnglishDigits(totalScheduledForPO.toLocaleString('en-US'))} ر.س
+                            </strong>
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPaymentId(null);
+                            setNewPaymentTitle('دفعة توريد');
+                            setNewPaymentAmount(
+                              String(
+                                Math.max(
+                                  0,
+                                  Number(
+                                    (
+                                      (Number(selectedPO.totalCost) || 0) -
+                                      totalPaidForPO -
+                                      totalScheduledForPO
+                                    ).toFixed(2)
+                                  )
+                                ) || selectedPO.totalCost || ''
+                              )
+                            );
+                            setNewPaymentDueDate('');
+                            setIsAddingPayment(!isAddingPayment);
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-300/40 text-emerald-100 text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{isAddingPayment ? 'إغلاق النموذج' : 'إضافة دفعة مجدولة +'}</span>
+                        </button>
+                      </div>
+
+                      {isAddingPayment && (
+                        <form
+                          onSubmit={handleSaveScheduledPayment}
+                          className="bg-black/40 border border-emerald-400/30 rounded-xl p-3.5 space-y-3 text-xs"
+                        >
+                          <div className="font-bold text-emerald-200">
+                            {editingPaymentId ? 'تعديل الدفعة المجدولة' : 'إضافة دفعة جديدة (عربون / عند الاستلام / آجل)'}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-white/80 font-bold block">بيان الدفعة:</label>
+                              <input
+                                type="text"
+                                required
+                                value={newPaymentTitle}
+                                onChange={(e) => setNewPaymentTitle(e.target.value)}
+                                placeholder="مثال: دفعة مقدمة 30% / دفعة آجل"
+                                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-emerald-400"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-white/80 font-bold block">المبلغ (ر.س):</label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                lang="en"
+                                required
+                                value={newPaymentAmount}
+                                onChange={(e) =>
+                                  setNewPaymentAmount(
+                                    sanitizeEnglishNumericInput(e.target.value, true)
+                                  )
+                                }
+                                placeholder="0.00"
+                                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white font-mono text-xs text-start outline-none focus:border-emerald-400"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-white/80 font-bold block">تاريخ الاستحقاق:</label>
+                              <CleanRtlDateInput
+                                value={newPaymentDueDate}
+                                onChange={setNewPaymentDueDate}
+                                required
+                                className="w-full bg-white/10 border border-white/20 rounded-lg pl-8 pr-3 py-2 text-white font-mono text-xs outline-none focus:border-emerald-400 cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddingPayment(false);
+                                setEditingPaymentId(null);
+                              }}
+                              className="px-3.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold border border-white/20 cursor-pointer"
+                            >
+                              إلغاء
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={isSavingPayment}
+                              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold border border-emerald-400/50 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {isSavingPayment ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
+                              <span>{editingPaymentId ? 'حفظ التعديل' : 'إضافة للجدول'}</span>
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {thisPOPayments.length === 0 ? (
+                        <div className="text-center py-5 text-xs text-white/55 bg-black/20 rounded-xl border border-white/10">
+                          لا توجد دفعات مجدولة مسجلة لأمر الشراء هذا بعد. اضغط على &quot;إضافة دفعة مجدولة +&quot; لتقسيم الدفعات أو توثيق السداد.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {thisPOPayments.map((pay) => (
+                            <div
+                              key={pay.id}
+                              className="bg-black/30 border border-white/15 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-white text-xs sm:text-sm">
+                                    {pay.title}
+                                  </span>
+                                  {pay.status === 'paid' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-300/30">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-300" />
+                                      <span>تم السداد</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-300/30">
+                                      <Clock className="w-3 h-3 text-amber-300" />
+                                      <span>مجدولة</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-white/70 flex items-center gap-3 flex-wrap">
+                                  <span>
+                                    المبلغ:{' '}
+                                    <strong className="font-mono text-white">
+                                      {toEnglishDigits(pay.amount.toLocaleString('en-US'))} ر.س
+                                    </strong>
+                                  </span>
+                                  <span>•</span>
+                                  <span>
+                                    تاريخ الاستحقاق:{' '}
+                                    <strong className="font-mono text-white/90" dir="ltr">
+                                      {toEnglishDigits(pay.due_date)}
+                                    </strong>
+                                  </span>
+                                  {pay.paid_at && (
+                                    <>
+                                      <span>•</span>
+                                      <span>
+                                        تاريخ السداد:{' '}
+                                        <strong className="font-mono text-emerald-300" dir="ltr">
+                                          {toEnglishDigits(new Date(pay.paid_at).toLocaleDateString('en-US'))}
+                                        </strong>
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {pay.receipt_url && (
+                                  <a
+                                    href={pay.receipt_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download
+                                    className="px-2.5 py-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/35 border border-teal-300/40 text-teal-100 font-bold inline-flex items-center gap-1"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>عرض الإيصال</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+
+                                {pay.status === 'scheduled' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPaymentToSettle(pay);
+                                      setReceiptFileToUpload(null);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold border border-emerald-400/50 inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    <span>تسجيل السداد وإرفاق الإيصال</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPaymentId(pay.id);
+                                    setNewPaymentTitle(pay.title);
+                                    setNewPaymentAmount(String(pay.amount));
+                                    setNewPaymentDueDate(pay.due_date);
+                                    setIsAddingPayment(true);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+                                  title="تعديل الدفعة"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteScheduledPayment(pay.id)}
+                                  className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/35 text-rose-200 cursor-pointer"
+                                  title="حذف الدفعة"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -3578,6 +5316,719 @@ export default function SuppliersClient({
           </div>
         </div>
       )}
+
+      {/* Modal: Settle Scheduled Payment & Upload Compressed Receipt */}
+      {paymentToSettle && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+          <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-md p-6 space-y-4 text-white border border-emerald-500/40 shadow-[0_24px_70px_rgba(0,0,0,0.85)]">
+            <div className="flex items-center justify-between border-b border-white/15 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-extrabold text-white">
+                    تسجيل السداد وإرفاق الإيصال
+                  </h4>
+                  <p className="text-xs font-mono text-emerald-200" dir="ltr">
+                    {toEnglishDigits(paymentToSettle.po_number)} • {paymentToSettle.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentToSettle(null);
+                  setReceiptFileToUpload(null);
+                }}
+                disabled={isSettlingPayment}
+                className="text-white/60 hover:text-white bg-white/10 p-1.5 rounded-full cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSettlePayment} className="space-y-4 text-xs">
+              <div className="bg-emerald-500/10 border border-emerald-400/30 rounded-2xl p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-white/75">قيمة الدفعة المسددة:</span>
+                  <span className="font-mono text-sm font-extrabold text-emerald-300" dir="ltr">
+                    {toEnglishDigits(paymentToSettle.amount.toLocaleString('en-US'))} ر.س
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/75">تاريخ الاستحقاق:</span>
+                  <span className="font-mono text-white" dir="ltr">
+                    {toEnglishDigits(paymentToSettle.due_date)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block font-bold text-white">
+                  إرفاق صورة إيصال التحويل أو ملف PDF (اختياري):
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setReceiptFileToUpload(f);
+                  }}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-white text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-teal-500/30 file:text-teal-100 hover:file:bg-teal-500/45 cursor-pointer"
+                />
+                <p className="text-[11px] text-teal-200/80">
+                  • يتم ضغط صور الإيصالات تلقائياً في المتصفح (بحد أقصى 1200px وجودة 0.7 ~ 120KB) قبل الرفع لتوفير مساحة التخزين.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentToSettle(null);
+                    setReceiptFileToUpload(null);
+                  }}
+                  disabled={isSettlingPayment}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSettlingPayment}
+                  className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white border border-emerald-300/50 shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isSettlingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جاري الحفظ ورفع الإيصال...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>تأكيد السداد وحفظ الإيصال</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create Purchase Order (طلب توريد مع ملخص الاتفاق و 3 طرق دفع بتواريخ صريحة) */}
+      {isCreatePOModalOpen && (() => {
+        const matchedCatalogItem = availableItems.find(
+          (i) => (i.item_code || '').toUpperCase() === createPOItemCode.toUpperCase()
+        );
+        const uPerCarton =
+          matchedCatalogItem?.units_per_carton != null &&
+          Number(matchedCatalogItem.units_per_carton) > 0
+            ? Number(matchedCatalogItem.units_per_carton)
+            : CARTON_SIZES[createPOItemCode.toUpperCase()] || 1;
+        const cartonsCount = Math.max(1, Math.round((createPOQuantityUnits || 0) / uPerCarton));
+        const parsedUnitPrice = parseFloat(
+          String(createPOUnitPriceStr)
+            .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+            .trim()
+        );
+        const validUnitPrice = !isNaN(parsedUnitPrice) && parsedUnitPrice >= 0 ? parsedUnitPrice : 0;
+        const calculatedTotalCost = Number(((createPOQuantityUnits || 0) * validUnitPrice).toFixed(2));
+
+        const parsedDeposit = parseFloat(
+          String(createPODepositAmountStr)
+            .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+            .trim()
+        );
+        const validDeposit = !isNaN(parsedDeposit) && parsedDeposit >= 0 ? parsedDeposit : 0;
+        const calculatedRemainingBalance = Math.max(
+          0,
+          Number((calculatedTotalCost - validDeposit).toFixed(2))
+        );
+
+        return (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in">
+            <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-5 text-white border border-teal-500/35 shadow-[0_24px_70px_rgba(0,0,0,0.85)]">
+              <div className="flex items-center justify-between border-b border-white/15 pb-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-teal-500/20 border border-teal-400/40 text-teal-300">
+                    <Send className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-extrabold text-white">
+                      طلب توريد جديد
+                    </h3>
+                    <p className="text-xs text-teal-200/85">
+                      المورد: <strong>{createPOSupplierName}</strong> • الصنف:{' '}
+                      <strong>
+                        {createPOItemName} ({createPOItemCode})
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatePOModalOpen(false)}
+                  disabled={isSubmittingQuickOrder}
+                  className="text-white/60 hover:text-white bg-white/10 p-1.5 rounded-full cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitCreatePOModal} className="space-y-4 text-xs">
+                {/* 1. Quantity (Cartons & Units) & Agreed Price */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white/[0.03] border border-white/15 rounded-2xl p-4">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-white flex items-center justify-between">
+                      <span>الكمية (بالكرتون):</span>
+                      <span className="text-[10px] font-mono text-teal-300" lang="en">
+                        {uPerCarton.toLocaleString('en-US')} حبة/كرتون
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      lang="en"
+                      dir="ltr"
+                      value={createPOQuantityUnits > 0 ? String(cartonsCount) : ''}
+                      onChange={(e) => {
+                        const clean = sanitizeEnglishNumericInput(e.target.value, false);
+                        const c = clean === '' ? 0 : parseInt(clean, 10) || 0;
+                        const nextUnits = c * uPerCarton;
+                        setCreatePOQuantityUnits(nextUnits);
+                        const nextTot = Number((nextUnits * validUnitPrice).toFixed(2));
+                        if (createPOCreditInstallments.length === 1) {
+                          setCreatePOCreditInstallments([
+                            { ...createPOCreditInstallments[0], amount: String(nextTot) },
+                          ]);
+                        }
+                        if (createPOBalanceInstallments.length === 1) {
+                          const rem = Math.max(0, Number((nextTot - validDeposit).toFixed(2)));
+                          setCreatePOBalanceInstallments([
+                            { ...createPOBalanceInstallments[0], amount: String(rem) },
+                          ]);
+                        }
+                      }}
+                      className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white font-mono text-sm font-bold text-center outline-none focus:border-teal-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-white block">إجمالي الوحدات (حبة):</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      lang="en"
+                      dir="ltr"
+                      value={createPOQuantityUnits > 0 ? String(createPOQuantityUnits) : ''}
+                      onChange={(e) => {
+                        const clean = sanitizeEnglishNumericInput(e.target.value, false);
+                        const nextUnits = clean === '' ? 0 : parseInt(clean, 10) || 0;
+                        setCreatePOQuantityUnits(nextUnits);
+                        const nextTot = Number((nextUnits * validUnitPrice).toFixed(2));
+                        if (createPOCreditInstallments.length === 1) {
+                          setCreatePOCreditInstallments([
+                            { ...createPOCreditInstallments[0], amount: String(nextTot) },
+                          ]);
+                        }
+                        if (createPOBalanceInstallments.length === 1) {
+                          const rem = Math.max(0, Number((nextTot - validDeposit).toFixed(2)));
+                          setCreatePOBalanceInstallments([
+                            { ...createPOBalanceInstallments[0], amount: String(rem) },
+                          ]);
+                        }
+                      }}
+                      className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white font-mono text-sm font-bold text-center outline-none focus:border-teal-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-white flex items-center justify-between">
+                      <span>سعر الحبة (ر.س):</span>
+                      <span className="text-[11px] font-mono text-emerald-300" lang="en">
+                        الإجمالي: {calculatedTotalCost.toLocaleString('en-US')} ر.س
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      lang="en"
+                      dir="ltr"
+                      value={createPOUnitPriceStr}
+                      onChange={(e) => {
+                        const raw = sanitizeEnglishNumericInput(e.target.value, true);
+                        setCreatePOUnitPriceStr(raw);
+                        const p = parseFloat(raw);
+                        if (!isNaN(p) && p >= 0) {
+                          const nextTot = Number(((createPOQuantityUnits || 0) * p).toFixed(2));
+                          if (createPOCreditInstallments.length === 1) {
+                            setCreatePOCreditInstallments([
+                              { ...createPOCreditInstallments[0], amount: String(nextTot) },
+                            ]);
+                          }
+                          if (createPOBalanceInstallments.length === 1) {
+                            const rem = Math.max(0, Number((nextTot - validDeposit).toFixed(2)));
+                            setCreatePOBalanceInstallments([
+                              { ...createPOBalanceInstallments[0], amount: String(rem) },
+                            ]);
+                          }
+                        }
+                      }}
+                      className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-emerald-300 font-mono text-sm font-bold text-center outline-none focus:border-teal-400"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Per-PO Agreement Summary Input (ملخص الاتفاق الخاص بهذا الأمر) */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-teal-200 block">
+                    ملخص الاتفاق الخاص بهذا الأمر (اختياري):
+                  </label>
+                  <input
+                    type="text"
+                    value={createPONotes}
+                    onChange={(e) => setCreatePONotes(e.target.value)}
+                    placeholder="مثال: التوريد على دفعتين خلال 48 ساعة..."
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-white text-xs outline-none focus:border-teal-400"
+                  />
+                </div>
+
+                {/* 3. Payment Method Selector (3 Options with Explicit Dates) */}
+                <div className="space-y-3 bg-white/[0.03] border border-white/15 rounded-2xl p-4">
+                  <label className="font-extrabold text-white block text-xs sm:text-sm">
+                    طريقة الدفع وجدولة الاستحقاق (بتواريخ صريحة YYYY-MM-DD):
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setCreatePOPaymentType('full_payment')}
+                      className={`p-3 rounded-xl border text-right transition-all cursor-pointer ${
+                        createPOPaymentType === 'full_payment'
+                          ? 'bg-teal-500/25 border-teal-300/60 text-white shadow-md'
+                          : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="font-extrabold text-xs">1. دفع كامل</div>
+                      <div className="text-[11px] text-white/60 mt-0.5">
+                        كاش أو تحويل مباشر لكامل القيمة
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatePOPaymentType('deposit_and_balance');
+                        const dep = validDeposit > 0 ? validDeposit : Number((calculatedTotalCost * 0.3).toFixed(2));
+                        setCreatePODepositAmountStr(String(dep));
+                        const rem = Math.max(0, Number((calculatedTotalCost - dep).toFixed(2)));
+                        setCreatePOBalanceInstallments([
+                          {
+                            title: 'دفعة المتبقي #1',
+                            amount: String(rem),
+                            dueDate: createPOBalanceInstallments[0]?.dueDate || '',
+                          },
+                        ]);
+                      }}
+                      className={`p-3 rounded-xl border text-right transition-all cursor-pointer ${
+                        createPOPaymentType === 'deposit_and_balance'
+                          ? 'bg-teal-500/25 border-teal-300/60 text-white shadow-md'
+                          : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="font-extrabold text-xs">2. عربون + متبقي مجدول</div>
+                      <div className="text-[11px] text-white/60 mt-0.5">
+                        دفعة مقدمة وتقسيم الباقي بتواريخ محددة
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatePOPaymentType('full_credit');
+                        setCreatePOCreditInstallments([
+                          {
+                            title: 'دفعة آجل #1',
+                            amount: String(calculatedTotalCost),
+                            dueDate: createPOCreditInstallments[0]?.dueDate || '',
+                          },
+                        ]);
+                      }}
+                      className={`p-3 rounded-xl border text-right transition-all cursor-pointer ${
+                        createPOPaymentType === 'full_credit'
+                          ? 'bg-teal-500/25 border-teal-300/60 text-white shadow-md'
+                          : 'bg-white/5 border-white/15 text-white/70 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="font-extrabold text-xs">3. آجل بالكامل</div>
+                      <div className="text-[11px] text-white/60 mt-0.5">
+                        جدولة كامل المبلغ لدفعة أو عدة دفعات
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Option 1 Body: Full Payment */}
+                  {createPOPaymentType === 'full_payment' && (
+                    <div className="bg-black/35 border border-white/15 rounded-xl p-4 space-y-3 mt-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={createPOFullPaidNow}
+                            onChange={(e) => setCreatePOFullPaidNow(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                          />
+                          <span className="font-extrabold text-emerald-200">
+                            تم الدفع الآن ({toEnglishDigits(calculatedTotalCost.toLocaleString('en-US'))} ر.س)
+                          </span>
+                        </label>
+                        <span className="text-[11px] text-white/60">
+                          {createPOFullPaidNow
+                            ? 'سيتم قيد الدفعة كمسددة (paid) مباشرة'
+                            : 'سيتم قيد الدفعة كمجدولة (scheduled) بتاريخ الاستحقاق'}
+                        </span>
+                      </div>
+
+                      {createPOFullPaidNow ? (
+                        <div className="space-y-1.5">
+                          <label className="block font-bold text-white/85">
+                            إرفاق صورة إيصال التحويل أو PDF (اختياري - يُضغط تلقائياً):
+                          </label>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => setCreatePOReceiptFile(e.target.files?.[0] || null)}
+                            className="w-full bg-white/10 border border-white/20 rounded-xl p-2 text-white text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-teal-500/30 file:text-teal-100 cursor-pointer"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 max-w-xs">
+                          <label className="block font-bold text-amber-200">
+                            تاريخ الاستحقاق المحدد:
+                          </label>
+                          <CleanRtlDateInput
+                            value={createPOFullDueDate}
+                            onChange={setCreatePOFullDueDate}
+                            required
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Option 2 Body: Deposit + Scheduled Balance */}
+                  {createPOPaymentType === 'deposit_and_balance' && (
+                    <div className="bg-black/35 border border-white/15 rounded-xl p-4 space-y-4 mt-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="block font-bold text-white">قيمة العربون (ر.س):</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            lang="en"
+                            dir="ltr"
+                            required
+                            value={createPODepositAmountStr}
+                            onChange={(e) => {
+                              const raw = sanitizeEnglishNumericInput(e.target.value, true);
+                              setCreatePODepositAmountStr(raw);
+                              const dep = parseFloat(raw);
+                              if (!isNaN(dep) && dep >= 0 && createPOBalanceInstallments.length === 1) {
+                                const rem = Math.max(
+                                  0,
+                                  Number((calculatedTotalCost - dep).toFixed(2))
+                                );
+                                setCreatePOBalanceInstallments([
+                                  { ...createPOBalanceInstallments[0], amount: String(rem) },
+                                ]);
+                              }
+                            }}
+                            className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white font-mono font-bold text-start outline-none focus:border-teal-400"
+                          />
+                        </div>
+
+                        <div className="bg-amber-500/10 border border-amber-400/30 rounded-xl p-3 flex flex-col justify-center">
+                          <span className="text-[11px] text-amber-200/80">
+                            المبلغ المتبقي التلقائي (الإجمالي - العربون):
+                          </span>
+                          <span className="text-base font-extrabold font-mono text-amber-300 mt-0.5" dir="ltr">
+                            {toEnglishDigits(calculatedRemainingBalance.toLocaleString('en-US'))} ر.س
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 border-t border-white/10 pt-3">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={createPODepositPaidNow}
+                            onChange={(e) => setCreatePODepositPaidNow(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                          />
+                          <span className="font-extrabold text-emerald-200">
+                            تم دفع العربون الآن
+                          </span>
+                        </label>
+
+                        {createPODepositPaidNow ? (
+                          <div className="space-y-1">
+                            <label className="block font-bold text-white/80">
+                              إرفاق إيصال سداد العربون (اختياري):
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              onChange={(e) => setCreatePOReceiptFile(e.target.files?.[0] || null)}
+                              className="w-full bg-white/10 border border-white/20 rounded-xl p-2 text-white text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-teal-500/30 file:text-teal-100 cursor-pointer"
+                            />
+                          </div>
+                        ) : (
+                          <div className="space-y-1 max-w-xs">
+                            <label className="block font-bold text-amber-200">
+                              تاريخ استحقاق العربون:
+                            </label>
+                            <CleanRtlDateInput
+                              value={createPODepositDueDate}
+                              onChange={setCreatePODepositDueDate}
+                              required
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Scheduled Balance Installments */}
+                      <div className="space-y-2.5 border-t border-white/10 pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-teal-200">
+                            جدولة دفعات المبلغ المتبقي ({toEnglishDigits(calculatedRemainingBalance.toLocaleString('en-US'))} ر.س):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCreatePOBalanceInstallments((prev) => [
+                                ...prev,
+                                {
+                                  title: `دفعة المتبقي #${prev.length + 1}`,
+                                  amount: '0',
+                                  dueDate: '',
+                                },
+                              ])
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/35 border border-teal-300/40 text-teal-100 font-bold text-[11px] cursor-pointer"
+                          >
+                            + تقسيم المتبقي لدفعة إضافية
+                          </button>
+                        </div>
+
+                        {createPOBalanceInstallments.map((inst, idx) => (
+                          <div
+                            key={`bal-inst-${idx}`}
+                            className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end bg-white/[0.03] border border-white/10 rounded-xl p-2.5"
+                          >
+                            <div className="sm:col-span-4 space-y-1">
+                              <label className="text-[11px] text-white/70 block">بيان الدفعة:</label>
+                              <input
+                                type="text"
+                                required
+                                value={inst.title}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCreatePOBalanceInstallments((prev) =>
+                                    prev.map((row, i) => (i === idx ? { ...row, title: val } : row))
+                                  );
+                                }}
+                                className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-white text-xs outline-none"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-3 space-y-1">
+                              <label className="text-[11px] text-white/70 block">المبلغ (ر.س):</label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                lang="en"
+                                required
+                                dir="ltr"
+                                value={inst.amount}
+                                onChange={(e) => {
+                                  const val = sanitizeEnglishNumericInput(e.target.value, true);
+                                  setCreatePOBalanceInstallments((prev) =>
+                                    prev.map((row, i) => (i === idx ? { ...row, amount: val } : row))
+                                  );
+                                }}
+                                className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs text-start outline-none"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-4 space-y-1">
+                              <label className="text-[11px] text-white/70 block">تاريخ الاستحقاق:</label>
+                              <CleanRtlDateInput
+                                value={inst.dueDate}
+                                onChange={(val) =>
+                                  setCreatePOBalanceInstallments((prev) =>
+                                    prev.map((row, i) => (i === idx ? { ...row, dueDate: val } : row))
+                                  )
+                                }
+                                required
+                              />
+                            </div>
+
+                            <div className="sm:col-span-1 flex justify-end">
+                              {createPOBalanceInstallments.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCreatePOBalanceInstallments((prev) =>
+                                      prev.filter((_, i) => i !== idx)
+                                    )
+                                  }
+                                  className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-400/30 cursor-pointer"
+                                  title="حذف الدفعة"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Option 3 Body: Full Credit Installments */}
+                  {createPOPaymentType === 'full_credit' && (
+                    <div className="bg-black/35 border border-white/15 rounded-xl p-4 space-y-3 mt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-teal-200">
+                          جدولة دفعات الآجل ({toEnglishDigits(calculatedTotalCost.toLocaleString('en-US'))} ر.س):
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCreatePOCreditInstallments((prev) => [
+                              ...prev,
+                              {
+                                title: `دفعة آجل #${prev.length + 1}`,
+                                amount: '0',
+                                dueDate: '',
+                              },
+                            ])
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/35 border border-teal-300/40 text-teal-100 font-bold text-[11px] cursor-pointer"
+                        >
+                          + إضافة دفعة أخرى
+                        </button>
+                      </div>
+
+                      {createPOCreditInstallments.map((inst, idx) => (
+                        <div
+                          key={`cred-inst-${idx}`}
+                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end bg-white/[0.03] border border-white/10 rounded-xl p-2.5"
+                        >
+                          <div className="sm:col-span-4 space-y-1">
+                            <label className="text-[11px] text-white/70 block">بيان الدفعة:</label>
+                            <input
+                              type="text"
+                              required
+                              value={inst.title}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCreatePOCreditInstallments((prev) =>
+                                  prev.map((row, i) => (i === idx ? { ...row, title: val } : row))
+                                );
+                              }}
+                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-white text-xs outline-none"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 space-y-1">
+                            <label className="text-[11px] text-white/70 block">المبلغ (ر.س):</label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              lang="en"
+                              required
+                              dir="ltr"
+                              value={inst.amount}
+                              onChange={(e) => {
+                                const val = sanitizeEnglishNumericInput(e.target.value, true);
+                                setCreatePOCreditInstallments((prev) =>
+                                  prev.map((row, i) => (i === idx ? { ...row, amount: val } : row))
+                                );
+                              }}
+                              className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs text-start outline-none"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-4 space-y-1">
+                            <label className="text-[11px] text-white/70 block">تاريخ الاستحقاق:</label>
+                            <CleanRtlDateInput
+                              value={inst.dueDate}
+                              onChange={(val) =>
+                                setCreatePOCreditInstallments((prev) =>
+                                  prev.map((row, i) => (i === idx ? { ...row, dueDate: val } : row))
+                                )
+                              }
+                              required
+                            />
+                          </div>
+
+                          <div className="sm:col-span-1 flex justify-end">
+                            {createPOCreditInstallments.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCreatePOCreditInstallments((prev) =>
+                                    prev.filter((_, i) => i !== idx)
+                                  )
+                                }
+                                className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-400/30 cursor-pointer"
+                                title="حذف الدفعة"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatePOModalOpen(false)}
+                    disabled={isSubmittingQuickOrder}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingQuickOrder}
+                    className="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 text-white border border-teal-300/50 shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingQuickOrder ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جاري إصدار الأمر وجدولة الدفعات...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>اعتماد وإصدار أمر الشراء</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

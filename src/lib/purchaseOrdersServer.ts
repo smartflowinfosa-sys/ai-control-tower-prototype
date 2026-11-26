@@ -98,6 +98,11 @@ interface RawPurchaseOrderRow {
   supplier_id?: string;
   inventory_item_code?: string;
   quantity?: number;
+  received_quantity?: number | null;
+  damaged_quantity?: number | null;
+  received_at?: string | null;
+  notes?: string | null;
+  payment_type?: string | null;
   total_cost?: number;
   status: string;
   created_at?: string;
@@ -115,19 +120,10 @@ interface RawPurchaseOrderRow {
 export async function fetchPurchaseOrdersServer(): Promise<SupabasePurchaseOrder[]> {
   const supabaseAdmin = getSupabaseAdmin();
 
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('purchase_orders')
     .select(`
-      po_number,
-      supplier_id,
-      inventory_item_code,
-      quantity,
-      total_cost,
-      status,
-      created_at,
-      created_by,
-      invoice_url,
-      receiver_signature,
+      *,
       suppliers (
         id,
         name_ar,
@@ -140,6 +136,36 @@ export async function fetchPurchaseOrdersServer(): Promise<SupabasePurchaseOrder
       )
     `)
     .order('created_at', { ascending: false });
+
+  if (error) {
+    const fallback = await supabaseAdmin
+      .from('purchase_orders')
+      .select(`
+        po_number,
+        supplier_id,
+        inventory_item_code,
+        quantity,
+        total_cost,
+        status,
+        created_at,
+        created_by,
+        invoice_url,
+        receiver_signature,
+        suppliers (
+          id,
+          name_ar,
+          name_en
+        ),
+        inventory_items (
+          item_code,
+          item_name_ar,
+          category_ar
+        )
+      `)
+      .order('created_at', { ascending: false });
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error('[fetchPurchaseOrdersServer] Supabase query error:', error.message);
@@ -200,6 +226,14 @@ export async function fetchPurchaseOrdersServer(): Promise<SupabasePurchaseOrder
         invoice_url: row.invoice_url || undefined,
         receiverSignature: row.receiver_signature || undefined,
         receiver_signature: row.receiver_signature || undefined,
+        receivedQuantity: row.received_quantity != null ? Number(row.received_quantity) : 0,
+        received_quantity: row.received_quantity != null ? Number(row.received_quantity) : 0,
+        damagedQuantity: row.damaged_quantity != null ? Number(row.damaged_quantity) : 0,
+        damaged_quantity: row.damaged_quantity != null ? Number(row.damaged_quantity) : 0,
+        receivedAt: row.received_at || undefined,
+        received_at: row.received_at || undefined,
+        notes: row.notes || undefined,
+        payment_type: row.payment_type || undefined,
       });
     } else {
       existing.quantity += qty;
@@ -241,6 +275,8 @@ export async function createPurchaseOrderServer(
     quantity: number;
     total_cost: number;
     status?: string;
+    notes?: string | null;
+    payment_type?: string | null;
   },
   authenticatedUserId: string,
   fallbackDisplayName?: string
@@ -297,6 +333,22 @@ export async function createPurchaseOrderServer(
     throw new Error(`تعذر حفظ أمر الشراء في Supabase: ${error?.message || 'Unknown error'}`);
   }
 
+  // Best-effort update of optional columns (notes, payment_type) if present in schema
+  const extraCols: Record<string, unknown> = {};
+  if (poData.notes !== undefined && poData.notes !== null && String(poData.notes).trim()) {
+    extraCols.notes = String(poData.notes).trim();
+  }
+  if (poData.payment_type !== undefined && poData.payment_type !== null && String(poData.payment_type).trim()) {
+    extraCols.payment_type = String(poData.payment_type).trim();
+  }
+  if (Object.keys(extraCols).length > 0) {
+    await supabaseAdmin
+      .from('purchase_orders')
+      .update(extraCols)
+      .eq('po_number', poNumber)
+      .then(() => undefined, () => undefined);
+  }
+
   const nameMap = await resolveCreatorNamesByIds([userId]);
   const cleanCreatorName =
     nameMap.get(userId) || sanitizeCreatorName(fallbackDisplayName) || '';
@@ -323,6 +375,8 @@ export async function createPurchaseOrderServer(
     createdAt: rowData.created_at ? new Date(rowData.created_at).toLocaleDateString('en-US') : '',
     createdBy: cleanCreatorName,
     createdById: userId,
+    notes: poData.notes ? String(poData.notes).trim() : undefined,
+    payment_type: poData.payment_type ? String(poData.payment_type).trim() : undefined,
   };
 }
 

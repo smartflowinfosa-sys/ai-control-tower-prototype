@@ -88,8 +88,14 @@ export interface PurchaseOrder {
   supplierId?: string;
   invoiceUrl?: string;
   receivedQuantity?: number;
+  received_quantity?: number;
+  damagedQuantity?: number;
+  damaged_quantity?: number;
   receiverSignature?: string;
   receivedAt?: string;
+  received_at?: string;
+  notes?: string | null;
+  payment_type?: 'full_payment' | 'deposit_and_balance' | 'full_credit' | string | null;
 }
 
 export const initialPurchaseOrders: PurchaseOrder[] = [

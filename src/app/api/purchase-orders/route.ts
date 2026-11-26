@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { po_number, supplier_id, inventory_item_code, quantity, total_cost, status } = body || {};
+    const { po_number, supplier_id, inventory_item_code, quantity, total_cost, status, notes, payment_type } = body || {};
 
     if (!inventory_item_code || !quantity || Number(quantity) <= 0) {
       return NextResponse.json(
@@ -73,6 +73,8 @@ export async function POST(req: Request) {
         quantity: Number(quantity),
         total_cost: Number(total_cost) || 0,
         status,
+        notes: typeof notes === 'string' ? notes.trim() || null : null,
+        payment_type: typeof payment_type === 'string' ? payment_type.trim() || null : null,
       },
       userId,
       fallbackName
@@ -124,12 +126,19 @@ export async function PATCH(req: Request) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin
-      .from('purchase_orders')
-      .update(updatePayload)
-      .eq('po_number', poNumber)
-      .select('*')
-      .maybeSingle();
+    let data: unknown = null;
+    let error: { message: string } | null = null;
+
+    if (Object.keys(updatePayload).length > 0) {
+      const res = await supabaseAdmin
+        .from('purchase_orders')
+        .update(updatePayload)
+        .eq('po_number', poNumber)
+        .select('*')
+        .maybeSingle();
+      data = res.data;
+      error = res.error;
+    }
 
     if (error) {
       return NextResponse.json(
@@ -138,13 +147,34 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // Best-effort update of received_at if the column exists in public.purchase_orders
+    // Best-effort update of optional columns (received_quantity, damaged_quantity, received_at, notes, payment_type)
+    const optionalCols: Record<string, unknown> = {};
+    if (body.received_quantity !== undefined && Number.isFinite(Number(body.received_quantity))) {
+      optionalCols.received_quantity = Math.max(0, Math.round(Number(body.received_quantity)));
+    }
+    if (body.damaged_quantity !== undefined && Number.isFinite(Number(body.damaged_quantity))) {
+      optionalCols.damaged_quantity = Math.max(0, Math.round(Number(body.damaged_quantity)));
+    }
     if (body.received_at !== undefined && typeof body.received_at === 'string' && body.received_at.trim()) {
-      await supabaseAdmin
+      optionalCols.received_at = body.received_at.trim();
+    }
+    if (body.notes !== undefined) {
+      optionalCols.notes = typeof body.notes === 'string' ? body.notes.trim() || null : null;
+    }
+    if (body.payment_type !== undefined) {
+      optionalCols.payment_type = typeof body.payment_type === 'string' ? body.payment_type.trim() || null : null;
+    }
+
+    if (Object.keys(optionalCols).length > 0) {
+      const optRes = await supabaseAdmin
         .from('purchase_orders')
-        .update({ received_at: body.received_at.trim() })
+        .update(optionalCols)
         .eq('po_number', poNumber)
-        .then(() => undefined, () => undefined);
+        .select('*')
+        .maybeSingle();
+      if (!optRes.error && optRes.data) {
+        data = optRes.data;
+      }
     }
 
     revalidateTag('purchase-orders', 'max');

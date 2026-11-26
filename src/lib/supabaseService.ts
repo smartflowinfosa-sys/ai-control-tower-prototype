@@ -105,6 +105,12 @@ export interface SupabaseSupplier {
   created_at?: string;
   cr_number?: string | null;
   tax_number?: string | null;
+  // Agreement & terms fields (`public.suppliers`):
+  agreement_payment_terms?: string | null;
+  agreement_delivery_terms?: string | null;
+  agreement_notes?: string | null;
+  agreement_updated_at?: string | null;
+  agreement_updated_by?: string | null;
   // Normalized & UI compatibility fields:
   name?: string;
   category?: string;
@@ -477,10 +483,19 @@ function normalizeSupplier(row: any, overrides?: Partial<SupabaseSupplier>): Sup
  * Fetch all real suppliers from the Supabase database in strict default order
  */
 export async function fetchSuppliers(): Promise<SupabaseSupplier[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('suppliers')
-    .select('id, name_ar, name_en, delivery_time_hours, rating, location_ar, location_en, cr_number, tax_number, phone_number, created_at')
+    .select('*')
     .order('created_at', { ascending: true });
+
+  if (error) {
+    const fallback = await supabase
+      .from('suppliers')
+      .select('id, name_ar, name_en, delivery_time_hours, rating, location_ar, location_en, cr_number, tax_number, phone_number, created_at')
+      .order('created_at', { ascending: true });
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error('Error in fetchSuppliers from Supabase:', error.message);
@@ -643,9 +658,10 @@ export async function uploadInvoice(file: File, poNumber: string): Promise<strin
 }
 
 /**
- * Receive stock against a specific Purchase Order:
- * 1. Updates purchase_orders table: set status to "تم الاستلام" (Received), and store invoiceUrl and signature (if columns exist).
- * 2. IMPORTANT: Updates inventory_items table to add receivedQty to the current_stock.
+ * Mark a Purchase Order as received/completed in `public.purchase_orders`.
+ * STRICT DATA INTEGRITY RULE:
+ * This function ONLY updates `public.purchase_orders` and NEVER modifies `public.inventory_items`
+ * (`main_stock`, `production_stock`, `current_stock`) or `public.inventory_adjustments`.
  */
 export async function receivePurchaseOrder(
   poNumber: string,
@@ -769,62 +785,12 @@ export async function receivePurchaseOrder(
     );
   }
 
-  // 3. IMPORTANT: Update inventory_items table: add receivedQty to current_stock
-  let finalStock = Number(receivedQty);
-  if (targetItemCode) {
-    // Try finding item by exact item_code
-    let { data: currentItem } = await supabase
-      .from('inventory_items')
-      .select('item_code, current_stock')
-      .eq('item_code', targetItemCode)
-      .maybeSingle();
-
-    // If not found by exact code, search by item name
-    if (!currentItem && sessionPO?.itemName) {
-      const { data: itemByName } = await supabase
-        .from('inventory_items')
-        .select('item_code, current_stock')
-        .ilike('item_name_ar', `%${sessionPO.itemName}%`)
-        .maybeSingle();
-      if (itemByName) {
-        currentItem = itemByName;
-        targetItemCode = itemByName.item_code;
-      }
-    }
-
-    if (currentItem) {
-      const existingStock = Number(currentItem.current_stock) || 0;
-      finalStock = existingStock + Number(receivedQty);
-
-      const updatePayload: Record<string, any> = {
-        current_stock: finalStock,
-        last_restock_date: new Date().toISOString(),
-      };
-
-      const { error: updateErr } = await supabase
-        .from('inventory_items')
-        .update(updatePayload)
-        .eq('item_code', currentItem.item_code);
-
-      if (updateErr) {
-        // If last_restock_date column does not exist yet in DB schema, fall back to current_stock only
-        const { error: retryErr } = await supabase
-          .from('inventory_items')
-          .update({ current_stock: finalStock })
-          .eq('item_code', currentItem.item_code);
-        if (retryErr) {
-          console.error('Failed to update current_stock in inventory_items:', retryErr.message);
-          throw new Error(`تعذر تحديث كمية المخزون في Supabase: ${retryErr.message}`);
-        }
-      }
-    } else {
-      console.warn(`Could not locate item ${targetItemCode} in inventory_items`);
-    }
-  }
-
+  // STRICT DATA INTEGRITY RULE:
+  // Do NOT update public.inventory_items or insert into public.inventory_adjustments from PO receipt.
+  // Stock additions are performed manually from the Inventory module after physical inspection.
   return {
     success: true,
-    newStock: finalStock,
+    newStock: Number(receivedQty) || 0,
     itemCode: targetItemCode || '',
   };
 }
@@ -947,7 +913,13 @@ export interface SupabasePurchaseOrder {
   receiverSignature?: string;
   receiver_signature?: string;
   receivedQuantity?: number;
+  received_quantity?: number;
+  damagedQuantity?: number;
+  damaged_quantity?: number;
   receivedAt?: string;
+  received_at?: string;
+  notes?: string | null;
+  payment_type?: 'full_payment' | 'deposit_and_balance' | 'full_credit' | string | null;
 }
 
 /**
@@ -1133,6 +1105,8 @@ export async function createPurchaseOrder(poData: {
   total_cost: number;
   status?: string;
   created_by: string;
+  notes?: string | null;
+  payment_type?: string | null;
 }): Promise<SupabasePurchaseOrder> {
   const creatorUserId = (poData.created_by || '').trim();
   if (!creatorUserId) {
@@ -1284,24 +1258,32 @@ export async function updatePurchaseOrderStatus(
 export interface UpdatePurchaseOrderInput {
   po_number: string;
   quantity?: number;
+  received_quantity?: number;
+  damaged_quantity?: number;
   total_cost?: number;
   supplier_id?: string | null;
   supplierName?: string;
   status?: string;
+  received_at?: string;
+  notes?: string | null;
+  payment_type?: string | null;
 }
 
 /**
- * Update an existing Purchase Order's details (quantity, total_cost, supplier_id, status) in Supabase.
+ * Update an existing Purchase Order's details (quantity, received_quantity, damaged_quantity, total_cost, supplier_id, status) in Supabase.
  */
 export async function updatePurchaseOrderDetails(
   input: UpdatePurchaseOrderInput
 ): Promise<void> {
   updateSessionPurchaseOrder(input.po_number, {
     ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+    ...(input.received_quantity !== undefined ? { receivedQuantity: input.received_quantity, received_quantity: input.received_quantity } : {}),
+    ...(input.damaged_quantity !== undefined ? { damagedQuantity: input.damaged_quantity, damaged_quantity: input.damaged_quantity } : {}),
     ...(input.total_cost !== undefined ? { totalCost: input.total_cost } : {}),
     ...(input.supplier_id !== undefined ? { supplier_id: input.supplier_id || undefined, supplierId: input.supplier_id || undefined } : {}),
     ...(input.supplierName !== undefined ? { supplierName: input.supplierName } : {}),
     ...(input.status !== undefined ? { status: input.status as any } : {}),
+    ...(input.received_at !== undefined ? { receivedAt: input.received_at, received_at: input.received_at } : {}),
   });
 
   if (typeof window !== 'undefined') {
@@ -1319,9 +1301,12 @@ export async function updatePurchaseOrderDetails(
 
   const updatePayload: Record<string, unknown> = {};
   if (input.quantity !== undefined) updatePayload.quantity = input.quantity;
+  if (input.received_quantity !== undefined) updatePayload.received_quantity = input.received_quantity;
+  if (input.damaged_quantity !== undefined) updatePayload.damaged_quantity = input.damaged_quantity;
   if (input.total_cost !== undefined) updatePayload.total_cost = input.total_cost;
   if (input.supplier_id !== undefined) updatePayload.supplier_id = input.supplier_id;
   if (input.status !== undefined) updatePayload.status = input.status;
+  if (input.received_at !== undefined) updatePayload.received_at = input.received_at;
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -1356,6 +1341,342 @@ export async function deletePurchaseOrder(poNumber: string): Promise<void> {
   if (error) {
     throw new Error(`تعذر حذف أمر الشراء: ${error.message}`);
   }
+}
+
+/**
+ * Update Supplier Agreement & Terms (`agreement_payment_terms`, `agreement_delivery_terms`, `agreement_notes`)
+ */
+export async function updateSupplierAgreementTerms(input: {
+  supplier_id: string;
+  agreement_payment_terms: string;
+  agreement_delivery_terms: string;
+  agreement_notes: string;
+  agreement_updated_by: string;
+}): Promise<{
+  agreement_payment_terms: string;
+  agreement_delivery_terms: string;
+  agreement_notes: string;
+  agreement_updated_at: string;
+  agreement_updated_by: string;
+}> {
+  const nowIso = new Date().toISOString();
+  const payload = {
+    ...input,
+    agreement_updated_at: nowIso,
+  };
+
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/suppliers/agreement', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error || 'تعذر حفظ بنود الاتفاق في قاعدة البيانات');
+    }
+    return {
+      agreement_payment_terms: input.agreement_payment_terms,
+      agreement_delivery_terms: input.agreement_delivery_terms,
+      agreement_notes: input.agreement_notes,
+      agreement_updated_at: json?.supplier?.agreement_updated_at || nowIso,
+      agreement_updated_by: input.agreement_updated_by,
+    };
+  }
+
+  await supabase
+    .from('suppliers')
+    .update({
+      agreement_payment_terms: input.agreement_payment_terms || null,
+      agreement_delivery_terms: input.agreement_delivery_terms || null,
+      agreement_notes: input.agreement_notes || null,
+      agreement_updated_at: nowIso,
+      agreement_updated_by: input.agreement_updated_by,
+    })
+    .eq('id', input.supplier_id);
+
+  return {
+    agreement_payment_terms: input.agreement_payment_terms,
+    agreement_delivery_terms: input.agreement_delivery_terms,
+    agreement_notes: input.agreement_notes,
+    agreement_updated_at: nowIso,
+    agreement_updated_by: input.agreement_updated_by,
+  };
+}
+
+/**
+ * Purchase Order Scheduled Payments (`public.po_payments`)
+ */
+export interface SupabasePOPayment {
+  id: string;
+  po_number: string;
+  supplier_id?: string | null;
+  title: string;
+  amount: number;
+  due_date: string;
+  status: 'scheduled' | 'paid';
+  paid_at?: string | null;
+  receipt_url?: string | null;
+  reminder_ticket_created: boolean;
+  notes?: string | null;
+  created_at?: string;
+  suppliers?: {
+    id?: string;
+    name_ar?: string;
+    name_en?: string;
+  } | null;
+}
+
+export async function fetchPOPayments(filters?: {
+  po_number?: string;
+  supplier_id?: string;
+}): Promise<SupabasePOPayment[]> {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams();
+    if (filters?.po_number) params.set('po_number', filters.po_number);
+    if (filters?.supplier_id) params.set('supplier_id', filters.supplier_id);
+    const qs = params.toString();
+    const res = await fetch(`/api/po-payments${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const json = await res.json().catch(() => ({}));
+    return Array.isArray(json?.payments) ? (json.payments as SupabasePOPayment[]) : [];
+  }
+
+  let query = supabase.from('po_payments').select('*').order('due_date', { ascending: true });
+  if (filters?.po_number) query = query.eq('po_number', filters.po_number);
+  if (filters?.supplier_id) query = query.eq('supplier_id', filters.supplier_id);
+  const { data } = await query;
+  return (data as SupabasePOPayment[]) || [];
+}
+
+export async function createPOPayment(input: {
+  po_number?: string;
+  supplier_id?: string | null;
+  title: string;
+  amount: number;
+  due_date: string;
+  status?: 'scheduled' | 'paid';
+  paid_at?: string | null;
+  receipt_url?: string | null;
+  notes?: string;
+}): Promise<SupabasePOPayment> {
+  const res = await fetch('/api/po-payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'create',
+      ...input,
+      po_number: input.po_number || 'دفعة عامة',
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'تعذر إضافة الدفعة المجدولة');
+  }
+  return json.payment as SupabasePOPayment;
+}
+
+export async function updatePOPayment(
+  id: string,
+  updates: Partial<{
+    title: string;
+    amount: number;
+    due_date: string;
+    status: 'scheduled' | 'paid';
+    paid_at: string | null;
+    receipt_url: string | null;
+    reminder_ticket_created: boolean;
+    notes: string | null;
+  }>
+): Promise<SupabasePOPayment> {
+  const res = await fetch('/api/po-payments', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...updates }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'تعذر تحديث بيانات الدفعة');
+  }
+  return json.payment as SupabasePOPayment;
+}
+
+export async function deletePOPayment(id: string): Promise<void> {
+  const res = await fetch(`/api/po-payments?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.error || 'تعذر حذف الدفعة المجدولة');
+  }
+}
+
+/**
+ * Client-Side Image Compression (Free Tier Optimization):
+ * If the uploaded file is an image (`image/*`), compresses it in the browser using an HTML5 `<canvas>`
+ * (max width `1200px`, JPEG quality `0.7`, reducing size to ~120KB) before uploading to Supabase Storage.
+ */
+export async function compressImageInBrowser(
+  file: File,
+  maxWidth = 1200,
+  quality = 0.7
+): Promise<File> {
+  if (typeof window === 'undefined' || !file.type.startsWith('image/')) {
+    return file;
+  }
+
+  return new Promise<File>((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let targetWidth = img.width;
+      let targetHeight = img.height;
+
+      if (targetWidth > maxWidth) {
+        const ratio = maxWidth / targetWidth;
+        targetWidth = maxWidth;
+        targetHeight = Math.round(targetHeight * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'receipt';
+          const compressedFile = new File([blob], `${baseName}-compressed.jpg`, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+/**
+ * Upload a payment receipt (compressed image or PDF) to the `procurement-docs` bucket
+ * (falling back to `invoices` if `procurement-docs` hasn't been created yet).
+ */
+export async function uploadProcurementReceipt(
+  rawFile: File,
+  poNumber: string
+): Promise<{ publicUrl: string; compressedSizeKB: number }> {
+  const processedFile = await compressImageInBrowser(rawFile, 1200, 0.7);
+  const compressedSizeKB = Math.max(1, Math.round(processedFile.size / 1024));
+
+  const cleanPo = String(poNumber || 'po').replace(/[^a-zA-Z0-9_-]/g, '');
+  const isImage = processedFile.type.startsWith('image/');
+  const ext = isImage ? 'jpg' : 'pdf';
+  const safeRandom = Math.random().toString(36).substring(7);
+  const filePath = `receipt-${cleanPo}-${Date.now()}-${safeRandom}.${ext}`;
+
+  // Try uploading to 'procurement-docs' bucket first
+  let bucketName = 'procurement-docs';
+  let { data, error } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, processedFile, {
+      contentType: processedFile.type || (isImage ? 'image/jpeg' : 'application/pdf'),
+      upsert: false,
+    });
+
+  // Fallback to 'invoices' bucket if 'procurement-docs' bucket does not exist yet
+  if (error) {
+    bucketName = 'invoices';
+    const retry = await supabase.storage
+      .from(bucketName)
+      .upload(filePath, processedFile, {
+        contentType: processedFile.type || (isImage ? 'image/jpeg' : 'application/pdf'),
+        upsert: false,
+      });
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (error) {
+    // Graceful Data URL fallback if neither storage bucket is configured yet so user flow isn't blocked
+    if (typeof window !== 'undefined' && processedFile.size <= 350 * 1024) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('تعذر قراءة ملف الإيصال'));
+        reader.readAsDataURL(processedFile);
+      });
+      return { publicUrl: dataUrl, compressedSizeKB };
+    }
+    throw new Error(`تعذر رفع إيصال السداد إلى التخزين: ${error.message}`);
+  }
+
+  const targetPath = data?.path || filePath;
+  const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(targetPath);
+  return {
+    publicUrl: publicUrlData.publicUrl,
+    compressedSizeKB,
+  };
+}
+
+/**
+ * Automated Finance & Manager Reminder Workflow (`مسار تذكير المالية والمدير`):
+ * Queries `public.po_payments` joined with `suppliers(name_ar)` where `status = 'scheduled'`,
+ * `due_date <= (today + 3 days)`, and `reminder_ticket_created = false`.
+ * Inserts high-priority reminder tickets into `public.tickets` and marks `reminder_ticket_created = true`.
+ */
+export async function checkAndTriggerDuePaymentReminders(
+  supplierNameMap?: Record<string, string>
+): Promise<{
+  triggeredCount: number;
+  ticketsCreated: Array<{
+    payment_id: string;
+    po_number: string;
+    supplier_name: string;
+    amount: number;
+    due_date: string;
+    description: string;
+  }>;
+}> {
+  const res = await fetch('/api/po-payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'check_reminders',
+      supplier_name_map: supplierNameMap || {},
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json?.error || 'تعذر فحص تذكيرات الدفعات المستحقة');
+  }
+  return {
+    triggeredCount: Number(json?.triggeredCount || 0),
+    ticketsCreated: Array.isArray(json?.ticketsCreated) ? json.ticketsCreated : [],
+  };
 }
 
 /**
