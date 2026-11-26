@@ -32,7 +32,7 @@ import {
 } from '@/lib/supabaseService';
 import { getAuthenticatedPOUser, formatPOCreatorDisplay } from '@/lib/poAuth';
 import { useSession } from 'next-auth/react';
-import { compareItemCodes } from '@/constants/inventoryCodes';
+import { compareItemCodes, CARTON_SIZES } from '@/constants/inventoryCodes';
 import {
   Clock,
   Mail,
@@ -70,12 +70,12 @@ import {
 const toEnglishDigits = (str: string | number): string => {
   if (str === null || str === undefined) return '';
   if (typeof str === 'number') {
-    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(str);
+    return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 4 }).format(str);
   }
   const clean = String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
   const num = Number(clean);
   if (!isNaN(num) && clean.trim() !== '' && !clean.includes(':') && !clean.includes('-') && !clean.includes('/')) {
-    return new Intl.NumberFormat('en-US', { useGrouping: true }).format(num);
+    return new Intl.NumberFormat('en-US', { useGrouping: true, maximumFractionDigits: 4 }).format(num);
   }
   return clean;
 };
@@ -215,7 +215,7 @@ export default function SuppliersClient({
   const [isLoadingSupplierItems, setIsLoadingSupplierItems] = useState<boolean>(false);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState<boolean>(false);
   const [selectedItemToAdd, setSelectedItemToAdd] = useState<string>('');
-  const [agreedUnitPrice, setAgreedUnitPrice] = useState<number>(0.5);
+  const [agreedUnitPrice, setAgreedUnitPrice] = useState<string>('0.10');
   const [isSavingNewItem, setIsSavingNewItem] = useState<boolean>(false);
 
   useEffect(() => {
@@ -266,9 +266,16 @@ export default function SuppliersClient({
   const handleAddCertifiedItem = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedProfileSupplier || !selectedItemToAdd) return;
+    const normalizedPriceStr = String(agreedUnitPrice)
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+      .trim();
+    const parsedPrice = parseFloat(normalizedPriceStr);
+    if (isNaN(parsedPrice) || parsedPrice < 0) return;
+
     setIsSavingNewItem(true);
     try {
-      const record = await addSupplierItem(selectedProfileSupplier.id, selectedItemToAdd, agreedUnitPrice);
+      const record = await addSupplierItem(selectedProfileSupplier.id, selectedItemToAdd, parsedPrice);
       setSupplierItems(prev => {
         if (prev.some(p => p.item_code === selectedItemToAdd)) return prev;
         return [record, ...prev];
@@ -1735,8 +1742,13 @@ export default function SuppliersClient({
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedItemToAdd(availableItems[0]?.item_code || '');
-                          setAgreedUnitPrice(availableItems[0]?.cost_per_unit || 0.5);
+                          const firstItem = availableItems[0];
+                          setSelectedItemToAdd(firstItem?.item_code || '');
+                          setAgreedUnitPrice(
+                            firstItem?.cost_per_unit && Number(firstItem.cost_per_unit) > 0
+                              ? String(firstItem.cost_per_unit)
+                              : '0.10'
+                          );
                           setIsAddItemModalOpen(true);
                         }}
                         className="px-3.5 py-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 text-white text-xs font-bold border border-teal-300/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
@@ -2150,8 +2162,8 @@ export default function SuppliersClient({
                         onChange={(e) => {
                           setSelectedItemToAdd(e.target.value);
                           const matched = availableItems.find(i => i.item_code === e.target.value);
-                          if (matched?.cost_per_unit) {
-                            setAgreedUnitPrice(matched.cost_per_unit);
+                          if (matched?.cost_per_unit && Number(matched.cost_per_unit) > 0) {
+                            setAgreedUnitPrice(String(matched.cost_per_unit));
                           }
                         }}
                         required
@@ -2168,25 +2180,75 @@ export default function SuppliersClient({
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block font-bold text-white mb-1.5">
-                        {lang === 'en' ? 'Agreed Unit Supply Price (SAR):' : 'سعر التوريد المتفق عليه (ر.س):'}
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        dir="ltr"
-                        lang="en"
-                        required
-                        value={agreedUnitPrice}
-                        onChange={(e) => {
-                          const clean = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
-                          setAgreedUnitPrice(clean === '' ? 0 : Number(clean));
-                        }}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
-                      />
-                    </div>
+                    {(() => {
+                      const matchedItemForModal = availableItems.find(
+                        (i) => i.item_code.toUpperCase() === selectedItemToAdd.toUpperCase()
+                      );
+                      const codeUpper = (selectedItemToAdd || '').toUpperCase();
+                      const modalUnitsPerCarton =
+                        matchedItemForModal?.units_per_carton != null &&
+                        Number(matchedItemForModal.units_per_carton) > 0
+                          ? Number(matchedItemForModal.units_per_carton)
+                          : (CARTON_SIZES[codeUpper] || 1);
+                      const normalizedStr = String(agreedUnitPrice)
+                        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                        .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+                        .trim();
+                      const parsedUnitPrice = parseFloat(normalizedStr);
+                      const validUnitPrice =
+                        !isNaN(parsedUnitPrice) && parsedUnitPrice >= 0 ? parsedUnitPrice : 0;
+                      const calculatedCartonPrice = Number(
+                        (validUnitPrice * modalUnitsPerCarton).toFixed(4)
+                      );
+
+                      return (
+                        <div className="space-y-2.5">
+                          <label className="block font-bold text-white mb-1.5">
+                            {lang === 'en'
+                              ? 'Agreed Unit Supply Price (SAR):'
+                              : 'سعر التوريد المتفق عليه للحبة (ر.س):'}
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            inputMode="decimal"
+                            dir="ltr"
+                            lang="en"
+                            required
+                            placeholder="0.10"
+                            value={agreedUnitPrice}
+                            onChange={(e) => {
+                              const raw = String(e.target.value)
+                                .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                                .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
+                              setAgreedUnitPrice(raw);
+                            }}
+                            className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
+                          />
+
+                          {/* Live Unit vs. Carton Price Helper Calculation */}
+                          <div className="rounded-xl bg-teal-950/60 border border-teal-500/30 p-3 space-y-1.5 text-[11px]">
+                            <div className="flex items-center justify-between text-slate-200">
+                              <span>{lang === 'en' ? 'Price per Single Unit:' : 'سعر الحبة الواحدة:'}</span>
+                              <span className="font-mono font-extrabold text-white" dir="ltr">
+                                {toEnglishDigits(validUnitPrice)} {lang === 'en' ? 'SAR' : 'ر.س'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-teal-200 pt-1 border-t border-teal-500/20">
+                              <span>
+                                {lang === 'en'
+                                  ? `Auto Carton Price (${toEnglishDigits(modalUnitsPerCarton)} units/carton):`
+                                  : `سعر الكرتون التلقائي (سعر الحبة × ${toEnglishDigits(modalUnitsPerCarton)} حبة):`}
+                              </span>
+                              <span className="font-mono font-extrabold text-teal-300 text-xs" dir="ltr">
+                                {toEnglishDigits(calculatedCartonPrice)} {lang === 'en' ? 'SAR' : 'ر.س'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="pt-2 flex gap-2">
                       <button

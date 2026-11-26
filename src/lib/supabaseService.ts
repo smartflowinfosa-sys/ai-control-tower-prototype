@@ -1413,12 +1413,17 @@ export async function addSupplierItem(
   itemCode: string,
   unitPrice?: number
 ): Promise<SupplierItemRecord> {
+  const parsedPrice =
+    unitPrice !== undefined && unitPrice !== null && Number.isFinite(Number(unitPrice))
+      ? Number(parseFloat(String(unitPrice)).toFixed(4))
+      : 0.5;
+
   const { data, error } = await supabase
     .from('supplier_items')
     .insert([{
       supplier_id: supplierId,
       inventory_item_code: itemCode,
-      price: unitPrice || 0.5,
+      price: parsedPrice,
       is_available: true,
     }])
     .select(`
