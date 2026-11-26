@@ -11,6 +11,9 @@ interface ReceiveItemInput {
   itemCode?: unknown;
   cartons?: unknown;
   quantityCartons?: unknown;
+  units?: unknown;
+  quantity_units?: unknown;
+  quantityUnits?: unknown;
 }
 
 function getSessionActor(session: { user?: Record<string, unknown> } | null): {
@@ -65,6 +68,10 @@ export async function POST(req: NextRequest) {
     const receiverSignature =
       typeof body.receiver_signature === 'string' ? body.receiver_signature.trim() : '';
     const invoiceUrl = typeof body.invoice_url === 'string' ? body.invoice_url.trim() : '';
+    const completedStatus =
+      typeof body.completed_status === 'string' && body.completed_status.trim()
+        ? body.completed_status.trim()
+        : 'مكتمل';
 
     const rawItems = Array.isArray(body.items) ? (body.items as ReceiveItemInput[]) : [];
 
@@ -74,14 +81,26 @@ export async function POST(req: NextRequest) {
           .trim()
           .toUpperCase();
         const rawCartons = row.cartons !== undefined ? row.cartons : row.quantityCartons;
-        const cartons = Number(rawCartons);
-        return { code, cartons };
+        const cartons = rawCartons !== undefined && rawCartons !== null ? Number(rawCartons) : NaN;
+        const rawUnits =
+          row.units !== undefined
+            ? row.units
+            : row.quantity_units !== undefined
+            ? row.quantity_units
+            : row.quantityUnits;
+        const units = rawUnits !== undefined && rawUnits !== null ? Number(rawUnits) : NaN;
+        return { code, cartons, units };
       })
-      .filter((row) => row.code && Number.isFinite(row.cartons) && row.cartons > 0);
+      .filter(
+        (row) =>
+          row.code &&
+          ((Number.isFinite(row.cartons) && row.cartons > 0) ||
+            (Number.isFinite(row.units) && row.units > 0))
+      );
 
     if (validInputs.length === 0) {
       return NextResponse.json(
-        { error: 'يرجى إدخال كمية مستلمة (بالكرتون) أكبر من الصفر لصنف واحد على الأقل.' },
+        { error: 'يرجى إدخال كمية مستلمة أكبر من الصفر لصنف واحد على الأقل.' },
         { status: 400 }
       );
     }
@@ -134,10 +153,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Aggregate cartons if the same item code appears multiple times in the payload
-    const aggregatedCartons = new Map<string, number>();
+    // Aggregate incoming units if the same item code appears multiple times in the payload
+    const aggregatedUnits = new Map<string, { incomingUnits: number; cartonsReceived: number }>();
     for (const entry of validInputs) {
-      aggregatedCartons.set(entry.code, (aggregatedCartons.get(entry.code) || 0) + entry.cartons);
+      const dbItem = dbMap.get(entry.code);
+      const uPerCarton = dbItem?.units_per_carton || CARTON_SIZES[entry.code] || 1;
+      let addUnits = 0;
+      let addCartons = 0;
+      if (Number.isFinite(entry.units) && entry.units > 0) {
+        addUnits = Math.round(entry.units);
+        addCartons = Number((addUnits / uPerCarton).toFixed(2));
+      } else {
+        addCartons = entry.cartons;
+        addUnits = Math.round(entry.cartons * uPerCarton);
+      }
+      const prev = aggregatedUnits.get(entry.code) || { incomingUnits: 0, cartonsReceived: 0 };
+      aggregatedUnits.set(entry.code, {
+        incomingUnits: prev.incomingUnits + addUnits,
+        cartonsReceived: Number((prev.cartonsReceived + addCartons).toFixed(2)),
+      });
     }
 
     const updatedItems: Array<{
@@ -161,7 +195,7 @@ export async function POST(req: NextRequest) {
       employee_name: string;
     }> = [];
 
-    for (const [code, totalCartons] of aggregatedCartons.entries()) {
+    for (const [code, agg] of aggregatedUnits.entries()) {
       const dbItem = dbMap.get(code);
       if (!dbItem) {
         return NextResponse.json(
@@ -171,7 +205,8 @@ export async function POST(req: NextRequest) {
       }
 
       const unitsPerCarton = dbItem.units_per_carton;
-      const incomingUnits = Math.round(totalCartons * unitsPerCarton);
+      const incomingUnits = agg.incomingUnits;
+      const totalCartons = agg.cartonsReceived;
       const mainBefore = dbItem.main_stock;
       const existingProd = dbItem.production_stock;
 
@@ -235,16 +270,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If linked to an existing Purchase Order, mark PO as received
+    // If linked to an existing Purchase Order, mark PO as completed/received
     if (mode === 'po' && poNumber) {
       try {
+        const updatePayload: Record<string, unknown> = {
+          status: completedStatus,
+        };
+        if (receiverSignature || actor.actorName) {
+          updatePayload.receiver_signature = receiverSignature || actor.actorName;
+        }
+        if (invoiceUrl) {
+          updatePayload.invoice_url = invoiceUrl;
+        }
         await supabaseAdmin
           .from('purchase_orders')
-          .update({
-            status: 'تم الاستلام',
-            receiver_signature: receiverSignature || actor.actorName || null,
-            invoice_url: invoiceUrl || null,
-          })
+          .update(updatePayload)
           .eq('po_number', poNumber);
       } catch (poErr) {
         console.warn('[POST /api/inventory/receive] Failed to update purchase_orders status:', poErr);

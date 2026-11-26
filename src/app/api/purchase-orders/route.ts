@@ -90,3 +90,100 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: 'غير مصرح بتعديل أمر الشراء بدون جلسة مستخدم موثقة' },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    const poNumber = String(body?.po_number || body?.id || '').trim();
+    if (!poNumber) {
+      return NextResponse.json({ error: 'رقم أمر الشراء مطلوب للتعديل' }, { status: 400 });
+    }
+
+    const updatePayload: Record<string, unknown> = {};
+    if (body.quantity !== undefined && Number.isFinite(Number(body.quantity))) {
+      updatePayload.quantity = Math.max(1, Math.round(Number(body.quantity)));
+    }
+    if (body.total_cost !== undefined && Number.isFinite(Number(body.total_cost))) {
+      updatePayload.total_cost = Number(Number(body.total_cost).toFixed(4));
+    }
+    if (body.supplier_id !== undefined) {
+      updatePayload.supplier_id = body.supplier_id || null;
+    }
+    if (body.status !== undefined && typeof body.status === 'string' && body.status.trim()) {
+      updatePayload.status = body.status.trim();
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data, error } = await supabaseAdmin
+      .from('purchase_orders')
+      .update(updatePayload)
+      .eq('po_number', poNumber)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json(
+        { error: `تعذر تحديث أمر الشراء في قاعدة البيانات: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    revalidateTag('purchase-orders', 'max');
+    return NextResponse.json({ success: true, purchaseOrder: data });
+  } catch (error: unknown) {
+    console.error('[PATCH /api/purchase-orders] Error:', error);
+    const message = error instanceof Error ? error.message : 'تعذر تعديل أمر الشراء';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: 'غير مصرح بحذف أمر الشراء بدون جلسة مستخدم موثقة' },
+        { status: 401 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    let poNumber = (searchParams.get('po_number') || '').trim();
+    if (!poNumber) {
+      const body = await req.json().catch(() => null);
+      poNumber = String(body?.po_number || body?.id || '').trim();
+    }
+
+    if (!poNumber) {
+      return NextResponse.json({ error: 'رقم أمر الشراء مطلوب للحذف' }, { status: 400 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { error } = await supabaseAdmin
+      .from('purchase_orders')
+      .delete()
+      .eq('po_number', poNumber);
+
+    if (error) {
+      return NextResponse.json(
+        { error: `تعذر حذف أمر الشراء من قاعدة البيانات: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    revalidateTag('purchase-orders', 'max');
+    return NextResponse.json({ success: true, deletedPoNumber: poNumber });
+  } catch (error: unknown) {
+    console.error('[DELETE /api/purchase-orders] Error:', error);
+    const message = error instanceof Error ? error.message : 'تعذر حذف أمر الشراء';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+

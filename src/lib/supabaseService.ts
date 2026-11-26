@@ -1233,6 +1233,14 @@ export async function updatePurchaseOrderStatus(
 ): Promise<void> {
   updateSessionPurchaseOrder(poNumber, { status: nextStatus });
   try {
+    if (typeof window !== 'undefined') {
+      await fetch('/api/purchase-orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ po_number: poNumber, status: nextStatus }),
+      });
+      return;
+    }
     const { error } = await supabase
       .from('purchase_orders')
       .update({ status: nextStatus })
@@ -1242,6 +1250,83 @@ export async function updatePurchaseOrderStatus(
     }
   } catch (err) {
     console.warn('Supabase PO status update exception:', err);
+  }
+}
+
+export interface UpdatePurchaseOrderInput {
+  po_number: string;
+  quantity?: number;
+  total_cost?: number;
+  supplier_id?: string | null;
+  supplierName?: string;
+  status?: string;
+}
+
+/**
+ * Update an existing Purchase Order's details (quantity, total_cost, supplier_id, status) in Supabase.
+ */
+export async function updatePurchaseOrderDetails(
+  input: UpdatePurchaseOrderInput
+): Promise<void> {
+  updateSessionPurchaseOrder(input.po_number, {
+    ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+    ...(input.total_cost !== undefined ? { totalCost: input.total_cost } : {}),
+    ...(input.supplier_id !== undefined ? { supplier_id: input.supplier_id || undefined, supplierId: input.supplier_id || undefined } : {}),
+    ...(input.supplierName !== undefined ? { supplierName: input.supplierName } : {}),
+    ...(input.status !== undefined ? { status: input.status as any } : {}),
+  });
+
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/purchase-orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.error || 'تعذر تحديث أمر الشراء في قاعدة البيانات');
+    }
+    return;
+  }
+
+  const updatePayload: Record<string, unknown> = {};
+  if (input.quantity !== undefined) updatePayload.quantity = input.quantity;
+  if (input.total_cost !== undefined) updatePayload.total_cost = input.total_cost;
+  if (input.supplier_id !== undefined) updatePayload.supplier_id = input.supplier_id;
+  if (input.status !== undefined) updatePayload.status = input.status;
+
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update(updatePayload)
+    .eq('po_number', input.po_number);
+
+  if (error) {
+    throw new Error(`تعذر تحديث أمر الشراء: ${error.message}`);
+  }
+}
+
+/**
+ * Permanently delete a Purchase Order from `public.purchase_orders` in Supabase.
+ */
+export async function deletePurchaseOrder(poNumber: string): Promise<void> {
+  if (typeof window !== 'undefined') {
+    const res = await fetch(`/api/purchase-orders?po_number=${encodeURIComponent(poNumber)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.error || 'تعذر حذف أمر الشراء من قاعدة البيانات');
+    }
+    return;
+  }
+
+  const { error } = await supabase
+    .from('purchase_orders')
+    .delete()
+    .eq('po_number', poNumber);
+
+  if (error) {
+    throw new Error(`تعذر حذف أمر الشراء: ${error.message}`);
   }
 }
 
@@ -1465,6 +1550,84 @@ export async function addSupplierItem(
   }
 
   return newItem;
+}
+
+/**
+ * Update agreed supply price for a certified supplier item in `public.supplier_items`
+ */
+export async function updateSupplierItemPrice(
+  supplierId: string,
+  itemCode: string,
+  newPrice: number,
+  rowId?: string
+): Promise<number> {
+  const parsedPrice = Number(parseFloat(String(newPrice)).toFixed(4));
+
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/suppliers/items', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: rowId,
+        supplier_id: supplierId,
+        item_code: itemCode,
+        price: parsedPrice,
+      }),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.error || 'تعذر تحديث سعر الصنف في قاعدة البيانات');
+    }
+    return parsedPrice;
+  }
+
+  let query = supabase.from('supplier_items').update({ price: parsedPrice });
+  if (rowId) {
+    query = query.eq('id', rowId);
+  } else {
+    query = query.eq('supplier_id', supplierId).eq('inventory_item_code', itemCode);
+  }
+  const { error } = await query;
+  if (error) {
+    throw new Error(`تعذر تحديث السعر: ${error.message}`);
+  }
+  return parsedPrice;
+}
+
+/**
+ * Delete / unlink a certified item from a supplier in `public.supplier_items`
+ */
+export async function deleteSupplierItem(
+  supplierId: string,
+  itemCode: string,
+  rowId?: string
+): Promise<void> {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams();
+    if (rowId) params.set('id', rowId);
+    params.set('supplier_id', supplierId);
+    params.set('item_code', itemCode);
+
+    const res = await fetch(`/api/suppliers/items?${params.toString()}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(errJson?.error || 'تعذر حذف الصنف من قائمة المورد');
+    }
+    return;
+  }
+
+  let query = supabase.from('supplier_items').delete();
+  if (rowId) {
+    query = query.eq('id', rowId);
+  } else {
+    query = query.eq('supplier_id', supplierId).eq('inventory_item_code', itemCode);
+  }
+  const { error } = await query;
+  if (error) {
+    throw new Error(`تعذر حذف الصنف من قائمة المورد: ${error.message}`);
+  }
 }
 
 /**

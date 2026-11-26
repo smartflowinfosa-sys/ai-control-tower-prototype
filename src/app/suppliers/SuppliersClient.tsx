@@ -21,10 +21,14 @@ import {
   sortSuppliersByDefault,
   fetchSupplierItems,
   addSupplierItem,
+  updateSupplierItemPrice,
+  deleteSupplierItem,
   SupplierItemRecord,
   fetchPurchaseOrders,
   createPurchaseOrder,
   updatePurchaseOrderStatus,
+  updatePurchaseOrderDetails,
+  deletePurchaseOrder,
   fetchAllSupplierItems,
   fetchSuppliersForItem,
   SupabasePurchaseOrder,
@@ -59,6 +63,8 @@ import {
   ChevronRight,
   Plus,
   Edit2,
+  Pencil,
+  Trash2,
   Check,
   AlertTriangle,
   Calendar,
@@ -100,13 +106,19 @@ export default function SuppliersClient({
   const authenticatedUser = useMemo(() => getAuthenticatedPOUser(session, lang), [session, lang]);
 
   // Resolve inventory items from database, strictly sorted alphanumerically (P1, P2... P9, P10)
-  const rawAvailableItems: SupabaseInventoryItem[] = (initialInventoryItems && initialInventoryItems.length > 0)
-    ? initialInventoryItems
-    : [];
+  const [availableItems, setAvailableItems] = useState<SupabaseInventoryItem[]>(() => {
+    const raw: SupabaseInventoryItem[] =
+      initialInventoryItems && initialInventoryItems.length > 0 ? initialInventoryItems : [];
+    return [...raw].sort((a, b) => compareItemCodes(a.item_code, b.item_code));
+  });
 
-  const availableItems = [...rawAvailableItems].sort((a, b) =>
-    compareItemCodes(a.item_code, b.item_code)
-  );
+  useEffect(() => {
+    if (initialInventoryItems && initialInventoryItems.length > 0) {
+      setAvailableItems(
+        [...initialInventoryItems].sort((a, b) => compareItemCodes(a.item_code, b.item_code))
+      );
+    }
+  }, [initialInventoryItems]);
   
   // State initialization directly from Supabase props (strictly sorted by default order)
   const [suppliers, setSuppliers] = useState<SupabaseSupplier[]>(() => sortSuppliersByDefault(initialSuppliers || []));
@@ -177,12 +189,38 @@ export default function SuppliersClient({
     }
   }, [availableItems, analyzingItemId]);
 
-  // PO Edit State
+  // PO Edit & Delete State
   const [isEditingPO, setIsEditingPO] = useState<boolean>(false);
   const [editPOQuantity, setEditPOQuantity] = useState<number>(0);
+  const [editPOUnitPrice, setEditPOUnitPrice] = useState<string>('0.5');
+  const [editPOTotalCost, setEditPOTotalCost] = useState<string>('0');
+  const [editPOExpectedDate, setEditPOExpectedDate] = useState<string>('');
+  const [editPOStatus, setEditPOStatus] = useState<string>('PENDING_APPROVAL');
   const [editPOSupplier, setEditPOSupplier] = useState<string>('');
   const [poAvailableSuppliers, setPoAvailableSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [isLoadingPOSuppliers, setIsLoadingPOSuppliers] = useState<boolean>(false);
+  const [isSavingPOEdit, setIsSavingPOEdit] = useState<boolean>(false);
+  const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
+  const [isDeletingPO, setIsDeletingPO] = useState<boolean>(false);
+  const [poToComplete, setPoToComplete] = useState<PurchaseOrder | null>(null);
+  const [isCompletingPO, setIsCompletingPO] = useState<boolean>(false);
+
+  // Certified Supplier Item Edit Price & Delete State
+  const [editingSupplierItem, setEditingSupplierItem] = useState<{
+    id?: string;
+    supplier_id: string;
+    item_code: string;
+    name_ar: string;
+    priceStr: string;
+  } | null>(null);
+  const [isSavingSupplierItemPrice, setIsSavingSupplierItemPrice] = useState<boolean>(false);
+  const [supplierItemToDelete, setSupplierItemToDelete] = useState<{
+    id?: string;
+    supplier_id: string;
+    item_code: string;
+    name_ar: string;
+  } | null>(null);
+  const [isDeletingSupplierItem, setIsDeletingSupplierItem] = useState<boolean>(false);
 
   // Supplier Add / Edit Modal State
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState<boolean>(false);
@@ -297,25 +335,80 @@ export default function SuppliersClient({
     }
   };
 
-  // AI auto-link suggestion based on supplier category and inventory items
-  const handleAutoLinkAiItems = async () => {
-    if (!selectedProfileSupplier) return;
-    const sCat = selectedProfileSupplier.category || '';
-    let candidates = availableItems.filter(i => i.category_ar === sCat);
-    if (candidates.length === 0) {
-      candidates = availableItems.slice(0, 2);
+  const handleSaveSupplierItemPrice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSupplierItem || isSavingSupplierItemPrice) return;
+    const normalizedStr = String(editingSupplierItem.priceStr)
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+      .trim();
+    const parsedPrice = parseFloat(normalizedStr);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      showError('يرجى إدخال سعر توريد صحيح.');
+      return;
     }
 
-    for (const item of candidates) {
-      await addSupplierItem(selectedProfileSupplier.id, item.item_code, item.cost_per_unit || 0.45);
+    setIsSavingSupplierItemPrice(true);
+    try {
+      const savedPrice = await updateSupplierItemPrice(
+        editingSupplierItem.supplier_id,
+        editingSupplierItem.item_code,
+        parsedPrice,
+        editingSupplierItem.id
+      );
+
+      setSupplierItems((prev) =>
+        prev.map((si) =>
+          si.item_code === editingSupplierItem.item_code
+            ? { ...si, unit_price: savedPrice }
+            : si
+        )
+      );
+      setAllSupplierItems((prev) =>
+        prev.map((si) =>
+          si.supplier_id === editingSupplierItem.supplier_id &&
+          si.inventory_item_code === editingSupplierItem.item_code
+            ? { ...si, price: savedPrice }
+            : si
+        )
+      );
+      setEditingSupplierItem(null);
+      showToast(`تم تحديث سعر التوريد للصنف (${editingSupplierItem.name_ar}) إلى ${savedPrice} ر.س بنجاح`);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر تحديث سعر الصنف.');
+    } finally {
+      setIsSavingSupplierItemPrice(false);
     }
-    loadSupplierItems(selectedProfileSupplier.id);
-    fetchAllSupplierItems().then(items => { if (items?.length) setAllSupplierItems(items); }).catch(console.warn);
-    showToast(
-      lang === 'en'
-        ? 'AI Agent linked relevant products to supplier catalog successfully'
-        : 'قام الوكيل الذكي بربط وتحديث الأصناف المتوافقة مع المورد تلقائياً'
-    );
+  };
+
+  const handleConfirmDeleteSupplierItem = async () => {
+    if (!supplierItemToDelete || isDeletingSupplierItem) return;
+    setIsDeletingSupplierItem(true);
+    try {
+      await deleteSupplierItem(
+        supplierItemToDelete.supplier_id,
+        supplierItemToDelete.item_code,
+        supplierItemToDelete.id
+      );
+      setSupplierItems((prev) =>
+        prev.filter((si) => si.item_code !== supplierItemToDelete.item_code)
+      );
+      setAllSupplierItems((prev) =>
+        prev.filter(
+          (si) =>
+            !(
+              si.supplier_id === supplierItemToDelete.supplier_id &&
+              si.inventory_item_code === supplierItemToDelete.item_code
+            )
+        )
+      );
+      showToast(`تم حذف الصنف (${supplierItemToDelete.name_ar}) من قائمة المورد بنجاح`);
+      setSupplierItemToDelete(null);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حذف الصنف من قائمة المورد.');
+    } finally {
+      setIsDeletingSupplierItem(false);
+    }
   };
 
   // Sync with global purchase orders events (creation, update, receiving)
@@ -391,7 +484,13 @@ export default function SuppliersClient({
     }, 4500);
   };
 
-  const handleQuickOrder = async (supplierName: string, itemName: string, unitPrice?: number) => {
+  const handleQuickOrder = async (
+    supplierName: string,
+    itemName: string,
+    unitPrice?: number,
+    explicitItemCode?: string,
+    explicitSupplierId?: string
+  ) => {
     const authUser = getAuthenticatedPOUser(session, lang);
     if (!authUser) {
       showError(
@@ -406,17 +505,33 @@ export default function SuppliersClient({
     setIsSubmittingQuickOrder(true);
 
     try {
-      const matchedItem = availableItems.find(i => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === analyzingItemId);
-      const matchedSupplier = suppliers.find(s =>
-        s.name_ar === supplierName ||
-        s.name === supplierName ||
-        s.name_en === supplierName
-      );
-      const supplierId = matchedSupplier?.id;
+      const normalizedExplicitCode = explicitItemCode ? explicitItemCode.trim().toUpperCase() : '';
+      const matchedItem =
+        (normalizedExplicitCode
+          ? availableItems.find(
+              (i) => (i.item_code || '').trim().toUpperCase() === normalizedExplicitCode
+            )
+          : undefined) ||
+        availableItems.find(
+          (i) => i.item_name_ar === itemName || i.item_name_en === itemName || i.item_code === itemName
+        ) ||
+        (!normalizedExplicitCode && !itemName
+          ? availableItems.find((i) => i.item_code === analyzingItemId)
+          : undefined);
+
+      const matchedSupplier =
+        (explicitSupplierId ? suppliers.find((s) => s.id === explicitSupplierId) : undefined) ||
+        suppliers.find(
+          (s) =>
+            s.name_ar === supplierName ||
+            s.name === supplierName ||
+            s.name_en === supplierName
+        );
+      const supplierId = explicitSupplierId || matchedSupplier?.id;
       const unitCost = unitPrice ?? matchedItem?.cost_per_unit ?? 0.45;
       const quantity = 2500;
       const totalCost = Number((quantity * unitCost).toFixed(2));
-      const itemCode = matchedItem?.item_code || analyzingItemId || 'P1';
+      const itemCode = normalizedExplicitCode || matchedItem?.item_code || analyzingItemId || 'P1';
       const resolvedItemName = matchedItem?.item_name_ar || itemName || itemCode;
 
       // 1. Generate unique PO Number
@@ -496,7 +611,7 @@ export default function SuppliersClient({
     );
   };
 
-  const handleOpenEditPO = async () => {
+  const handleOpenEditPO = async (targetOrder?: PurchaseOrder) => {
     const authUser = getAuthenticatedPOUser(session, lang);
     if (!authUser) {
       showError(
@@ -506,23 +621,39 @@ export default function SuppliersClient({
       );
       return;
     }
-    if (!selectedPO) return;
-    setEditPOQuantity(selectedPO.quantity);
-    setEditPOSupplier(selectedPO.supplierName);
+    const orderToEdit = targetOrder || selectedPO;
+    if (!orderToEdit) return;
+    if (targetOrder) {
+      setSelectedPO(targetOrder);
+    }
+
+    const qty = Number(orderToEdit.quantity) || 1;
+    const tot = Number(orderToEdit.totalCost) || 0;
+    const derivedUnitPrice = qty > 0 && tot > 0 ? Number((tot / qty).toFixed(4)) : 0.5;
+
+    setEditPOQuantity(qty);
+    setEditPOUnitPrice(String(derivedUnitPrice));
+    setEditPOTotalCost(String(tot));
+    setEditPOExpectedDate(
+      (orderToEdit as unknown as { expectedDeliveryDate?: string }).expectedDeliveryDate ||
+        new Date().toISOString().split('T')[0]
+    );
+    setEditPOStatus(orderToEdit.status || 'PENDING_APPROVAL');
+    setEditPOSupplier(orderToEdit.supplierName);
     setIsEditingPO(true);
 
     // Resolve the itemCode for the specific item being edited
     const itemCode = (
-      selectedPO.itemId ||
+      orderToEdit.itemId ||
       availableItems.find(i =>
-        i.item_name_ar === selectedPO.itemName ||
-        i.item_name_en === selectedPO.itemName ||
-        i.item_code === selectedPO.itemId
+        i.item_name_ar === orderToEdit.itemName ||
+        i.item_name_en === orderToEdit.itemName ||
+        i.item_code === orderToEdit.itemId
       )?.item_code ||
       mockInventoryItems.find(i =>
-        i.item_name_ar === selectedPO.itemName ||
-        i.item_name_en === selectedPO.itemName ||
-        i.item_code === selectedPO.itemId
+        i.item_name_ar === orderToEdit.itemName ||
+        i.item_name_en === orderToEdit.itemName ||
+        i.item_code === orderToEdit.itemId
       )?.item_code ||
       ''
     ).trim().toUpperCase();
@@ -544,13 +675,21 @@ export default function SuppliersClient({
       }
     }
 
+    for (const sup of suppliers) {
+      const name = (lang === 'en' ? (sup.name_en || sup.name_ar || sup.name) : (sup.name_ar || sup.name)) || '';
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        initialList.push({ id: sup.id, name });
+      }
+    }
+
     if (initialList.length > 0) {
       setPoAvailableSuppliers(initialList);
-      if (!initialList.some(s => s.name === selectedPO.supplierName)) {
+      if (!initialList.some(s => s.name === orderToEdit.supplierName)) {
         setEditPOSupplier(initialList[0].name);
       }
-    } else if (selectedPO.supplierName) {
-      setPoAvailableSuppliers([{ id: selectedPO.supplier_id || selectedPO.supplierId || 'curr', name: selectedPO.supplierName }]);
+    } else if (orderToEdit.supplierName) {
+      setPoAvailableSuppliers([{ id: orderToEdit.supplier_id || orderToEdit.supplierId || 'curr', name: orderToEdit.supplierName }]);
     }
 
     // 2. Dynamic fetch directly from Supabase supplier_items junction table
@@ -559,10 +698,13 @@ export default function SuppliersClient({
       try {
         const dbSuppliers = await fetchSuppliersForItem(itemCode);
         if (dbSuppliers && dbSuppliers.length > 0) {
-          setPoAvailableSuppliers(dbSuppliers);
-          if (!dbSuppliers.some(s => s.name === selectedPO.supplierName)) {
-            setEditPOSupplier(dbSuppliers[0].name);
+          const mergedSuppliers = [...dbSuppliers];
+          for (const existing of initialList) {
+            if (!mergedSuppliers.some(m => m.name === existing.name)) {
+              mergedSuppliers.push(existing);
+            }
           }
+          setPoAvailableSuppliers(mergedSuppliers);
         }
       } catch (err) {
         console.error('Failed to fetch suppliers for PO item:', err);
@@ -572,7 +714,7 @@ export default function SuppliersClient({
     }
   };
 
-  const handleSavePOEdit = () => {
+  const handleSavePOEdit = async () => {
     const authUser = getAuthenticatedPOUser(session, lang);
     if (!authUser) {
       showError(
@@ -582,31 +724,194 @@ export default function SuppliersClient({
       );
       return;
     }
-    if (!selectedPO) return;
+    if (!selectedPO || isSavingPOEdit) return;
 
-    const matchedItem = availableItems.find(i => i.item_name_ar === selectedPO.itemName || i.item_code === selectedPO.itemId);
-    const unitCost = matchedItem?.cost_per_unit || 0.5;
-    const newTotalCost = Number((editPOQuantity * unitCost).toFixed(2));
-    const matchedSupplier = poAvailableSuppliers.find(s => s.name === editPOSupplier) ||
-      suppliers.find(s => s.name_ar === editPOSupplier || s.name_en === editPOSupplier || s.name === editPOSupplier);
-
-    const updatedPO: PurchaseOrder = {
-      ...selectedPO,
-      quantity: editPOQuantity,
-      supplierName: editPOSupplier,
-      supplier_id: matchedSupplier?.id || selectedPO.supplier_id,
-      supplierId: matchedSupplier?.id || selectedPO.supplierId,
-      totalCost: newTotalCost,
-    };
-
-    setPurchaseOrders(prev => prev.map(p => p.id === selectedPO.id ? updatedPO : p));
-    setSelectedPO(updatedPO);
-    setIsEditingPO(false);
-    showToast(
-      lang === 'en'
-        ? `Purchase order (${updatedPO.id}) modifications saved successfully`
-        : `تم حفظ تعديلات أمر الشراء (${updatedPO.id}) بنجاح`
+    const parsedTotal = parseFloat(
+      String(editPOTotalCost)
+        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+        .trim()
     );
+    const parsedUnit = parseFloat(
+      String(editPOUnitPrice)
+        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+        .trim()
+    );
+    const validUnitCost = !isNaN(parsedUnit) && parsedUnit >= 0 ? parsedUnit : 0.5;
+    const newTotalCost =
+      !isNaN(parsedTotal) && parsedTotal >= 0
+        ? Number(parsedTotal.toFixed(4))
+        : Number((editPOQuantity * validUnitCost).toFixed(4));
+
+    const matchedSupplier =
+      poAvailableSuppliers.find(s => s.name === editPOSupplier) ||
+      suppliers.find(s => s.name_ar === editPOSupplier || s.name_en === editPOSupplier || s.name === editPOSupplier);
+    const nextSupplierId = matchedSupplier?.id || selectedPO.supplier_id || selectedPO.supplierId || null;
+
+    setIsSavingPOEdit(true);
+    try {
+      await updatePurchaseOrderDetails({
+        po_number: selectedPO.id,
+        quantity: editPOQuantity,
+        total_cost: newTotalCost,
+        supplier_id: nextSupplierId,
+        supplierName: editPOSupplier,
+        status: editPOStatus,
+      });
+
+      const updatedPO: PurchaseOrder = {
+        ...selectedPO,
+        quantity: editPOQuantity,
+        supplierName: editPOSupplier,
+        supplier_id: nextSupplierId || undefined,
+        supplierId: nextSupplierId || undefined,
+        totalCost: newTotalCost,
+        status: editPOStatus as PurchaseOrder['status'],
+      };
+
+      setPurchaseOrders(prev => prev.map(p => p.id === selectedPO.id ? updatedPO : p));
+      setSelectedPO(updatedPO);
+      setIsEditingPO(false);
+      showToast(
+        lang === 'en'
+          ? `Purchase order (${updatedPO.id}) updated in Supabase successfully`
+          : `تم حفظ تعديلات أمر الشراء (${updatedPO.id}) في قاعدة البيانات بنجاح`
+      );
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ تعديلات أمر الشراء.');
+    } finally {
+      setIsSavingPOEdit(false);
+    }
+  };
+
+  const handleConfirmDeletePO = async () => {
+    if (!poToDelete || isDeletingPO) return;
+    setIsDeletingPO(true);
+    try {
+      await deletePurchaseOrder(poToDelete.id);
+      setPurchaseOrders(prev => prev.filter(p => p.id !== poToDelete.id));
+      if (selectedPO?.id === poToDelete.id) {
+        setSelectedPO(null);
+        setIsEditingPO(false);
+      }
+      showToast(
+        lang === 'en'
+          ? `Purchase order (${poToDelete.id}) deleted permanently`
+          : `تم حذف أمر الشراء (${poToDelete.id}) نهائياً بنجاح`
+      );
+      setPoToDelete(null);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر حذف أمر الشراء.');
+    } finally {
+      setIsDeletingPO(false);
+    }
+  };
+
+  const handleConfirmCompleteAndReceivePO = async () => {
+    if (!poToComplete || isCompletingPO) return;
+
+    const authUser = getAuthenticatedPOUser(session, lang);
+    if (!authUser) {
+      showError(
+        lang === 'en'
+          ? 'Unauthorized: Sign in required to complete and receive Purchase Orders.'
+          : 'عذراً، يجب تسجيل الدخول أولاً لاستلام وإغلاق أمر الشراء.'
+      );
+      return;
+    }
+
+    const resolvedItemCode = (
+      poToComplete.itemId ||
+      availableItems.find(
+        (i) =>
+          i.item_name_ar === poToComplete.itemName ||
+          i.item_name_en === poToComplete.itemName ||
+          i.item_code === poToComplete.itemName
+      )?.item_code ||
+      mockInventoryItems.find(
+        (i) =>
+          i.item_name_ar === poToComplete.itemName ||
+          i.item_name_en === poToComplete.itemName ||
+          i.item_code === poToComplete.itemName
+      )?.item_code ||
+      'P1'
+    )
+      .trim()
+      .toUpperCase();
+
+    const receivedUnits = Math.max(1, Number(poToComplete.quantity) || 1);
+    const receivedTimestamp = new Date().toISOString();
+
+    setIsCompletingPO(true);
+    try {
+      const res = await fetch('/api/inventory/receive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'po',
+          po_number: poToComplete.id,
+          supplier_name: poToComplete.supplierName,
+          completed_status: 'مكتمل',
+          receiver_signature: authUser.displayName,
+          items: [
+            {
+              item_code: resolvedItemCode,
+              units: receivedUnits,
+            },
+          ],
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'تعذر استلام أمر الشراء وتحديث المخزون.');
+      }
+
+      // Immediately update local purchaseOrders state to move order from active tracker to supplier archive
+      setPurchaseOrders((prev) =>
+        prev.map((p) =>
+          p.id === poToComplete.id
+            ? {
+                ...p,
+                status: 'مكتمل' as PurchaseOrder['status'],
+                receivedAt: receivedTimestamp,
+                receivedQuantity: receivedUnits,
+              }
+            : p
+        )
+      );
+
+      // Update local availableItems stock balances if returned
+      if (Array.isArray(data?.updated_items) && data.updated_items.length > 0) {
+        const updatedRow = data.updated_items[0];
+        setAvailableItems((prev) =>
+          prev.map((item) =>
+            (item.item_code || '').toUpperCase() === resolvedItemCode
+              ? {
+                  ...item,
+                  main_stock: Number(updatedRow.main_stock ?? item.main_stock ?? 0),
+                  current_stock: Number(updatedRow.current_stock ?? item.current_stock ?? 0),
+                }
+              : item
+          )
+        );
+      }
+
+      if (selectedPO?.id === poToComplete.id) {
+        setSelectedPO(null);
+        setIsEditingPO(false);
+      }
+      setPoToComplete(null);
+
+      showToast(
+        lang === 'en'
+          ? `Order (${poToComplete.id}) received (+${receivedUnits} units added to main stock) and archived under (${poToComplete.supplierName})`
+          : `تم استلام وإغلاق الأمر (${poToComplete.id}) وإضافة (+${toEnglishDigits(receivedUnits)} وحدة) للمخزون الرئيسي ونقله لأرشيف المورد (${poToComplete.supplierName})`
+      );
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'تعذر استلام وإغلاق أمر الشراء.');
+    } finally {
+      setIsCompletingPO(false);
+    }
   };
 
   // Supplier Add & Edit Handlers
@@ -830,6 +1135,8 @@ export default function SuppliersClient({
       const isNotReceived = (
         status !== 'تم الاستلام' &&
         status !== 'تم الاستلام بنجاح' &&
+        status !== 'مكتمل' &&
+        lower !== 'completed' &&
         lower !== 'received' &&
         lower !== 'delivered'
       );
@@ -1188,7 +1495,7 @@ export default function SuppliersClient({
                             </div>
                           </td>
 
-                          {/* Action Quick Button */}
+                          {/* Action Quick Button: Details Only */}
                           <td className="px-4 py-3.5 text-center">
                             <div className="flex items-center justify-center">
                               <button
@@ -1197,7 +1504,7 @@ export default function SuppliersClient({
                                   setSelectedPO(po);
                                   setIsEditingPO(false);
                                 }}
-                                className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-[18px] transition-all cursor-pointer"
+                                className="text-xs font-bold text-white bg-white/8 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
                               >
                                 {lang === 'en' ? 'Details' : 'التفاصيل'}
                               </button>
@@ -1395,7 +1702,15 @@ export default function SuppliersClient({
 
                       {/* Action Button */}
                       <button
-                        onClick={() => handleQuickOrder(quote.supplierName, selectedItem.item_name_ar, quote.unitPrice)}
+                        onClick={() =>
+                          handleQuickOrder(
+                            quote.supplierName,
+                            selectedItem.item_name_ar,
+                            quote.unitPrice,
+                            selectedItem.item_code,
+                            quote.supplierId
+                          )
+                        }
                         disabled={isSubmittingQuickOrder}
                         className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer mt-4 ${
                           isSubmittingQuickOrder ? 'opacity-50 cursor-not-allowed' : ''
@@ -1559,17 +1874,40 @@ export default function SuppliersClient({
           };
         });
 
-        // 2. Fetch and display ONLY completed POs where po.supplier_id === currentSupplier.id AND po.status === 'تم الاستلام'
-        const archivedPOs = purchaseOrders.filter(po => {
-          // Status must be received / delivered
+        // 2. Fetch both Active and Completed POs for this supplier (matching supplier_id or supplierName)
+        const matchesThisSupplier = (po: PurchaseOrder) => {
+          const poSupId = po.supplier_id || po.supplierId;
+          if (poSupId && poSupId === currentSupplierId) return true;
+          const poSupName = (po.supplierName || '').trim().toLowerCase();
+          return Boolean(poSupName && (poSupName === sNameAr || (sNameEn && poSupName === sNameEn)));
+        };
+
+        const supplierActivePOs = purchaseOrders.filter(po => {
+          if (!matchesThisSupplier(po)) return false;
           const status = (po.status || '').trim().toLowerCase();
           const orig = (po.status || '').trim();
-          const isReceived = orig === 'تم الاستلام' || orig === 'تم الاستلام بنجاح' || status === 'received' || status === 'delivered';
-          if (!isReceived) return false;
+          const isReceived =
+            orig === 'تم الاستلام' ||
+            orig === 'تم الاستلام بنجاح' ||
+            orig === 'مكتمل' ||
+            status === 'completed' ||
+            status === 'received' ||
+            status === 'delivered';
+          return !isReceived;
+        });
 
-          // Supplier ID match strictly
-          const poSupId = po.supplier_id || po.supplierId;
-          return poSupId === currentSupplierId;
+        const archivedPOs = purchaseOrders.filter(po => {
+          if (!matchesThisSupplier(po)) return false;
+          const status = (po.status || '').trim().toLowerCase();
+          const orig = (po.status || '').trim();
+          const isReceived =
+            orig === 'تم الاستلام' ||
+            orig === 'تم الاستلام بنجاح' ||
+            orig === 'مكتمل' ||
+            status === 'completed' ||
+            status === 'received' ||
+            status === 'delivered';
+          return isReceived;
         });
 
         // Apply filters: Date (Start/End) and Item
@@ -1731,16 +2069,6 @@ export default function SuppliersClient({
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        onClick={handleAutoLinkAiItems}
-                        className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                        title={lang === 'en' ? 'Auto-link items via AI Agent' : 'ربط واقتراح الأصناف المتوافقة تلقائياً عبر الـ AI'}
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-teal-300" />
-                        <span>{lang === 'en' ? 'AI Auto-Link' : 'اقتراح ذكي (AI)'}</span>
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={() => {
                           const firstItem = availableItems[0];
                           setSelectedItemToAdd(firstItem?.item_code || '');
@@ -1784,7 +2112,7 @@ export default function SuppliersClient({
                                     {lang === 'en' ? 'No items registered for this supplier yet' : 'لا توجد أصناف مسجلة لهذا المورد حتى الآن'}
                                   </span>
                                   <span className="text-[11px] text-white/50">
-                                    {lang === 'en' ? 'Click "Add Item to Supplier" or use "AI Auto-Link" to map catalog items' : 'اضغط على "إضافة صنف جديد للمورد" أو استخدم الاقتراح الذكي لربط المواد التموينية'}
+                                    {lang === 'en' ? 'Click "Add Item to Supplier +" to register catalog items for this supplier' : 'اضغط على "إضافة صنف جديد للمورد +" لإضافة الأصناف المعتمدة يدوياً'}
                                   </span>
                                 </div>
                               </td>
@@ -1817,22 +2145,67 @@ export default function SuppliersClient({
                                   </span>
                                 </td>
                                 <td className="px-4 py-3.5 text-center">
-                                  <button
-                                    type="button"
-                                    disabled={isSubmittingQuickOrder}
-                                    onClick={() => handleQuickOrder(sup.name_ar || sup.name || '', item.name_ar || item.item_code, item.cost_per_unit)}
-                                    className={`text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
-                                      isSubmittingQuickOrder ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                                    title={lang === 'en' ? 'Issue new PO for this item' : 'إصدار أمر شراء سريع لهذا الصنف'}
-                                  >
-                                    {isSubmittingQuickOrder ? (
-                                      <Loader2 className="w-3 h-3 animate-spin text-teal-300" />
-                                    ) : (
-                                      <Send className="w-3 h-3 text-teal-300" />
-                                    )}
-                                    <span>{lang === 'en' ? 'Order' : 'طلب توريد'}</span>
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                                    <button
+                                      type="button"
+                                      disabled={isSubmittingQuickOrder}
+                                      onClick={() =>
+                                        handleQuickOrder(
+                                          sup.name_ar || sup.name || '',
+                                          item.name_ar || item.item_code,
+                                          item.cost_per_unit,
+                                          item.item_code,
+                                          sup.id
+                                        )
+                                      }
+                                      className={`text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1 shrink-0 ${
+                                        isSubmittingQuickOrder ? 'opacity-50 cursor-not-allowed' : ''
+                                      }`}
+                                      title={lang === 'en' ? 'Issue new PO for this item' : 'إصدار أمر شراء سريع لهذا الصنف'}
+                                    >
+                                      {isSubmittingQuickOrder ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-teal-300" />
+                                      ) : (
+                                        <Send className="w-3 h-3 text-teal-300" />
+                                      )}
+                                      <span>{lang === 'en' ? 'Order' : 'طلب توريد'}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditingSupplierItem({
+                                          id: item.id,
+                                          supplier_id: sup.id,
+                                          item_code: item.item_code,
+                                          name_ar: item.name_ar || item.item_code,
+                                          priceStr: String(item.cost_per_unit ?? '0.10'),
+                                        })
+                                      }
+                                      className="p-1.5 text-teal-200 bg-teal-500/15 hover:bg-teal-500/30 border border-teal-400/35 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center shrink-0"
+                                      title={lang === 'en' ? 'Edit Price' : 'تعديل السعر'}
+                                      aria-label={lang === 'en' ? 'Edit Price' : 'تعديل السعر'}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setSupplierItemToDelete({
+                                          id: item.id,
+                                          supplier_id: sup.id,
+                                          item_code: item.item_code,
+                                          name_ar: item.name_ar || item.item_code,
+                                        })
+                                      }
+                                      className="p-1.5 text-rose-200 bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/35 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center shrink-0"
+                                      title={lang === 'en' ? 'Delete Item' : 'حذف الصنف'}
+                                      aria-label={lang === 'en' ? 'Delete Item' : 'حذف الصنف'}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -1844,9 +2217,74 @@ export default function SuppliersClient({
                 </div>
               )}
 
-              {/* Section 2: Invoices & PO Archive (Strictly Completed POs with po.status === 'تم الاستلام') */}
-              {(profileActiveTab === 'archive' || profileActiveTab === 'all') && (
+              {/* Section 2: Active & Archived POs for this Supplier */}
+              {(profileActiveTab === 'archive' || profileActiveTab === 'all' || profileActiveTab === 'products') && (
                 <div className="space-y-4">
+                  {/* Active Purchase Orders for this Supplier */}
+                  {supplierActivePOs.length > 0 && (
+                    <div className="space-y-3 border-t border-white/20 pt-5">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-300" />
+                          <span>{lang === 'en' ? 'Supplier Active Purchase Orders' : 'أوامر الشراء النشطة للمورد'}</span>
+                        </h3>
+                        <span className="text-xs bg-amber-500/20 border border-amber-400/30 text-amber-200 px-3 py-1 rounded-xl font-mono font-bold">
+                          {toEnglishDigits(supplierActivePOs.length)} {lang === 'en' ? 'Active' : 'أمر نشط'}
+                        </span>
+                      </div>
+
+                      <div className="bg-white/5 border border-white/20 rounded-2xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className={`w-full text-xs text-white ${lang === 'en' ? 'text-left' : 'text-right'}`}>
+                            <thead className="bg-white/10 text-white/80 font-bold border-b border-white/20">
+                              <tr>
+                                <th className="px-4 py-3">{lang === 'en' ? 'PO #' : 'رقم الأمر'}</th>
+                                <th className="px-4 py-3">{lang === 'en' ? 'Item' : 'الصنف المطلوب'}</th>
+                                <th className="px-4 py-3">{lang === 'en' ? 'Quantity' : 'الكمية'}</th>
+                                <th className="px-4 py-3">{lang === 'en' ? 'Cost' : 'التكلفة'}</th>
+                                <th className="px-4 py-3">{lang === 'en' ? 'Status' : 'الحالة'}</th>
+                                <th className="px-4 py-3 text-center">{lang === 'en' ? 'Action' : 'إجراء'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {supplierActivePOs.map((po) => (
+                                <tr key={`sup-act-${po.id}`} className="hover:bg-white/10 transition-colors">
+                                  <td className="px-4 py-3 font-mono font-bold text-white">{toEnglishDigits(po.id)}</td>
+                                  <td className="px-4 py-3 font-bold text-white">{po.itemName}</td>
+                                  <td className="px-4 py-3 font-mono text-white">{toEnglishDigits(po.quantity.toLocaleString('en-US'))}</td>
+                                  <td className="px-4 py-3 font-mono font-bold text-teal-200">
+                                    {toEnglishDigits(po.totalCost.toLocaleString('en-US'))} {lang === 'en' ? 'SAR' : 'ر.س'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-300/30">
+                                      {po.status === 'PENDING_APPROVAL' ? 'بانتظار الموافقة' : po.status === 'SENT' ? 'تم إرسال الإيميل' : po.status === 'IN_TRANSIT' ? 'جاري التوصيل' : po.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <div className="flex items-center justify-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedPO(po);
+                                          setIsEditingPO(false);
+                                        }}
+                                        className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                      >
+                                        {lang === 'en' ? 'Details' : 'التفاصيل'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(profileActiveTab === 'archive' || profileActiveTab === 'all') && (
+                    <>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-white/20 pt-5">
                     <div>
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1985,7 +2423,7 @@ export default function SuppliersClient({
                                 <td className="px-4 py-3.5">
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-300/30">
                                     <CheckCircle2 className="w-3 h-3 text-emerald-300" />
-                                    <span>{lang === 'en' ? 'Received' : 'تم الاستلام'}</span>
+                                    <span>{lang === 'en' ? 'Completed' : 'مكتمل'}</span>
                                   </span>
                                 </td>
                                 <td className="px-4 py-3.5">
@@ -2008,16 +2446,18 @@ export default function SuppliersClient({
                                   )}
                                 </td>
                                 <td className="px-4 py-3.5 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedPO(po);
-                                      setIsEditingPO(false);
-                                    }}
-                                    className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                                  >
-                                    {lang === 'en' ? 'Details' : 'التفاصيل'}
-                                  </button>
+                                  <div className="flex items-center justify-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedPO(po);
+                                        setIsEditingPO(false);
+                                      }}
+                                      className="text-[11px] font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      {lang === 'en' ? 'Details' : 'التفاصيل'}
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -2026,6 +2466,8 @@ export default function SuppliersClient({
                       </table>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -2286,8 +2728,8 @@ export default function SuppliersClient({
 
       {/* Modal: View & Edit Purchase Order Details (PO Modal) */}
       {selectedPO && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="font-sans bg-black/75 backdrop-blur-2xl rounded-3xl w-full max-w-4xl lg:max-w-5xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.7)] relative flex flex-col">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="font-sans bg-black/85 backdrop-blur-2xl rounded-3xl w-full max-w-4xl lg:max-w-5xl max-h-[94vh] overflow-y-auto p-5 sm:p-6 space-y-4 text-white border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.85)] relative flex flex-col">
             
             {/* Modal Header */}
             <div className="flex justify-between items-center border-b border-white/15 pb-3">
@@ -2308,16 +2750,26 @@ export default function SuppliersClient({
                 </div>
               </div>
 
-              {/* Action Buttons: Edit Toggle & Close (X) Button */}
+              {/* Action Buttons: Edit Toggle, Delete & Close (X) Button */}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={isEditingPO ? () => setIsEditingPO(false) : handleOpenEditPO}
+                  onClick={isEditingPO ? () => setIsEditingPO(false) : () => void handleOpenEditPO()}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition-all cursor-pointer"
                   title={lang === 'en' ? 'Edit purchase order details' : 'تعديل تفاصيل أمر الشراء'}
                 >
                   <Edit2 size={14} className="text-white/80" />
                   <span>{isEditingPO ? (lang === 'en' ? 'Cancel' : 'إلغاء') : (lang === 'en' ? 'Edit' : 'تعديل')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPoToDelete(selectedPO)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-200 border border-rose-400/35 text-xs font-bold transition-all cursor-pointer"
+                  title={lang === 'en' ? 'Delete purchase order' : 'حذف أمر الشراء'}
+                >
+                  <Trash2 size={14} />
+                  <span>{lang === 'en' ? 'Delete' : 'حذف'}</span>
                 </button>
 
                 <button
@@ -2336,84 +2788,204 @@ export default function SuppliersClient({
             </div>
 
             {/* Edit Mode Form */}
-            {isEditingPO ? (
-              <div className="bg-white/[0.04] rounded-2xl p-4 sm:p-5 border border-white/20 space-y-4 text-sm">
-                <div className="font-bold text-white border-b border-white/15 pb-2 flex items-center justify-between">
-                  <span>{lang === 'en' ? 'Edit Purchase Order Details' : 'تعديل بيانات أمر الشراء'}</span>
-                  <span className="font-mono text-xs text-white/60" dir="ltr" lang="en">{toEnglishDigits(selectedPO.id)}</span>
-                </div>
+            {isEditingPO ? (() => {
+              const matchedItem = availableItems.find(
+                (i) => i.item_name_ar === selectedPO.itemName || i.item_code === selectedPO.itemId
+              );
+              const codeUpper = (selectedPO.itemId || matchedItem?.item_code || 'P1').toUpperCase();
+              const unitsPerCarton =
+                matchedItem?.units_per_carton != null && Number(matchedItem.units_per_carton) > 0
+                  ? Number(matchedItem.units_per_carton)
+                  : (CARTON_SIZES[codeUpper] || 1);
+              const currentCartons = Math.max(1, Math.round((editPOQuantity || 0) / unitsPerCarton));
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-white">
-                      {lang === 'en' ? 'Assigned Supplier:' : 'المورد المعتمد:'}
-                    </label>
-                    <GlassSelect
-                      value={editPOSupplier}
-                      onChange={(e) => setEditPOSupplier(e.target.value)}
-                      disabled={isLoadingPOSuppliers || poAvailableSuppliers.length === 0}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
-                    >
-                      {isLoadingPOSuppliers ? (
-                        <option value="" className="bg-slate-900 text-white">
-                          {lang === 'en' ? 'Loading approved suppliers...' : 'جاري جلب الموردين المعتمدين لهذا الصنف...'}
-                        </option>
-                      ) : poAvailableSuppliers.length === 0 ? (
-                        <option value={editPOSupplier || selectedPO.supplierName} className="bg-slate-900 text-white">
-                          {editPOSupplier || selectedPO.supplierName || (lang === 'en' ? 'No approved supplier registered' : 'لا يوجد مورد معتمد مسجل لهذا الصنف')}
-                        </option>
-                      ) : (
-                        poAvailableSuppliers.map(s => (
+              return (
+                <div className="bg-white/[0.04] rounded-2xl p-4 sm:p-5 border border-white/20 space-y-4 text-sm">
+                  <div className="font-bold text-white border-b border-white/15 pb-2 flex items-center justify-between">
+                    <span>{lang === 'en' ? 'Edit Purchase Order Details' : 'تعديل بيانات أمر الشراء'}</span>
+                    <span className="font-mono text-xs text-white/60" dir="ltr" lang="en">{toEnglishDigits(selectedPO.id)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 1. Assigned Supplier */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white">
+                        {lang === 'en' ? 'Assigned Supplier:' : 'المورد المعتمد:'}
+                      </label>
+                      <GlassSelect
+                        value={editPOSupplier}
+                        onChange={(e) => setEditPOSupplier(e.target.value)}
+                        disabled={isLoadingPOSuppliers || poAvailableSuppliers.length === 0}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none"
+                      >
+                        {poAvailableSuppliers.map(s => (
                           <option key={s.id} value={s.name} className="bg-slate-900 text-white">
                             {s.name}
                           </option>
-                        ))
+                        ))}
+                      </GlassSelect>
+                    </div>
+
+                    {/* 2. Order Status */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white">
+                        {lang === 'en' ? 'Order Status:' : 'حالة أمر الشراء:'}
+                      </label>
+                      <select
+                        value={editPOStatus}
+                        onChange={(e) => setEditPOStatus(e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none cursor-pointer"
+                      >
+                        <option value="PENDING_APPROVAL" className="bg-slate-900 text-white">بانتظار الموافقة</option>
+                        <option value="SENT" className="bg-slate-900 text-white">تم إرسال الإيميل</option>
+                        <option value="IN_TRANSIT" className="bg-slate-900 text-white">جاري التوصيل</option>
+                        <option value="تم الاستلام" className="bg-slate-900 text-white">تم الاستلام</option>
+                      </select>
+                    </div>
+
+                    {/* 3. Expected Delivery Date */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white">
+                        {lang === 'en' ? 'Expected Delivery Date:' : 'تاريخ التوريد المتوقع:'}
+                      </label>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        lang="en"
+                        value={editPOExpectedDate}
+                        onChange={(e) => setEditPOExpectedDate(e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:outline-none font-mono [color-scheme:dark]"
+                      />
+                    </div>
+
+                    {/* 4. Quantity in Cartons */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white flex justify-between items-center">
+                        <span>{lang === 'en' ? 'Quantity (Cartons):' : 'الكمية (بالكرتون):'}</span>
+                        <span className="text-[10px] text-teal-300 font-mono">
+                          {toEnglishDigits(unitsPerCarton)} حبة/كرتون
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        dir="ltr"
+                        lang="en"
+                        value={currentCartons}
+                        onChange={(e) => {
+                          const cVal = Math.max(1, parseInt(e.target.value || '1', 10) || 1);
+                          const nextUnits = cVal * unitsPerCarton;
+                          setEditPOQuantity(nextUnits);
+                          const uPrice = parseFloat(editPOUnitPrice);
+                          if (!isNaN(uPrice) && uPrice >= 0) {
+                            setEditPOTotalCost(String(Number((nextUnits * uPrice).toFixed(4))));
+                          }
+                        }}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none font-mono text-center font-bold"
+                      />
+                    </div>
+
+                    {/* 5. Quantity in Units */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white">
+                        {lang === 'en' ? 'Requested Quantity (Units):' : 'الكمية الإجمالية (بالوحدة):'}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        dir="ltr"
+                        lang="en"
+                        value={editPOQuantity}
+                        onChange={(e) => {
+                          const clean = String(e.target.value)
+                            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                            .replace(/[^0-9]/g, '');
+                          const nextUnits = clean === '' ? 0 : Number(clean);
+                          setEditPOQuantity(nextUnits);
+                          const uPrice = parseFloat(editPOUnitPrice);
+                          if (!isNaN(uPrice) && uPrice >= 0) {
+                            setEditPOTotalCost(String(Number((nextUnits * uPrice).toFixed(4))));
+                          }
+                        }}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none font-mono text-center font-bold"
+                      />
+                    </div>
+
+                    {/* 6. Agreed Unit Price & Total Cost */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-white">
+                          {lang === 'en' ? 'Unit Price (SAR):' : 'سعر الحبة (ر.س):'}
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          inputMode="decimal"
+                          dir="ltr"
+                          lang="en"
+                          value={editPOUnitPrice}
+                          onChange={(e) => {
+                            const raw = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                            setEditPOUnitPrice(raw);
+                            const parsed = parseFloat(raw);
+                            if (!isNaN(parsed) && parsed >= 0) {
+                              setEditPOTotalCost(String(Number((editPOQuantity * parsed).toFixed(4))));
+                            }
+                          }}
+                          className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none font-mono text-center font-bold"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-white">
+                          {lang === 'en' ? 'Total Cost (SAR):' : 'الإجمالي (ر.س):'}
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          inputMode="decimal"
+                          dir="ltr"
+                          lang="en"
+                          value={editPOTotalCost}
+                          onChange={(e) => {
+                            const raw = String(e.target.value).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                            setEditPOTotalCost(raw);
+                          }}
+                          className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-teal-300 focus:outline-none font-mono text-center font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      disabled={isSavingPOEdit}
+                      onClick={() => void handleSavePOEdit()}
+                      className="flex-1 bg-emerald-600/40 hover:bg-emerald-600/60 text-white font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40 disabled:opacity-50"
+                    >
+                      {isSavingPOEdit ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
                       )}
-                    </GlassSelect>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-white flex justify-between items-center">
-                      <span>{lang === 'en' ? 'Requested Quantity (Units):' : 'الكمية المطلوبة (وحدة):'}</span>
-                      <span className="text-[10px] text-white/50 font-mono">0-9</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="100"
-                      dir="ltr"
-                      lang="en"
-                      value={editPOQuantity}
-                      onChange={(e) => {
-                        const clean = String(e.target.value)
-                          .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
-                          .replace(/[^0-9]/g, '');
-                        setEditPOQuantity(clean === '' ? 0 : Number(clean));
-                      }}
-                      className="w-full bg-white/10 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none font-mono text-center font-bold"
-                    />
+                      <span>{lang === 'en' ? 'Save Changes' : 'حفظ التعديل'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPO(false)}
+                      className="px-5 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer"
+                    >
+                      {lang === 'en' ? 'Cancel' : 'إلغاء'}
+                    </button>
                   </div>
                 </div>
-
-                <div className="pt-2 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleSavePOEdit}
-                    className="flex-1 bg-emerald-600/40 hover:bg-emerald-600/60 text-white font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{lang === 'en' ? 'Save Changes' : 'حفظ التعديل'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPO(false)}
-                    className="px-5 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold py-2.5 rounded-xl transition-all text-xs sm:text-sm cursor-pointer"
-                  >
-                    {lang === 'en' ? 'Cancel' : 'إلغاء'}
-                  </button>
-                </div>
-              </div>
-            ) : (
+              );
+            })() : (
               /* Landscape Multi-Column Grid Details View */
               <div className="space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-sm">
@@ -2465,7 +3037,7 @@ export default function SuppliersClient({
                       {selectedPO.status === 'PENDING_APPROVAL' && (lang === 'en' ? 'Pending Approval' : 'بانتظار الموافقة')}
                       {selectedPO.status === 'SENT' && (lang === 'en' ? 'Dispatched' : 'تم إرسال الإيميل')}
                       {selectedPO.status === 'IN_TRANSIT' && (lang === 'en' ? 'In Transit' : 'جاري التوصيل')}
-                      {(selectedPO.status === 'DELIVERED' || selectedPO.status === 'تم الاستلام') && (lang === 'en' ? 'Delivered' : 'تم الاستلام')}
+                      {(selectedPO.status === 'DELIVERED' || selectedPO.status === 'تم الاستلام' || (selectedPO.status as string) === 'مكتمل' || (selectedPO.status as string) === 'completed') && (lang === 'en' ? 'Completed' : 'مكتمل')}
                       {selectedPO.status === 'APPROVED' && (lang === 'en' ? 'Approved' : 'معتمد')}
                     </span>
                   </div>
@@ -2519,8 +3091,9 @@ export default function SuppliersClient({
             <div className="flex flex-col sm:flex-row gap-2.5 pt-2 border-t border-white/10">
               {selectedPO.status === 'PENDING_APPROVAL' && (
                 <button
+                  type="button"
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'SENT')}
-                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
+                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-teal-600/35 hover:bg-teal-600/50 border border-teal-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
                   <Mail className="w-4 h-4" />
                   <span>{lang === 'en' ? 'Confirm & Dispatch Email to Supplier' : 'تأكيد وإرسال الإيميل للمورد'}</span>
@@ -2529,6 +3102,7 @@ export default function SuppliersClient({
 
               {selectedPO.status === 'SENT' && (
                 <button
+                  type="button"
                   onClick={() => handleUpdatePOStatus(selectedPO.id, 'IN_TRANSIT')}
                   className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-amber-500/30 hover:bg-amber-500/45 border border-amber-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
@@ -2537,17 +3111,21 @@ export default function SuppliersClient({
                 </button>
               )}
 
-              {selectedPO.status === 'IN_TRANSIT' && (
+              {!['DELIVERED', 'تم الاستلام', 'تم الاستلام بنجاح', 'مكتمل', 'completed', 'received', 'delivered'].includes(
+                String(selectedPO.status || '').trim()
+              ) && (
                 <button
-                  onClick={() => handleUpdatePOStatus(selectedPO.id, 'DELIVERED')}
-                  className="flex-1 py-2.5 px-5 rounded-xl font-bold bg-emerald-600/35 hover:bg-emerald-600/50 border border-emerald-400/40 text-white transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
+                  type="button"
+                  onClick={() => setPoToComplete(selectedPO)}
+                  className="flex-1 py-2.5 px-5 rounded-xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 border border-emerald-300/50 text-white shadow-lg shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>{lang === 'en' ? 'Confirm Delivery & Add to Inventory' : 'تأكيد استلام الشحنة وإضافتها للمخزون'}</span>
+                  <span>{lang === 'en' ? 'Order Received & Close PO' : 'تم الاستلام وإغلاق الأمر'}</span>
                 </button>
               )}
 
               <button
+                type="button"
                 onClick={() => {
                   setSelectedPO(null);
                   setIsEditingPO(false);
@@ -2741,6 +3319,260 @@ export default function SuppliersClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Purchase Order Permanent Delete Confirmation */}
+      {poToDelete && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+          <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-md p-6 space-y-4 text-white border border-rose-500/35 shadow-[0_24px_70px_rgba(0,0,0,0.85)]">
+            <div className="flex items-center gap-3 border-b border-white/15 pb-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-300 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">تأكيد حذف أمر الشراء</h4>
+                <p className="text-xs font-mono text-rose-200" dir="ltr">{toEnglishDigits(poToDelete.id)}</p>
+              </div>
+            </div>
+
+            <p className="text-sm font-bold text-slate-200 leading-relaxed bg-rose-500/10 border border-rose-400/30 rounded-2xl p-4">
+              هل أنت متأكد من حذف أمر الشراء هذا نهائياً؟ لا يمكن التراجع عن هذه العملية.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setPoToDelete(null)}
+                disabled={isDeletingPO}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all cursor-pointer disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDeletePO()}
+                disabled={isDeletingPO}
+                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/50 shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingPO ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري الحذف...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>تأكيد الحذف النهائي</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Certified Supplier Item Price */}
+      {editingSupplierItem && (() => {
+        const matched = availableItems.find(
+          (i) => i.item_code.toUpperCase() === editingSupplierItem.item_code.toUpperCase()
+        );
+        const cSize =
+          matched?.units_per_carton != null && Number(matched.units_per_carton) > 0
+            ? Number(matched.units_per_carton)
+            : (CARTON_SIZES[editingSupplierItem.item_code.toUpperCase()] || 1);
+        const normalizedStr = String(editingSupplierItem.priceStr)
+          .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+          .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+          .trim();
+        const parsedUnit = parseFloat(normalizedStr);
+        const validUnit = !isNaN(parsedUnit) && parsedUnit >= 0 ? parsedUnit : 0;
+        const cartonPrice = Number((validUnit * cSize).toFixed(4));
+
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+            <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-md p-6 space-y-4 text-white border border-teal-500/35 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-white/15 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-teal-500/20 border border-teal-400/30 text-teal-300">
+                    <Coins className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-extrabold text-white">تعديل سعر التوريد المعتمد</h4>
+                    <p className="text-xs text-teal-200">{editingSupplierItem.name_ar} ({editingSupplierItem.item_code})</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingSupplierItem(null)}
+                  className="text-white/60 hover:text-white bg-white/10 p-1.5 rounded-full cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSupplierItemPrice} className="space-y-4 text-xs">
+                <div className="space-y-2">
+                  <label className="block font-bold text-white">
+                    سعر التوريد المتفق عليه للحبة (ر.س):
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    inputMode="decimal"
+                    dir="ltr"
+                    lang="en"
+                    required
+                    value={editingSupplierItem.priceStr}
+                    onChange={(e) => {
+                      const raw = String(e.target.value)
+                        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                        .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
+                      setEditingSupplierItem({ ...editingSupplierItem, priceStr: raw });
+                    }}
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none focus:border-teal-300 font-mono"
+                  />
+
+                  <div className="rounded-xl bg-teal-950/60 border border-teal-500/30 p-3 space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between text-slate-200">
+                      <span>سعر الحبة الواحدة:</span>
+                      <span className="font-mono font-extrabold text-white" dir="ltr">
+                        {toEnglishDigits(validUnit)} ر.س
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-teal-200 pt-1 border-t border-teal-500/20">
+                      <span>سعر الكرتون التلقائي (× {toEnglishDigits(cSize)} حبة):</span>
+                      <span className="font-mono font-extrabold text-teal-300 text-xs" dir="ltr">
+                        {toEnglishDigits(cartonPrice)} ر.س
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingSupplierItemPrice}
+                    className="flex-1 py-2.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/40 text-white font-bold border border-teal-300/40 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingSupplierItemPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    <span>حفظ السعر الجديد</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSupplierItem(null)}
+                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold border border-white/20 cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal: Delete / Unlink Certified Supplier Item Confirmation */}
+      {supplierItemToDelete && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+          <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-md p-6 space-y-4 text-white border border-rose-500/35 shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-white/15 pb-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-300">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">حذف الصنف من قائمة المورد</h4>
+                <p className="text-xs text-rose-200">{supplierItemToDelete.name_ar} ({supplierItemToDelete.item_code})</p>
+              </div>
+            </div>
+
+            <p className="text-sm font-bold text-slate-200 leading-relaxed bg-rose-500/10 border border-rose-400/30 rounded-2xl p-4">
+              هل أنت متأكد من حذف وفك ارتباط الصنف ({supplierItemToDelete.name_ar}) من قائمة المنتجات المعتمدة لهذا المورد؟
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setSupplierItemToDelete(null)}
+                disabled={isDeletingSupplierItem}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDeleteSupplierItem()}
+                disabled={isDeletingSupplierItem}
+                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingSupplierItem ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>تأكيد الحذف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Complete & Receive Purchase Order Confirmation */}
+      {poToComplete && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+          <div className="font-sans bg-zinc-950/95 rounded-3xl w-full max-w-md p-6 space-y-4 text-white border border-emerald-500/40 shadow-[0_24px_70px_rgba(0,0,0,0.85)]">
+            <div className="flex items-center gap-3 border-b border-white/15 pb-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">تأكيد استلام وإغلاق أمر الشراء</h4>
+                <p className="text-xs font-mono text-emerald-200" dir="ltr">
+                  {toEnglishDigits(poToComplete.id)} • {poToComplete.supplierName}
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs sm:text-sm font-bold text-slate-200 leading-relaxed bg-emerald-500/10 border border-emerald-400/30 rounded-2xl p-4 space-y-2">
+              <p>
+                هل تؤكد استلام شحنة الصنف ({poToComplete.itemName}) بكمية{' '}
+                <span className="font-mono text-emerald-300" dir="ltr">
+                  {toEnglishDigits(poToComplete.quantity.toLocaleString('en-US'))}
+                </span>{' '}
+                وحدة؟
+              </p>
+              <p className="text-xs text-emerald-200/90 font-normal">
+                • سيتم إضافة الكمية مباشرةً إلى رصيد المخزون الرئيسي وإجمالي المخزون.
+                <br />• سيتم إغلاق الأمر ونقله تلقائياً إلى أرشيف أوامر الشراء والفواتير الخاص بالمورد.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setPoToComplete(null)}
+                disabled={isCompletingPO}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all cursor-pointer disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmCompleteAndReceivePO()}
+                disabled={isCompletingPO}
+                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/50 shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isCompletingPO ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري الاستلام والأرشفة...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>تأكيد الاستلام وإغلاق الأمر</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
