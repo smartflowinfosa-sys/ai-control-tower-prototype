@@ -1229,16 +1229,36 @@ export async function createPurchaseOrder(poData: {
  */
 export async function updatePurchaseOrderStatus(
   poNumber: string,
-  nextStatus: string
+  nextStatus: string,
+  receivedAt?: string
 ): Promise<void> {
-  updateSessionPurchaseOrder(poNumber, { status: nextStatus });
+  const isCompletedStatus =
+    nextStatus === 'completed' ||
+    nextStatus === 'مكتمل' ||
+    nextStatus === 'تم الاستلام' ||
+    nextStatus === 'DELIVERED';
+  const resolvedReceivedAt =
+    receivedAt || (isCompletedStatus ? new Date().toISOString() : undefined);
+
+  updateSessionPurchaseOrder(poNumber, {
+    status: nextStatus,
+    ...(resolvedReceivedAt ? { receivedAt: resolvedReceivedAt } : {}),
+  });
   try {
     if (typeof window !== 'undefined') {
-      await fetch('/api/purchase-orders', {
+      const res = await fetch('/api/purchase-orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ po_number: poNumber, status: nextStatus }),
+        body: JSON.stringify({
+          po_number: poNumber,
+          status: nextStatus,
+          ...(resolvedReceivedAt ? { received_at: resolvedReceivedAt } : {}),
+        }),
       });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || 'تعذر تحديث حالة أمر الشراء');
+      }
       return;
     }
     const { error } = await supabase
@@ -1248,8 +1268,16 @@ export async function updatePurchaseOrderStatus(
     if (error) {
       console.warn('Supabase PO status update notice:', error.message);
     }
+    if (resolvedReceivedAt) {
+      await supabase
+        .from('purchase_orders')
+        .update({ received_at: resolvedReceivedAt } as Record<string, unknown>)
+        .eq('po_number', poNumber)
+        .then(() => undefined, () => undefined);
+    }
   } catch (err) {
     console.warn('Supabase PO status update exception:', err);
+    throw err;
   }
 }
 

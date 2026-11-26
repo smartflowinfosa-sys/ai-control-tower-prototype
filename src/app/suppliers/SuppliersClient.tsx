@@ -819,52 +819,14 @@ export default function SuppliersClient({
       return;
     }
 
-    const resolvedItemCode = (
-      poToComplete.itemId ||
-      availableItems.find(
-        (i) =>
-          i.item_name_ar === poToComplete.itemName ||
-          i.item_name_en === poToComplete.itemName ||
-          i.item_code === poToComplete.itemName
-      )?.item_code ||
-      mockInventoryItems.find(
-        (i) =>
-          i.item_name_ar === poToComplete.itemName ||
-          i.item_name_en === poToComplete.itemName ||
-          i.item_code === poToComplete.itemName
-      )?.item_code ||
-      'P1'
-    )
-      .trim()
-      .toUpperCase();
-
     const receivedUnits = Math.max(1, Number(poToComplete.quantity) || 1);
     const receivedTimestamp = new Date().toISOString();
 
     setIsCompletingPO(true);
     try {
-      const res = await fetch('/api/inventory/receive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'po',
-          po_number: poToComplete.id,
-          supplier_name: poToComplete.supplierName,
-          completed_status: 'مكتمل',
-          receiver_signature: authUser.displayName,
-          items: [
-            {
-              item_code: resolvedItemCode,
-              units: receivedUnits,
-            },
-          ],
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error || 'تعذر استلام أمر الشراء وتحديث المخزون.');
-      }
+      // ONLY update the Purchase Order in public.purchase_orders to status = 'completed' with received_at
+      // DO NOT modify main_stock or current_stock in public.inventory_items or insert into inventory_adjustments
+      await updatePurchaseOrderStatus(poToComplete.id, 'completed', receivedTimestamp);
 
       // Immediately update local purchaseOrders state to move order from active tracker to supplier archive
       setPurchaseOrders((prev) =>
@@ -872,29 +834,13 @@ export default function SuppliersClient({
           p.id === poToComplete.id
             ? {
                 ...p,
-                status: 'مكتمل' as PurchaseOrder['status'],
+                status: 'completed' as PurchaseOrder['status'],
                 receivedAt: receivedTimestamp,
                 receivedQuantity: receivedUnits,
               }
             : p
         )
       );
-
-      // Update local availableItems stock balances if returned
-      if (Array.isArray(data?.updated_items) && data.updated_items.length > 0) {
-        const updatedRow = data.updated_items[0];
-        setAvailableItems((prev) =>
-          prev.map((item) =>
-            (item.item_code || '').toUpperCase() === resolvedItemCode
-              ? {
-                  ...item,
-                  main_stock: Number(updatedRow.main_stock ?? item.main_stock ?? 0),
-                  current_stock: Number(updatedRow.current_stock ?? item.current_stock ?? 0),
-                }
-              : item
-          )
-        );
-      }
 
       if (selectedPO?.id === poToComplete.id) {
         setSelectedPO(null);
@@ -904,8 +850,8 @@ export default function SuppliersClient({
 
       showToast(
         lang === 'en'
-          ? `Order (${poToComplete.id}) received (+${receivedUnits} units added to main stock) and archived under (${poToComplete.supplierName})`
-          : `تم استلام وإغلاق الأمر (${poToComplete.id}) وإضافة (+${toEnglishDigits(receivedUnits)} وحدة) للمخزون الرئيسي ونقله لأرشيف المورد (${poToComplete.supplierName})`
+          ? `Order (${poToComplete.id}) confirmed as received, closed, and moved to supplier archive (${poToComplete.supplierName})`
+          : `تم تأكيد استلام وإغلاق أمر الشراء (${poToComplete.id}) ونقله إلى أرشيف المورد (${poToComplete.supplierName}) بنجاح`
       );
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'تعذر استلام وإغلاق أمر الشراء.');
@@ -2316,23 +2262,79 @@ export default function SuppliersClient({
                     {/* Date Start */}
                     <div className="flex items-center gap-2 flex-1 min-w-[180px]">
                       <span className="text-white/60 shrink-0">{lang === 'en' ? 'From:' : 'من تاريخ:'}</span>
-                      <input
-                        type="date"
-                        value={profileDateStart}
-                        onChange={(e) => setProfileDateStart(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
-                      />
+                      <div className="relative w-full">
+                        <input
+                          type={profileDateStart ? 'date' : 'text'}
+                          placeholder=""
+                          dir="ltr"
+                          value={profileDateStart}
+                          onFocus={(e) => {
+                            e.currentTarget.type = 'date';
+                            try {
+                              e.currentTarget.showPicker?.();
+                            } catch {
+                              // Ignore if showPicker requires direct user gesture
+                            }
+                          }}
+                          onClick={(e) => {
+                            if (e.currentTarget.type !== 'date') {
+                              e.currentTarget.type = 'date';
+                            }
+                            try {
+                              e.currentTarget.showPicker?.();
+                            } catch {
+                              // Ignore if showPicker fails
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (!e.currentTarget.value) {
+                              e.currentTarget.type = 'text';
+                            }
+                          }}
+                          onChange={(e) => setProfileDateStart(e.target.value)}
+                          className="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
+                        />
+                        <Calendar className="w-3.5 h-3.5 text-white/60 pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      </div>
                     </div>
 
                     {/* Date End */}
                     <div className="flex items-center gap-2 flex-1 min-w-[180px]">
                       <span className="text-white/60 shrink-0">{lang === 'en' ? 'To:' : 'إلى تاريخ:'}</span>
-                      <input
-                        type="date"
-                        value={profileDateEnd}
-                        onChange={(e) => setProfileDateEnd(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono"
-                      />
+                      <div className="relative w-full">
+                        <input
+                          type={profileDateEnd ? 'date' : 'text'}
+                          placeholder=""
+                          dir="ltr"
+                          value={profileDateEnd}
+                          onFocus={(e) => {
+                            e.currentTarget.type = 'date';
+                            try {
+                              e.currentTarget.showPicker?.();
+                            } catch {
+                              // Ignore if showPicker requires direct user gesture
+                            }
+                          }}
+                          onClick={(e) => {
+                            if (e.currentTarget.type !== 'date') {
+                              e.currentTarget.type = 'date';
+                            }
+                            try {
+                              e.currentTarget.showPicker?.();
+                            } catch {
+                              // Ignore if showPicker fails
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (!e.currentTarget.value) {
+                              e.currentTarget.type = 'text';
+                            }
+                          }}
+                          onChange={(e) => setProfileDateEnd(e.target.value)}
+                          className="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-3 py-2 text-white text-xs outline-none focus:border-teal-300 font-mono cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:hidden"
+                        />
+                        <Calendar className="w-3.5 h-3.5 text-white/60 pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      </div>
                     </div>
 
                     {/* Filter by Item - Strictly maps only this supplier's certified items */}
@@ -3540,8 +3542,8 @@ export default function SuppliersClient({
                 وحدة؟
               </p>
               <p className="text-xs text-emerald-200/90 font-normal">
-                • سيتم إضافة الكمية مباشرةً إلى رصيد المخزون الرئيسي وإجمالي المخزون.
-                <br />• سيتم إغلاق الأمر ونقله تلقائياً إلى أرشيف أوامر الشراء والفواتير الخاص بالمورد.
+                • سيتم تأكيد استلام الشحنة وإغلاق أمر الشراء ونقله إلى أرشيف المورد.
+                <br />• ملاحظة: يتم إضافة الكميات السليمة إلى رصيد المخزون يدوياً من شاشة المخزون بعد الفحص والتأكد من عدم وجود تالف.
               </p>
             </div>
 

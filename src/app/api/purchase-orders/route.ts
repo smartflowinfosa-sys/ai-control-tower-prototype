@@ -119,6 +119,9 @@ export async function PATCH(req: Request) {
     if (body.status !== undefined && typeof body.status === 'string' && body.status.trim()) {
       updatePayload.status = body.status.trim();
     }
+    if (body.receiver_signature !== undefined && typeof body.receiver_signature === 'string') {
+      updatePayload.receiver_signature = body.receiver_signature.trim() || null;
+    }
 
     const supabaseAdmin = getSupabaseAdmin();
     const { data, error } = await supabaseAdmin
@@ -133,6 +136,15 @@ export async function PATCH(req: Request) {
         { error: `تعذر تحديث أمر الشراء في قاعدة البيانات: ${error.message}` },
         { status: 500 }
       );
+    }
+
+    // Best-effort update of received_at if the column exists in public.purchase_orders
+    if (body.received_at !== undefined && typeof body.received_at === 'string' && body.received_at.trim()) {
+      await supabaseAdmin
+        .from('purchase_orders')
+        .update({ received_at: body.received_at.trim() })
+        .eq('po_number', poNumber)
+        .then(() => undefined, () => undefined);
     }
 
     revalidateTag('purchase-orders', 'max');
