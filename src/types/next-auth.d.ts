@@ -11,6 +11,7 @@ declare module "next-auth" {
       name_en?: string | null;
       job_title?: string | null;
       preferred_language?: string | null;
+      allowed_sections?: string[] | null;
     } & DefaultSession["user"];
   }
 
@@ -22,6 +23,7 @@ declare module "next-auth" {
     name_en?: string | null;
     job_title?: string | null;
     preferred_language?: string | null;
+    allowed_sections?: string[] | null;
   }
 }
 
@@ -34,5 +36,6 @@ declare module "next-auth/jwt" {
     name_en?: string | null;
     job_title?: string | null;
     preferred_language?: string | null;
+    allowed_sections?: string[] | null;
   }
 }

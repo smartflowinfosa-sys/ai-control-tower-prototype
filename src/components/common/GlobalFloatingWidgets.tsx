@@ -17,9 +17,15 @@ const WelcomeToast = dynamic(
   { ssr: false }
 );
 
+const GlobalMeetingBanner = dynamic(
+  () => import("@/components/communications/GlobalMeetingBanner"),
+  { ssr: false }
+);
+
 export default function GlobalFloatingWidgets() {
   return (
     <>
+      <GlobalMeetingBanner />
       <AIAssistantWidget />
       <VoiceAIAgent />
       <WelcomeToast />

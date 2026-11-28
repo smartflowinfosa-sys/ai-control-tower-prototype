@@ -7,6 +7,7 @@ import GlobalFloatingWidgets from "@/components/common/GlobalFloatingWidgets";
 import { NotificationProvider } from "@/components/common/NotificationContext";
 import { LanguageProvider } from "@/components/common/LanguageContext";
 import AuthProvider from "@/components/common/AuthProvider";
+import { SectionPermissionsProvider } from "@/components/common/SectionPermissionsContext";
 import { Suspense } from "react";
 
 const tajawal = Tajawal({
@@ -59,13 +60,15 @@ export default function RootLayout({
         <AuthProvider>
           <LanguageProvider>
             <NotificationProvider>
-              <Suspense fallback={<aside className="w-20 hidden md:flex" />}>
-                <Sidebar />
-              </Suspense>
-              <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
-                {children}
-              </main>
-              <GlobalFloatingWidgets />
+              <SectionPermissionsProvider>
+                <Suspense fallback={<aside className="w-20 hidden md:flex" />}>
+                  <Sidebar />
+                </Suspense>
+                <main className="flex-1 min-w-0 p-6 md:p-8 lg:p-10 overflow-y-auto">
+                  {children}
+                </main>
+                <GlobalFloatingWidgets />
+              </SectionPermissionsProvider>
             </NotificationProvider>
           </LanguageProvider>
         </AuthProvider>

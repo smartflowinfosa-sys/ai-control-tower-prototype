@@ -15,10 +15,19 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.username || !credentials?.password) return null;
 
         const supabaseAdmin = getSupabaseAdmin();
-        const { data: users, error } = await supabaseAdmin
+        let { data: users, error } = await supabaseAdmin
           .from('app_users')
-          .select('id, username, role, password, name_ar, name_en, email, job_title, preferred_language')
+          .select('id, username, role, password, name_ar, name_en, email, job_title, preferred_language, allowed_sections')
           .eq('username', credentials.username);
+
+        if (error && (/allowed_sections/i.test(error.message || '') || error.code === '42703')) {
+          const fallback = await supabaseAdmin
+            .from('app_users')
+            .select('id, username, role, password, name_ar, name_en, email, job_title, preferred_language')
+            .eq('username', credentials.username);
+          users = (fallback.data || []).map((u) => ({ ...u, allowed_sections: null }));
+          error = fallback.error;
+        }
 
         console.log(`[NextAuth Authorize] Query username: "${credentials.username}", rows returned: ${users?.length ?? 0}, error:`, error);
 
@@ -50,6 +59,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           job_title: user.job_title,
           preferred_language: user.preferred_language,
+          allowed_sections: Array.isArray(user.allowed_sections) ? user.allowed_sections : null,
         };
       }
     })
@@ -65,6 +75,7 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.job_title = user.job_title;
         token.preferred_language = user.preferred_language;
+        token.allowed_sections = user.allowed_sections ?? null;
       }
 
       // Handle client-side session update
@@ -73,6 +84,7 @@ export const authOptions: NextAuthOptions = {
         if (session.name_en !== undefined) token.name_en = session.name_en;
         if (session.email !== undefined) token.email = session.email;
         if (session.preferred_language !== undefined) token.preferred_language = session.preferred_language;
+        if (session.allowed_sections !== undefined) token.allowed_sections = session.allowed_sections;
       }
 
       return token;
@@ -87,6 +99,7 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string;
         session.user.job_title = token.job_title as string;
         session.user.preferred_language = token.preferred_language as string;
+        session.user.allowed_sections = (token.allowed_sections as string[] | null | undefined) ?? null;
       }
       return session;
     },

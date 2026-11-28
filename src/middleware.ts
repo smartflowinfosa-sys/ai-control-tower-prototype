@@ -13,33 +13,8 @@ export default withAuth(
       return NextResponse.redirect(loginUrl);
     }
 
-    const rawRole = token?.role as string | undefined;
-    const role = rawRole?.toUpperCase();
-    const isSuperAdminOrAdmin = role === "SUPERADMIN" || role === "ADMIN";
-    const isInventory = rawRole?.toLowerCase() === "inventory";
-
-    // Inventory-only role: strictly restricted to /inventory (and /inventory/*)
-    // Allow /api/* routes through so inventory API calls are not redirected
-    if (isInventory && !pathname.startsWith("/api/")) {
-      const isInventoryRoute = pathname === "/inventory" || pathname.startsWith("/inventory/");
-      if (!isInventoryRoute) {
-        return NextResponse.redirect(new URL("/inventory", req.url));
-      }
-      return NextResponse.next();
-    }
-
-    // Admin-only routes: strictly restricted to SUPERADMIN and ADMIN
-    // STAFF can access /operations and /inventory
-    const adminRoutes = ["/", "/suppliers", "/production", "/supplier-discovery", "/orders"];
-    const isAdminRoute = adminRoutes.some(
-      (r) => pathname === r || (r !== "/" && pathname.startsWith(r + "/"))
-    );
-
-    if (isAdminRoute && !isSuperAdminOrAdmin) {
-      // Redirect STAFF to Operations Reports (Quantity Invoice)
-      return NextResponse.redirect(new URL("/operations/quantity", req.url));
-    }
-
+    // Per-user section access control is enforced by SectionPermissionsProvider
+    // using public.app_users.allowed_sections (redirecting non-admins to their first allowed section).
     return NextResponse.next();
   },
   {

@@ -547,7 +547,7 @@ export default function UserProfileModal({ isOpen, onClose }: UserProfileModalPr
               onClick={() => {
                 onClose();
                 sessionStorage.removeItem("welcome_toast_shown");
-signOut({ callbackUrl: "/login" });
+                signOut({ callbackUrl: "/login" });
               }}
               className="w-full sm:w-auto text-rose-300 hover:text-rose-100 hover:bg-rose-500/15 border border-rose-400/20 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer order-2 sm:order-1"
             >

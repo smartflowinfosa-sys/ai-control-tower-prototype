@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { useNotification } from '@/components/common/NotificationContext';
 import { useLanguage, DEFAULT_USER_PROFILE, translations } from '@/components/common/LanguageContext';
+import { useSectionPermissions, type SectionKey } from '@/components/common/SectionPermissionsContext';
 
 const UserProfileModal = dynamic(
   () => import('@/components/common/UserProfileModal'),
@@ -26,6 +27,8 @@ import {
   PackageCheck,
   ChevronDown,
   Ticket,
+  Video,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -34,13 +37,14 @@ interface NavSubItem {
   href: string;
   labelKey: string;
   icon: LucideIcon;
+  sectionKey: SectionKey;
 }
 
 interface NavItem {
   href?: string;
   labelKey: string;
   icon: LucideIcon;
-  adminOnly: boolean;
+  sectionKey?: SectionKey;
   children?: NavSubItem[];
 }
 
@@ -51,6 +55,7 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const { notifications } = useNotification();
   const { lang: contextLang, currentUser: contextUser, t: contextT, isRtl: contextIsRtl } = useLanguage();
+  const { canAccessSection, openPermissionsModal } = useSectionPermissions();
   const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -91,38 +96,43 @@ export default function Sidebar() {
     : null;
 
   const allNavItems: NavItem[] = [
-    // Admin-only: Executive Dashboard (الرئيسية)
-    { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, adminOnly: true },
-    // Operations Reports (تقارير العمليات) - accessible to STAFF and ADMIN
+    { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, sectionKey: 'dashboard' },
     {
       labelKey: 'nav.operations',
       icon: ClipboardList,
-      adminOnly: false,
       children: [
-        { href: '/operations/quantity', labelKey: 'nav.operationsQuantity', icon: FileText },
-        { href: '/operations/packaging', labelKey: 'nav.operationsPackaging', icon: PackageCheck },
+        { href: '/operations/quantity', labelKey: 'nav.operationsQuantity', icon: FileText, sectionKey: 'reports_quantity' },
+        { href: '/operations/packaging', labelKey: 'nav.operationsPackaging', icon: PackageCheck, sectionKey: 'reports_packaging' },
       ],
     },
-    // Production KDS (الإنتاج) - accessible to STAFF and ADMIN
-    { href: '/production', labelKey: 'nav.production', icon: ChefHat, adminOnly: false },
-    // Inventory (إدارة المخزون) - accessible to STAFF and ADMIN
-    { href: '/inventory', labelKey: 'nav.inventory', icon: Package, adminOnly: false },
-    // Tickets & Operations (التذاكر والعمليات 🎫) - accessible to STAFF and ADMIN
-    { href: '/tickets', labelKey: 'nav.tickets', icon: Ticket, adminOnly: false },
-    // Admin-only: Suppliers (الموردين)
-    { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck, adminOnly: true },
+    { href: '/production', labelKey: 'nav.production', icon: ChefHat, sectionKey: 'production' },
+    { href: '/inventory', labelKey: 'nav.inventory', icon: Package, sectionKey: 'inventory' },
+    { href: '/tickets', labelKey: 'nav.tickets', icon: Ticket, sectionKey: 'tickets' },
+    { href: '/communications', labelKey: 'nav.communications', icon: Video, sectionKey: 'communications' },
+    { href: '/suppliers', labelKey: 'nav.suppliers', icon: Truck, sectionKey: 'suppliers' },
   ];
 
-  // Role-Based Navigation:
-  // - If SUPERADMIN or ADMIN: Render ALL navigation links
-  // - If INVENTORY: Render ONLY "إدارة المخزون" (/inventory)
-  // - If STAFF: Render non-admin links
-  const navItems = allNavItems.filter((item) => {
-    if (isSuperAdminOrAdmin) return true;
-    if (isInventory) return item.href === '/inventory';
-    if (isStaff) return !item.adminOnly;
-    return !item.adminOnly;
-  });
+  // Strict per-user visibility:
+  // - ADMIN / SUPERADMIN: all sections visible
+  // - Other users: completely hide any section not in allowed_sections
+  //   (and hide Operations parent group if neither reports_quantity nor reports_packaging is allowed)
+  const navItems: NavItem[] = allNavItems.reduce<NavItem[]>((acc, item) => {
+    if (isSuperAdminOrAdmin) {
+      acc.push(item);
+      return acc;
+    }
+    if (item.children) {
+      const allowedChildren = item.children.filter((child) => canAccessSection(child.sectionKey));
+      if (allowedChildren.length > 0) {
+        acc.push({ ...item, children: allowedChildren });
+      }
+      return acc;
+    }
+    if (item.sectionKey && canAccessSection(item.sectionKey)) {
+      acc.push(item);
+    }
+    return acc;
+  }, []);
 
   const showTooltip = (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>, label: string) => {
     if (!isCollapsed) return;
@@ -251,6 +261,7 @@ export default function Sidebar() {
                         {item.children.map((child) => {
                           const isChildActive = pathname === child.href || pathname.startsWith(child.href + '/');
                           const ChildIcon = child.icon;
+                          const childLabel = t(child.labelKey);
                           return (
                             <Link
                               key={child.href}
@@ -264,7 +275,7 @@ export default function Sidebar() {
                               }`}
                             >
                               <ChildIcon size={14} className="shrink-0 text-white" />
-                              <span>{t(child.labelKey)}</span>
+                              <span className="flex-1">{childLabel}</span>
                             </Link>
                           );
                         })}
@@ -327,14 +338,28 @@ export default function Sidebar() {
             <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
           </div>
 
+          {isSuperAdminOrAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                openPermissionsModal();
+              }}
+              className="w-full mt-3 px-3 py-2 text-xs text-sky-200 font-bold bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/30 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck size={15} className="shrink-0 text-sky-300" />
+              <span>صلاحيات المستخدمين</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
               closeDrawer();
               sessionStorage.removeItem("welcome_toast_shown");
-signOut({ callbackUrl: "/login" });
+              signOut({ callbackUrl: "/login" });
             }}
-            className="w-full mt-3 px-3 py-2 text-xs text-rose-200 font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full mt-2.5 px-3 py-2 text-xs text-rose-200 font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             <LogOut size={14} className="shrink-0 text-rose-300" />
             <span>{t('sidebar.logout')}</span>
@@ -460,6 +485,7 @@ signOut({ callbackUrl: "/login" });
                       {item.children.map((child) => {
                         const isChildActive = pathname === child.href || pathname.startsWith(child.href + '/');
                         const ChildIcon = child.icon;
+                        const childLabel = t(child.labelKey);
                         return (
                           <Link
                             key={child.href}
@@ -472,7 +498,7 @@ signOut({ callbackUrl: "/login" });
                             }`}
                           >
                             <ChildIcon size={14} className="shrink-0 text-white" />
-                            <span>{t(child.labelKey)}</span>
+                            <span className="flex-1">{childLabel}</span>
                           </Link>
                         );
                       })}
@@ -560,7 +586,7 @@ signOut({ callbackUrl: "/login" });
                 onClick={() => {
                   setProfileOpen(false);
                   sessionStorage.removeItem("welcome_toast_shown");
-signOut({ callbackUrl: "/login" });
+                  signOut({ callbackUrl: "/login" });
                 }}
                 className={`w-full ${isRtl ? 'text-right' : 'text-left'} px-3 py-2 text-xs text-rose-200 font-bold hover:bg-rose-500/15 rounded-xl transition-colors flex items-center gap-2 cursor-pointer`}
               >
@@ -568,6 +594,29 @@ signOut({ callbackUrl: "/login" });
                 <span>{t('sidebar.logout')}</span>
               </button>
             </div>
+          )}
+
+          {/* Admin-only User Section Permissions Button */}
+          {isSuperAdminOrAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setTooltip(null);
+                openPermissionsModal();
+              }}
+              onMouseEnter={(event) => showTooltip(event, 'صلاحيات المستخدمين')}
+              onMouseLeave={() => setTooltip(null)}
+              onFocus={(event) => showTooltip(event, 'صلاحيات المستخدمين')}
+              onBlur={() => setTooltip(null)}
+              aria-label="صلاحيات المستخدمين"
+              title="صلاحيات المستخدمين"
+              className={`w-full mb-2 flex items-center rounded-xl border border-sky-400/30 bg-sky-500/15 hover:bg-sky-500/25 text-sky-100 transition-colors cursor-pointer ${
+                isCollapsed ? 'justify-center p-2.5' : 'justify-center gap-2 px-3 py-2 text-xs font-bold'
+              }`}
+            >
+              <ShieldCheck size={16} className="shrink-0 text-sky-300" />
+              {!isCollapsed && <span>صلاحيات المستخدمين</span>}
+            </button>
           )}
 
           {/* Profile Trigger Button */}
